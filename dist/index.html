@@ -66,6 +66,153 @@ var bizcalOptions = {"holiday_title":"\u5e97\u4f11\u65e5","sun":"on","sat":"on",
 
   gtag('config', 'UA-140812499-4');
   </script>
+  <!-- 確認用テーマ：空色 / Sky blue -->
+  <style id="elm-sky-theme">
+    :root {
+      --sky-deep: #168fc4;
+      --sky: #54bee9;
+      --sky-pale: #edfaff;
+      --sky-cloud: #f9fdff;
+      --sky-line: #bfe9f8;
+    }
+
+    body {
+      background: linear-gradient(180deg, #effaff 0, #ffffff 34%, #f6fcff 100%);
+    }
+
+    .notice_area {
+      background: linear-gradient(90deg, #dff5ff, #f9fdff 48%, #dff5ff);
+      border-bottom: 1px solid var(--sky-line);
+    }
+
+    .notice_area a,
+    .notice_area span[style*="0000ff"] {
+      color: var(--sky-deep) !important;
+    }
+
+    header,
+    #sp_navigation {
+      border-color: var(--sky-line) !important;
+    }
+
+    .menu_pc .menu_anime a,
+    #sp_menu .menu_anime a {
+      color: #176b8f;
+    }
+
+    .menu_pc .menu_anime a:hover,
+    #sp_menu .menu_anime a:hover {
+      color: var(--sky-deep);
+    }
+
+    .top_banner {
+      background: linear-gradient(135deg, #e1f6ff, #ffffff 52%, #d6f2ff) !important;
+      border-top: 1px solid var(--sky-line);
+      border-bottom: 1px solid var(--sky-line);
+    }
+
+    .top_banner h2,
+    h2.title,
+    .item_category .btn .text_box h2 {
+      color: var(--sky-deep) !important;
+    }
+
+    h2.title span {
+      color: #58b5dc !important;
+    }
+
+    .top_news,
+    .top_about,
+    .new_item,
+    .item_category,
+    .payment,
+    .instagram {
+      position: relative;
+    }
+
+    .top_news::before,
+    .top_about::before,
+    .new_item::before,
+    .item_category::before,
+    .payment::before,
+    .instagram::before {
+      content: "";
+      display: block;
+      width: min(90%, 1120px);
+      height: 1px;
+      margin: 0 auto;
+      background: linear-gradient(90deg, transparent, var(--sky-line), transparent);
+    }
+
+    .top_news .news_post .label,
+    .new_item .text_box .label,
+    .item_category .btn .text_box p {
+      color: #238db7 !important;
+    }
+
+    .top_banner .content_box,
+    .calendar {
+      box-shadow: 0 10px 26px rgba(46, 160, 204, .10);
+    }
+
+    .item_category .btn_anime {
+      border-color: #8bd3ed !important;
+      background: linear-gradient(145deg, #e7f8ff, #ffffff) !important;
+    }
+
+    .item_category .btn_anime .btn {
+      background: var(--sky) !important;
+    }
+
+    footer {
+      background: #147da9 !important;
+      color: #ffffff;
+    }
+
+    .order-cta { display:flex; align-items:center; justify-content:center; gap:.7rem; width:min(92%,620px); margin:1.75rem auto 2.3rem; padding:.9rem 1.1rem; border-radius:999px; background:linear-gradient(100deg,#129bd0,#63cbed); box-shadow:0 10px 22px rgba(20,145,194,.28); color:#fff !important; text-align:center; text-decoration:none; transition:transform .2s ease,box-shadow .2s ease; animation:elm-order-pulse 2.6s ease-in-out infinite; }
+    .order-cta:hover,.order-cta:focus-visible { color:#fff !important; transform:translateY(-3px); box-shadow:0 14px 28px rgba(20,145,194,.36); }
+    .order-cta__small { display:none; }
+    .order-cta__main { font-size:1.05rem; font-weight:700; letter-spacing:.04em; }
+    .order-cta__arrow { display:inline-grid; place-items:center; width:1.7rem; height:1.7rem; border-radius:50%; background:rgba(255,255,255,.22); font-size:1.2rem; animation:elm-arrow-down 1.1s ease-in-out infinite; }
+
+    .best-sellers { padding:4rem 1.25rem; background:linear-gradient(145deg,#effaff,#fff 48%,#e8f8ff); }
+    .best-sellers__inner { max-width:1120px; margin:0 auto; }
+    .best-sellers__eyebrow { margin:0 0 .35rem; color:#168fc4; font-size:.8rem; font-weight:800; letter-spacing:.16em; text-align:center; }
+    .best-sellers .title { margin-bottom:.7rem; text-align:center; }
+    .best-sellers__lead { margin:0 auto 2.3rem; color:#35667b; font-size:1rem; line-height:1.8; text-align:center; }
+    .best-sellers__group { margin-top:1.5rem; padding:1.5rem; border:1px solid #c9ebf7; border-radius:22px; background:rgba(255,255,255,.88); box-shadow:0 12px 30px rgba(49,157,198,.08); }
+    .best-sellers__group--cake { margin-top:1.25rem; }
+    .best-sellers__heading { display:flex; align-items:baseline; justify-content:space-between; gap:1rem; margin-bottom:1.2rem; }
+    .best-sellers__heading h3 { margin:0; color:#167ca7; font-size:1.2rem; }
+    .best-sellers__heading a { color:#168fc4; font-size:.9rem; font-weight:700; text-decoration:none; white-space:nowrap; }
+    .best-sellers__heading a span { display:inline-block; transition:transform .2s ease; }
+    .best-sellers__heading a:hover span { transform:translateX(4px); }
+    .best-sellers__grid { display:grid; grid-template-columns:repeat(3,minmax(0,1fr)); gap:1rem; }
+    .best-sellers__card { position:relative; display:block; overflow:hidden; border-radius:15px; background:#fff; box-shadow:0 5px 14px rgba(20,106,145,.12); color:#225b73 !important; font-size:.95rem; font-weight:700; text-align:center; text-decoration:none; transition:transform .2s ease,box-shadow .2s ease; }
+    .best-sellers__card:hover,.best-sellers__card:focus-visible { color:#167ca7 !important; transform:translateY(-5px); box-shadow:0 11px 22px rgba(20,106,145,.18); }
+    .best-sellers__card img { display:block; aspect-ratio:1/1; width:100%; object-fit:cover; }
+    .best-sellers__card > span:last-child { display:block; padding:.8rem .45rem; }
+    .best-sellers__rank { position:absolute; z-index:1; top:.55rem; left:.55rem; display:grid; place-items:center; width:2rem; height:2rem; border-radius:50%; background:#1399cd; box-shadow:0 3px 9px rgba(10,113,157,.25); color:#fff; font-size:1rem; font-weight:800; }
+    @keyframes elm-arrow-down { 50% { transform:translateY(3px); } }
+    @keyframes elm-order-pulse { 50% { box-shadow:0 10px 30px rgba(20,145,194,.46); } }
+
+    @media screen and (max-width: 767px) {
+      .notice_area {
+        padding-left: 12px;
+        padding-right: 12px;
+      }
+      .order-cta { flex-wrap:wrap; gap:.25rem .6rem; padding:.85rem .75rem; }
+      .order-cta__small { display:block; width:100%; font-size:.74rem; font-weight:700; opacity:.92; }
+      .best-sellers { padding:3rem 1rem; }
+      .best-sellers__group { padding:1rem; }
+      .best-sellers__heading { align-items:flex-start; flex-direction:column; gap:.35rem; }
+      .best-sellers__heading h3 { font-size:1.05rem; }
+      .best-sellers__grid { gap:.55rem; }
+      .best-sellers__card { font-size:.75rem; }
+      .best-sellers__card > span:last-child { min-height:3.4rem; padding:.55rem .25rem; }
+      .best-sellers__rank { top:.35rem; left:.35rem; width:1.7rem; height:1.7rem; font-size:.86rem; }
+    }
+  </style>
 </head>
 
 <body data-rsssl=1 id="main_body" data-tmpdir="https://elmballoon.com/wp/wp-content/themes/elmballoon3/">
@@ -215,7 +362,7 @@ var bizcalOptions = {"holiday_title":"\u5e97\u4f11\u65e5","sun":"on","sat":"on",
     <img src="https://elmballoon.com/wp/wp-content/themes/elmballoon3/img/front/calendar.svg" alt="営業日カレンダー">
     <section id="bizcalendar-3" class="widget widget_bizcalendar"><div id='biz_calendar'></div></section>  </section>
 
-  <section class="top_banner">
+  <section class="top_banner" id="line-order">
     <a href="https://elmballoon.com/contact/">
       <h2>ご予約・お問い合わせはこちら</h2>
       <div class="content_box">
@@ -245,6 +392,12 @@ var bizcalOptions = {"holiday_title":"\u5e97\u4f11\u65e5","sun":"on","sat":"on",
 
 <!-- フロントページ -->
 <arricle id="front_page">
+
+  <a class="order-cta" href="#line-order" aria-label="LINEで相談・注文する">
+    <span class="order-cta__small">はじめてでも安心</span>
+    <span class="order-cta__main">ご注文・ご相談はこちら</span>
+    <span class="order-cta__arrow" aria-hidden="true">↓</span>
+  </a>
 
   <!-- お知らせ -->
   <section class="top_news">
@@ -332,6 +485,64 @@ var bizcalOptions = {"holiday_title":"\u5e97\u4f11\u65e5","sun":"on","sat":"on",
     </div>
   </section>
   <!-- エルムバルーンへようこそ -->
+
+  <!-- 人気商品 -->
+  <section class="best-sellers">
+    <div class="best-sellers__inner">
+      <p class="best-sellers__eyebrow">PICK UP</p>
+      <h2 class="title">いま選ばれている人気商品<span>best sellers</span></h2>
+      <p class="best-sellers__lead">迷ったら、まずはこちら。人気のバルーンアレンジとおむつケーキを集めました。</p>
+
+      <div class="best-sellers__group">
+        <div class="best-sellers__heading">
+          <h3>バルーンアレンジ 人気BEST 3</h3>
+          <a href="https://elmballoon.com/item/">バルーンアレンジをもっと見る <span>→</span></a>
+        </div>
+        <div class="best-sellers__grid">
+          <a class="best-sellers__card" href="https://elmballoon.com/item/item-1451/">
+            <span class="best-sellers__rank">1</span>
+            <img src="https://elmballoon.com/wp/wp-content/uploads/2021/04/FB7870E4-AC28-4225-A048-C4335664174C.jpeg" alt="バルーンアレンジ36">
+            <span>バルーンアレンジ㊱</span>
+          </a>
+          <a class="best-sellers__card" href="https://elmballoon.com/item/item-1448/">
+            <span class="best-sellers__rank">2</span>
+            <img src="https://elmballoon.com/wp/wp-content/uploads/2021/04/DC950DC8-A766-4F27-8F32-56715FA68F94.jpeg" alt="バルーンアレンジ35">
+            <span>バルーンアレンジ㉟</span>
+          </a>
+          <a class="best-sellers__card" href="https://elmballoon.com/item/item-1447/">
+            <span class="best-sellers__rank">3</span>
+            <img src="https://elmballoon.com/wp/wp-content/uploads/2021/04/96DCCE1F-8BA1-409A-83E3-FB0D55A62DF0.jpeg" alt="バルーンアレンジ34">
+            <span>バルーンアレンジ㉞</span>
+          </a>
+        </div>
+      </div>
+
+      <div class="best-sellers__group best-sellers__group--cake">
+        <div class="best-sellers__heading">
+          <h3>おむつケーキ 人気BEST 3</h3>
+          <a href="https://elmballoon.com/item/">おむつケーキをもっと見る <span>→</span></a>
+        </div>
+        <div class="best-sellers__grid">
+          <a class="best-sellers__card" href="https://elmballoon.com/item/item-1142/">
+            <span class="best-sellers__rank">1</span>
+            <img src="https://elmballoon.com/wp/wp-content/uploads/2020/05/a9d4e8b3772bbec95758f5b85c913e81-e1590553003395.jpg" alt="おむつケーキ28">
+            <span>おむつケーキ㉘</span>
+          </a>
+          <a class="best-sellers__card" href="https://elmballoon.com/item/item-1141/">
+            <span class="best-sellers__rank">2</span>
+            <img src="https://elmballoon.com/wp/wp-content/uploads/2020/05/ba2e59e6f3c6c614ee37739ac2a37ca0-e1590552821130.jpg" alt="おむつケーキ27">
+            <span>おむつケーキ㉗</span>
+          </a>
+          <a class="best-sellers__card" href="https://elmballoon.com/item/item-1140/">
+            <span class="best-sellers__rank">3</span>
+            <img src="https://elmballoon.com/wp/wp-content/uploads/2020/05/125b003be97c40b3843027393bc55d30-e1590552666208.jpg" alt="おむつケーキ26">
+            <span>おむつケーキ㉖</span>
+          </a>
+        </div>
+      </div>
+    </div>
+  </section>
+  <!-- 人気商品 -->
 
   <!-- 新商品一覧 -->
   <section class="new_item">
