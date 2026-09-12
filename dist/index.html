@@ -85,6 +85,9 @@ var bizcalOptions = {"holiday_title":"\u5e97\u4f11\u65e5","sun":"on","sat":"on",
       border-bottom: 1px solid var(--sky-line);
     }
 
+    .timed-notice { display:none; padding:.75rem 1rem; background:#087eae; color:#fff; font-weight:700; text-align:center; }
+    .timed-notice.is-active { display:block; }
+
     .notice_area a,
     .notice_area span[style*="0000ff"] {
       color: var(--sky-deep) !important;
@@ -234,6 +237,7 @@ var bizcalOptions = {"holiday_title":"\u5e97\u4f11\u65e5","sun":"on","sat":"on",
 <p style="text-align: center;"><strong><span style="color: #000000;">※店舗営業日詳細は</span><a href="https://elmballoon.com/"><span style="color: #000000;"><span style="color: #0000ff;">営業日カレンダー</span></span></a><span style="color: #000000;">をご確認ください。</span></strong></p>
       </div>
           </div>
+    <div id="timed-notice" class="timed-notice" role="status"></div>
 
     <!-- ヘッダー -->
     <header>
@@ -1407,6 +1411,24 @@ https://www.facebook.com/elmballoon/⠀
 <!-- SPメニュー -->
 
 <!-- フッター -->
+
+<script>
+  /* 会話で更新する営業時間・臨時休業設定。日時は日本時間（+09:00）で1時間単位まで指定できます。 */
+  window.elmTimedNotices = [
+    // { startAt: '2026-10-10T13:00:00+09:00', endAt: '2026-10-10T16:00:00+09:00', message: '本日は13:00〜16:00の間、臨時休業いたします。' }
+  ];
+  (function () {
+    var now = new Date();
+    var active = window.elmTimedNotices.find(function (item) {
+      return new Date(item.startAt) <= now && now < new Date(item.endAt);
+    });
+    var banner = document.getElementById('timed-notice');
+    if (active && banner) {
+      banner.textContent = active.message;
+      banner.classList.add('is-active');
+    }
+  }());
+</script>
 <footer>Copyright&nbsp;©&nbsp;elm・balloon | 霧島市のバルーン専門店「エルムバルーン」&nbsp;All&nbsp;Rights&nbsp;Reserved.</footer>
 <!-- フッター -->
 
