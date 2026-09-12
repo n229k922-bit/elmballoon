@@ -87,25 +87,29 @@ var bizcalOptions = {"holiday_title":"\u5e97\u4f11\u65e5","sun":"on","sat":"on",
     .timed-notice.is-active { display:block; }
 
     /* 自前の営業日カレンダー（WordPressプラグインには依存しません） */
-    .elm-calendar { max-width: 760px; margin: 0 auto; padding: 1.2rem; background: #fff; border: 2px solid var(--sky-line); border-radius: 18px; box-shadow: 0 8px 22px rgba(22,143,196,.10); }
+    .elm-calendar { width:min(100%, 680px); aspect-ratio:1 / 1; box-sizing:border-box; margin:0 auto; padding:1.1rem; background:#fff; border:2px solid var(--sky-line); border-radius:18px; box-shadow:0 8px 22px rgba(22,143,196,.10); }
     .elm-calendar__bar { display:flex; align-items:center; justify-content:space-between; gap:.5rem; margin-bottom:.8rem; }
     .elm-calendar__bar button { border:0; border-radius:999px; background:var(--sky-deep); color:#fff; padding:.55rem .85rem; font-weight:700; cursor:pointer; }
     .elm-calendar__bar button:hover { background:#087eae; }
     .elm-calendar__title { color:#176b8f; font-size:1.25rem; font-weight:800; }
-    .elm-calendar__legend { display:flex; flex-wrap:wrap; gap:.45rem 1rem; margin:0 0 .8rem; font-size:.82rem; color:#4d6370; }
+    .elm-calendar__legend { display:flex; flex-wrap:wrap; gap:.45rem 1rem; margin:0 0 .55rem; font-size:.82rem; color:#4d6370; }
     .elm-calendar__legend span::before { content:""; display:inline-block; width:.75rem; height:.75rem; margin-right:.3rem; border-radius:50%; background:#ffe9ee; border:1px solid #f4a3b5; }
     .elm-calendar__legend .partial::before { background:#dff5ff; border-color:#54bee9; }
     .elm-calendar__week, .elm-calendar__grid { display:grid; grid-template-columns:repeat(7, minmax(0, 1fr)); }
     .elm-calendar__week div { padding:.35rem 0; text-align:center; font-size:.8rem; font-weight:800; color:#176b8f; }
     .elm-calendar__week div:first-child { color:#e86982; }
-    .elm-calendar__day { min-height:84px; padding:.4rem; border:1px solid #d9edf5; background:#fff; font-size:.82rem; }
+    .elm-calendar__day { aspect-ratio:1 / 1; min-height:0; padding:.28rem; border:1px solid #d9edf5; background:#fff; color:#263b46; font:inherit; font-size:.82rem; text-align:left; cursor:pointer; position:relative; }
+    .elm-calendar__day:not(.is-empty):hover, .elm-calendar__day:not(.is-empty):focus-visible { outline:3px solid #54bee9; outline-offset:-3px; z-index:1; }
     .elm-calendar__day.is-empty { background:#f8fcfe; }
     .elm-calendar__day.is-closed { background:#fff5f7; }
-    .elm-calendar__date { display:block; font-weight:800; color:#263b46; }
+    .elm-calendar__date { display:flex; align-items:center; justify-content:center; width:1.8rem; height:1.8rem; border-radius:50%; font-weight:800; color:#263b46; }
     .elm-calendar__day:nth-child(7n+1) .elm-calendar__date { color:#d95470; }
-    .elm-calendar__status { display:block; margin-top:.35rem; padding:.18rem .25rem; border-radius:6px; background:#ffe1e8; color:#b74460; font-size:.7rem; font-weight:800; line-height:1.35; }
-    .elm-calendar__status.is-partial { background:#dff5ff; color:#087eae; }
-    @media (max-width:600px) { .elm-calendar { padding:.75rem; border-radius:12px; } .elm-calendar__title { font-size:1rem; } .elm-calendar__bar button { padding:.45rem .55rem; font-size:.78rem; } .elm-calendar__day { min-height:64px; padding:.25rem; font-size:.75rem; } .elm-calendar__status { font-size:.6rem; padding:.14rem; } }
+    .elm-calendar__day.is-closed::after { content:"休"; position:absolute; right:.25rem; bottom:.22rem; display:grid; place-items:center; width:1.3rem; height:1.3rem; border-radius:50%; background:#e9576f; color:#fff; font-size:.65rem; font-weight:800; }
+    .elm-calendar__day.has-partial::after { content:"時"; position:absolute; right:.25rem; bottom:.22rem; display:grid; place-items:center; width:1.3rem; height:1.3rem; border-radius:50%; background:#168fc4; color:#fff; font-size:.65rem; font-weight:800; }
+    .elm-calendar__day.is-today .elm-calendar__date { background:#ffcc5d; color:#493506; box-shadow:0 0 0 3px #fff2c9; }
+    .elm-calendar__details { display:none; margin-top:.65rem; padding:.5rem .7rem; border-radius:10px; background:#effaff; color:#176b8f; font-size:.88rem; font-weight:700; line-height:1.5; }
+    .elm-calendar__details.is-visible { display:block; }
+    @media (max-width:600px) { .elm-calendar { padding:.65rem; border-radius:12px; } .elm-calendar__title { font-size:1rem; } .elm-calendar__bar button { padding:.45rem .55rem; font-size:.78rem; } .elm-calendar__day { padding:.12rem; font-size:.72rem; } .elm-calendar__date { width:1.55rem; height:1.55rem; } .elm-calendar__day.is-closed::after, .elm-calendar__day.has-partial::after { width:1.1rem; height:1.1rem; right:.12rem; bottom:.12rem; font-size:.56rem; } .elm-calendar__details { font-size:.78rem; } }
 
     .notice_area a,
     .notice_area span[style*="0000ff"] {
@@ -388,6 +392,7 @@ var bizcalOptions = {"holiday_title":"\u5e97\u4f11\u65e5","sun":"on","sat":"on",
       <p class="elm-calendar__legend"><span>土・日・祝日は店休日</span><span class="partial">時間指定の休業</span></p>
       <div class="elm-calendar__week" aria-hidden="true"><div>日</div><div>月</div><div>火</div><div>水</div><div>木</div><div>金</div><div>土</div></div>
       <div class="elm-calendar__grid" id="elm-calendar-grid"></div>
+      <div class="elm-calendar__details" id="calendar-details" role="status" aria-live="polite"></div>
     </div>
   </section>
 
@@ -1456,16 +1461,20 @@ https://www.facebook.com/elmballoon/⠀
       var holidays = {}; (data.holidays || []).forEach(function (item) { holidays[item.date] = item.name; });
       var exceptions = data.exceptions || []; showTimedNotice(exceptions);
       var year = state.getFullYear(), month = state.getMonth(), firstDay = new Date(year, month, 1).getDay(), days = new Date(year, month + 1, 0).getDate();
-      title.textContent = year + '年' + (month + 1) + '月'; grid.innerHTML = '';
+      var now = new Date(), today = iso(now.getFullYear(), now.getMonth(), now.getDate());
+      var details = document.getElementById('calendar-details');
+      title.textContent = year + '年' + (month + 1) + '月'; grid.innerHTML = ''; details.textContent = ''; details.classList.remove('is-visible');
       for (var blank = 0; blank < firstDay; blank++) { grid.insertAdjacentHTML('beforeend', '<div class="elm-calendar__day is-empty"></div>'); }
       for (var day = 1; day <= days; day++) {
         var date = iso(year, month, day), week = new Date(year, month, day).getDay();
         var exception = exceptions.find(function (item) { return item.date === date; });
         var regular = (data.weekly_closed_days || [0,6]).indexOf(week) !== -1 || !!holidays[date];
         var partial = exception && exception.start && exception.end;
-        var status = partial ? exception.start + '〜' + exception.end + '<br>' + (exception.label || '臨時休業') : (exception ? (exception.label || '臨時休業') : (regular ? (holidays[date] || '店休日') : ''));
-        grid.insertAdjacentHTML('beforeend', '<div class="elm-calendar__day' + ((regular || exception) ? ' is-closed' : '') + '"><span class="elm-calendar__date">' + day + '</span>' + (status ? '<span class="elm-calendar__status' + (partial ? ' is-partial' : '') + '">' + status + '</span>' : '') + '</div>');
+        var label = partial ? (exception.start + '〜' + exception.end + ' ' + (exception.label || '臨時休業')) : (exception ? (exception.label || '臨時休業') : (regular ? (holidays[date] || '店休日') : '営業予定'));
+        var classes = 'elm-calendar__day' + (partial ? ' has-partial' : ((regular || exception) ? ' is-closed' : '')) + (date === today ? ' is-today' : '');
+        grid.insertAdjacentHTML('beforeend', '<button type="button" class="' + classes + '" data-date="' + date + '" data-label="' + label + '" aria-label="' + date + ' ' + label + '"><span class="elm-calendar__date">' + day + '</span></button>');
       }
+      grid.querySelectorAll('button[data-date]').forEach(function (button) { button.addEventListener('click', function () { details.textContent = button.dataset.date + '：' + button.dataset.label; details.classList.add('is-visible'); }); });
     }
     fetch('./data/calendar.json').then(function (response) { if (!response.ok) throw new Error('calendar'); return response.json(); }).then(function (data) {
       function repaint() { render(data); }
