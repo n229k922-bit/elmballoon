@@ -260,7 +260,7 @@ var bizcalOptions = {"holiday_title":"\u5e97\u4f11\u65e5","sun":"on","sat":"on",
       border-radius: 999px;
       background: #fff;
       color: #087eae !important;
-      font-size: clamp(1.35rem, 4vw, 2rem);
+      font-size: clamp(1.35rem, 3.2vw, 1.75rem);
       font-weight: 800;
       line-height: 1.45;
       text-align: center;
@@ -268,11 +268,14 @@ var bizcalOptions = {"holiday_title":"\u5e97\u4f11\u65e5","sun":"on","sat":"on",
       box-shadow: 0 2px 12px rgba(18, 94, 130, .10);
     }
 
+    #line-order h2 span { white-space: nowrap; }
+
     #line-order .content_box {
-      display: flex;
+      display: grid;
+      grid-template-columns: minmax(0, 1fr) 164px;
       align-items: center;
       justify-content: space-between;
-      gap: 1.5rem;
+      gap: 1.75rem;
       margin: 0 !important;
       padding: 1.5rem 1.75rem;
       border: 1px solid #b6e4f4;
@@ -333,7 +336,9 @@ var bizcalOptions = {"holiday_title":"\u5e97\u4f11\u65e5","sun":"on","sat":"on",
 
     @media (max-width: 600px) {
       #line-order { padding: 1.5rem .75rem !important; }
-      #line-order .content_box { gap: 1rem; padding: 1.1rem; }
+      #line-order h2 { padding: .7rem .5rem; font-size: 1.25rem; letter-spacing: .02em; }
+      #line-order h2 span { display: block; }
+      #line-order .content_box { grid-template-columns: minmax(0, 1fr) 104px; gap: .85rem; padding: 1.1rem; }
       #line-order .line_QR img { width: 94px; }
       #line-order .text_box p { font-size: .92rem; line-height: 1.75; }
       #line-order .tel_num { font-size: 1.55rem !important; letter-spacing: 0; }
@@ -498,7 +503,7 @@ var bizcalOptions = {"holiday_title":"\u5e97\u4f11\u65e5","sun":"on","sat":"on",
 
   <section class="top_banner" id="line-order">
     <a href="https://elmballoon.com/contact/">
-      <h2>ご予約・お問い合わせはこちら</h2>
+      <h2><span>ご予約・お問い合わせ</span><span>はこちら</span></h2>
       <div class="content_box">
         <div class="text_box">
           <p>
