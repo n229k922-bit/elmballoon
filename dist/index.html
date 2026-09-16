@@ -265,11 +265,11 @@ var bizcalOptions = {"holiday_title":"\u5e97\u4f11\u65e5","sun":"on","sat":"on",
       line-height: 1.45;
       text-align: center;
       letter-spacing: .02em;
-      white-space: nowrap;
+      white-space: nowrap !important;
       box-shadow: 0 2px 12px rgba(18, 94, 130, .10);
     }
 
-    #line-order h2 span { white-space: inherit; }
+    #line-order h2 span { display: inline !important; white-space: nowrap !important; }
 
     #line-order .content_box {
       display: grid;
@@ -284,6 +284,9 @@ var bizcalOptions = {"holiday_title":"\u5e97\u4f11\u65e5","sun":"on","sat":"on",
       background: #fff;
       box-shadow: 0 8px 20px rgba(18, 94, 130, .10);
     }
+
+    /* 元サイトの横並び指定を上書きし、問い合わせ欄の大きさを安定させる */
+    #line-order .content_box { display: flex !important; gap: .7rem !important; }
 
     #line-order .text_box {
       flex: 1 1 auto;
@@ -325,7 +328,8 @@ var bizcalOptions = {"holiday_title":"\u5e97\u4f11\u65e5","sun":"on","sat":"on",
 
     #line-order .line_QR img {
       display: block;
-      width: min(174px, 28vw);
+      width: 110px !important;
+      max-width: none !important;
       height: auto;
     }
 
@@ -338,7 +342,7 @@ var bizcalOptions = {"holiday_title":"\u5e97\u4f11\u65e5","sun":"on","sat":"on",
     @media (max-width: 600px) {
       #line-order { padding: 1.5rem .75rem !important; }
       #line-order h2 { padding: .7rem .25rem; font-size: clamp(1rem, 5vw, 1.2rem); letter-spacing: 0; }
-      #line-order h2 span { display: inline; }
+      #line-order h2 span { display: inline !important; }
       #line-order .content_box { grid-template-columns: minmax(0, 1fr) 122px; gap: .7rem; padding: 1.1rem; }
       #line-order .line_QR img { width: 110px; }
       #line-order .text_box p { font-size: .92rem; line-height: 1.75; }
