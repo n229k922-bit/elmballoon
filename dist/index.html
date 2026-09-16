@@ -243,6 +243,8 @@ var bizcalOptions = {"holiday_title":"\u5e97\u4f11\u65e5","sun":"on","sat":"on",
       padding: 2rem 1rem !important;
       background: #edf9ff !important;
       border: 0 !important;
+      outline: 0 !important;
+      box-shadow: none !important;
     }
 
     #line-order > a {
@@ -254,6 +256,15 @@ var bizcalOptions = {"holiday_title":"\u5e97\u4f11\u65e5","sun":"on","sat":"on",
       text-decoration: none;
       box-sizing: border-box;
     }
+
+    #line-order::before,
+    #line-order::after {
+      border: 0 !important;
+      box-shadow: none !important;
+    }
+
+    /* ヒーロー画像と問い合わせ欄の装飾枠をなくし、情報に視線を集める */
+    #top_first_view { border: 0 !important; }
 
     #line-order h2 {
       margin: 0 0 1rem;
