@@ -238,129 +238,6 @@ var bizcalOptions = {"holiday_title":"\u5e97\u4f11\u65e5","sun":"on","sat":"on",
       .best-sellers__card > span:last-child { min-height:3.4rem; padding:.55rem .25rem; }
       .best-sellers__rank { top:.35rem; left:.35rem; width:1.7rem; height:1.7rem; font-size:.86rem; }
     }
-    /* 予約・お問い合わせ欄：背景画像の明るさに左右されない、読みやすい配色 */
-    #line-order {
-      padding: 2rem 1rem !important;
-      background: #edf9ff !important;
-      border: 0 !important;
-      outline: 0 !important;
-      box-shadow: none !important;
-    }
-
-    #line-order > a {
-      display: block;
-      width: 100%;
-      max-width: 760px;
-      margin: 0 auto;
-      color: #123d58 !important;
-      text-decoration: none;
-      box-sizing: border-box;
-    }
-
-    #line-order::before,
-    #line-order::after {
-      border: 0 !important;
-      box-shadow: none !important;
-    }
-
-    /* ヒーロー画像と問い合わせ欄の装飾枠をなくし、情報に視線を集める */
-    #top_first_view { border: 0 !important; }
-
-    #line-order h2 {
-      margin: 0 0 1rem;
-      padding: .75rem 1rem;
-      border-radius: 999px;
-      background: #fff;
-      color: #087eae !important;
-      font-size: clamp(1.1rem, 3vw, 1.75rem);
-      font-weight: 800;
-      line-height: 1.45;
-      text-align: center;
-      letter-spacing: .02em;
-      white-space: nowrap !important;
-      box-shadow: 0 2px 12px rgba(18, 94, 130, .10);
-    }
-
-    #line-order h2 span { display: inline !important; white-space: nowrap !important; }
-
-    #line-order .content_box {
-      display: grid !important;
-      grid-template-columns: minmax(0, 1fr) 110px !important;
-      align-items: center;
-      gap: 1rem !important;
-      margin: 0 !important;
-      padding: 1.5rem;
-      border: 0 !important;
-      border-radius: 14px;
-      background: #fff;
-      box-shadow: 0 6px 18px rgba(18, 94, 130, .10);
-      box-sizing: border-box;
-    }
-
-    #line-order .text_box {
-      min-width: 0;
-    }
-
-    #line-order .text_box p,
-    #line-order .text_box strong,
-    #line-order .tel_num {
-      color: #123d58 !important;
-      text-shadow: none !important;
-      opacity: 1 !important;
-    }
-
-    #line-order .tel_num {
-      display: inline-block;
-      margin-bottom: .55rem;
-      color: #075d85 !important;
-      font-size: clamp(1.8rem, 6vw, 3rem) !important;
-      font-weight: 800;
-      line-height: 1.2;
-      letter-spacing: .03em;
-    }
-
-    #line-order .text_box p {
-      margin: 0;
-      font-size: clamp(1rem, 2.6vw, 1.15rem);
-      font-weight: 700;
-      line-height: 1.9;
-    }
-
-    #line-order .line_QR {
-      width: 110px !important;
-      height: 110px !important;
-      padding: 0 !important;
-      border: 0 !important;
-      border-radius: 0 !important;
-      background: #fff;
-      overflow: hidden !important;
-    }
-
-    #line-order .line_QR img {
-      display: block;
-      width: 110px !important;
-      height: 110px !important;
-      max-width: none !important;
-      aspect-ratio: 1 / 1;
-      object-fit: contain;
-    }
-
-    #line-order:hover h2,
-    #line-order > a:focus-visible h2 {
-      color: #075d85 !important;
-      box-shadow: 0 0 0 4px #bfeefd, 0 2px 12px rgba(18, 94, 130, .10);
-    }
-
-    @media (max-width: 600px) {
-      #line-order { padding: 1.5rem .75rem !important; }
-      #line-order h2 { padding: .7rem .25rem; font-size: clamp(1rem, 5vw, 1.2rem); letter-spacing: 0; }
-      #line-order h2 span { display: inline !important; }
-      #line-order .content_box { grid-template-columns: minmax(0, 1fr) 96px !important; gap: .75rem !important; padding: 1rem; }
-      #line-order .line_QR { width: 96px !important; height: 96px !important; }
-      #line-order .line_QR img { width: 96px !important; height: 96px !important; }
-      #line-order .text_box p { font-size: .92rem; line-height: 1.75; }
-      #line-order .tel_num { font-size: 1.55rem !important; letter-spacing: 0; }
-    }
   </style>
 </head>
 
@@ -521,7 +398,7 @@ var bizcalOptions = {"holiday_title":"\u5e97\u4f11\u65e5","sun":"on","sat":"on",
 
   <section class="top_banner" id="line-order">
     <a href="https://elmballoon.com/contact/">
-      <h2><span>ご予約・お問い合わせ</span><span>はこちら</span></h2>
+      <h2>ご予約・お問い合わせはこちら</h2>
       <div class="content_box">
         <div class="text_box">
           <p>
