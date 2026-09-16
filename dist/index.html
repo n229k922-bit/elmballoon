@@ -238,6 +238,106 @@ var bizcalOptions = {"holiday_title":"\u5e97\u4f11\u65e5","sun":"on","sat":"on",
       .best-sellers__card > span:last-child { min-height:3.4rem; padding:.55rem .25rem; }
       .best-sellers__rank { top:.35rem; left:.35rem; width:1.7rem; height:1.7rem; font-size:.86rem; }
     }
+    /* 予約・お問い合わせ欄：背景画像の明るさに左右されない、読みやすい配色 */
+    #line-order {
+      padding: 2.5rem 1rem !important;
+      background: #e8f8ff !important;
+      border-top: 2px solid #8fd7f1;
+      border-bottom: 2px solid #8fd7f1;
+    }
+
+    #line-order > a {
+      display: block;
+      max-width: 760px;
+      margin: 0 auto;
+      color: #123d58 !important;
+      text-decoration: none;
+    }
+
+    #line-order h2 {
+      margin: 0 0 1rem;
+      padding: .75rem 1rem;
+      border-radius: 999px;
+      background: #fff;
+      color: #087eae !important;
+      font-size: clamp(1.35rem, 4vw, 2rem);
+      font-weight: 800;
+      line-height: 1.45;
+      text-align: center;
+      letter-spacing: .04em;
+      box-shadow: 0 2px 12px rgba(18, 94, 130, .10);
+    }
+
+    #line-order .content_box {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 1.5rem;
+      margin: 0 !important;
+      padding: 1.5rem 1.75rem;
+      border: 1px solid #b6e4f4;
+      border-radius: 16px;
+      background: #fff;
+      box-shadow: 0 8px 20px rgba(18, 94, 130, .10);
+    }
+
+    #line-order .text_box {
+      flex: 1 1 auto;
+      min-width: 0;
+    }
+
+    #line-order .text_box p,
+    #line-order .text_box strong,
+    #line-order .tel_num {
+      color: #123d58 !important;
+      text-shadow: none !important;
+      opacity: 1 !important;
+    }
+
+    #line-order .tel_num {
+      display: inline-block;
+      margin-bottom: .55rem;
+      color: #075d85 !important;
+      font-size: clamp(1.8rem, 6vw, 3rem) !important;
+      font-weight: 800;
+      line-height: 1.2;
+      letter-spacing: .03em;
+    }
+
+    #line-order .text_box p {
+      margin: 0;
+      font-size: clamp(1rem, 2.6vw, 1.15rem);
+      font-weight: 700;
+      line-height: 1.9;
+    }
+
+    #line-order .line_QR {
+      flex: 0 0 auto;
+      padding: .5rem;
+      border: 1px solid #d8eaf1;
+      border-radius: 10px;
+      background: #fff;
+    }
+
+    #line-order .line_QR img {
+      display: block;
+      width: min(150px, 25vw);
+      height: auto;
+    }
+
+    #line-order:hover h2,
+    #line-order > a:focus-visible h2 {
+      color: #075d85 !important;
+      box-shadow: 0 0 0 4px #bfeefd, 0 2px 12px rgba(18, 94, 130, .10);
+    }
+
+    @media (max-width: 600px) {
+      #line-order { padding: 1.5rem .75rem !important; }
+      #line-order .content_box { gap: 1rem; padding: 1.1rem; }
+      #line-order .line_QR img { width: 94px; }
+      #line-order .text_box p { font-size: .92rem; line-height: 1.75; }
+      #line-order .tel_num { font-size: 1.55rem !important; letter-spacing: 0; }
+    }
   </style>
 </head>
 
