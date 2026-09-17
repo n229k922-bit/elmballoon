@@ -1,0 +1,55 @@
+/* 第1段階：注文・相談への入口 */
+.order-cta {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 28px;
+  padding: 18px 24px;
+  color: #513d37;
+  background: #fff7ed;
+  border-top: 1px solid #f0d2b5;
+  border-bottom: 1px solid #f0d2b5;
+}
+
+.order-cta p { margin: 0; line-height: 1.45; }
+.order-cta strong { display: block; font-size: 1.15rem; }
+.order-cta span { display: block; margin-top: 4px; font-size: .82rem; }
+.order-cta__actions { display: flex; flex-wrap: wrap; gap: 10px; }
+.order-cta__actions a {
+  display: inline-flex;
+  min-height: 46px;
+  align-items: center;
+  justify-content: center;
+  padding: 0 19px;
+  border-radius: 999px;
+  color: #fff;
+  font-weight: bold;
+  text-decoration: none;
+  transition: opacity .2s ease;
+}
+.order-cta__actions a:hover { opacity: .78; }
+.order-cta__line { background: #06c755; }
+.order-cta__tel { background: #e97750; }
+.order-cta-mobile { display: none; }
+
+@media (max-width: 700px) {
+  .order-cta { display: block; padding: 17px 16px; text-align: center; }
+  .order-cta strong { font-size: 1.03rem; }
+  .order-cta span { font-size: .75rem; }
+  .order-cta__actions { justify-content: center; margin-top: 13px; }
+  .order-cta__actions a { width: calc(50% - 5px); padding: 0 8px; font-size: .88rem; }
+  .order-cta-mobile {
+    position: fixed;
+    z-index: 9999;
+    right: 0;
+    bottom: 0;
+    left: 0;
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    box-shadow: 0 -2px 12px rgba(57, 37, 26, .22);
+  }
+  .order-cta-mobile a { padding: 14px 8px; color: #fff; font-size: .9rem; font-weight: bold; text-align: center; text-decoration: none; }
+  .order-cta-mobile a:first-child { background: #e97750; }
+  .order-cta-mobile a:last-child { background: #06c755; }
+  body { padding-bottom: 54px; }
+}
