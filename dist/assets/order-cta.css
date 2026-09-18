@@ -1,9 +1,14 @@
 /* 第1段階：注文・相談への入口 */
 .order-cta {
+  position: fixed;
+  z-index: 100000;
+  top: 150px;
+  right: 24px;
   display: flex;
   align-items: center;
   justify-content: center;
   gap: 28px;
+  max-width: 620px;
   padding: 18px 24px;
   color: #513d37;
   background: #fff7ed;
@@ -33,7 +38,7 @@
 .order-cta-mobile { display: none; }
 
 @media (max-width: 700px) {
-  .order-cta { display: block; padding: 17px 16px; text-align: center; }
+  .order-cta { display: none; }
   .order-cta strong { font-size: 1.03rem; }
   .order-cta span { font-size: .75rem; }
   .order-cta__actions { justify-content: center; margin-top: 13px; }
