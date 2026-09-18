@@ -1,5 +1,5 @@
 /* 第1段階：注文・相談への入口 */
-.order-cta {
+#main_wrapper .order-cta {
   position: fixed;
   z-index: 100000;
   top: 150px;
@@ -8,28 +8,31 @@
   align-items: center;
   justify-content: center;
   gap: 28px;
-  max-width: 620px;
-  padding: 18px 24px;
-  color: #513d37;
-  background: #fff7ed;
-  border-top: 1px solid #f0d2b5;
-  border-bottom: 1px solid #f0d2b5;
+  width: min(620px, calc(100vw - 48px));
+  padding: 22px 26px;
+  color: #513d37 !important;
+  background: #fff7ed !important;
+  border: 3px solid #f2b600 !important;
+  border-radius: 12px;
+  box-shadow: 0 8px 22px rgba(55, 37, 19, .28);
 }
 
-.order-cta p { margin: 0; line-height: 1.45; }
-.order-cta strong { display: block; font-size: 1.15rem; }
-.order-cta span { display: block; margin-top: 4px; font-size: .82rem; }
-.order-cta__actions { display: flex; flex-wrap: wrap; gap: 10px; }
-.order-cta__actions a {
+#main_wrapper .order-cta p { display: block !important; margin: 0 !important; line-height: 1.45 !important; }
+#main_wrapper .order-cta strong { display: block !important; color: #513d37 !important; font-size: 24px !important; line-height: 1.35 !important; }
+#main_wrapper .order-cta span { display: block !important; margin-top: 6px !important; color: #513d37 !important; font-size: 16px !important; line-height: 1.5 !important; }
+#main_wrapper .order-cta__actions { display: flex !important; flex-wrap: wrap; gap: 10px; }
+#main_wrapper .order-cta__actions a {
   display: inline-flex;
-  min-height: 46px;
+  min-height: 54px;
   align-items: center;
   justify-content: center;
-  padding: 0 19px;
+  padding: 0 22px;
   border-radius: 999px;
-  color: #fff;
-  font-weight: bold;
-  text-decoration: none;
+  color: #fff !important;
+  font-size: 17px !important;
+  font-weight: bold !important;
+  line-height: 1 !important;
+  text-decoration: none !important;
   transition: opacity .2s ease;
 }
 .order-cta__actions a:hover { opacity: .78; }
@@ -38,11 +41,7 @@
 .order-cta-mobile { display: none; }
 
 @media (max-width: 700px) {
-  .order-cta { display: none; }
-  .order-cta strong { font-size: 1.03rem; }
-  .order-cta span { font-size: .75rem; }
-  .order-cta__actions { justify-content: center; margin-top: 13px; }
-  .order-cta__actions a { width: calc(50% - 5px); padding: 0 8px; font-size: .88rem; }
+  #main_wrapper .order-cta { display: none; }
   .order-cta-mobile {
     position: fixed;
     z-index: 9999;
