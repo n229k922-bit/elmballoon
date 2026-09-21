@@ -1,0 +1,21 @@
+name = "elm-balloon-admin-line-secretary"
+main = "src/index.js"
+compatibility_date = "2026-09-21"
+
+[[d1_databases]]
+binding = "DB"
+database_name = "elm-balloon-schedule"
+database_id = "ff8873ca-2336-48f0-8a89-887e6a394b20"
+migrations_dir = "migrations"
+
+[[kv_namespaces]]
+binding = "SECRETARY_KV"
+id = "99cd9bb041214e5a90a7ddf908d4d516"
+
+[vars]
+ALLOWED_ORIGINS = ""
+ADMIN_LINE_USER_IDS = ""
+
+# Set these with `wrangler secret put`; never commit their values:
+# LINE_CHANNEL_SECRET
+# LINE_CHANNEL_ACCESS_TOKEN
