@@ -2,19 +2,17 @@ name = "elm-balloon-admin-line-secretary"
 main = "src/index.js"
 compatibility_date = "2026-09-21"
 
-# Replace the placeholder IDs after creating the resources in Cloudflare.
 [[d1_databases]]
 binding = "DB"
 database_name = "elm-balloon-schedule"
-database_id = "REPLACE_WITH_D1_DATABASE_ID"
+database_id = "ff8873ca-2336-48f0-8a89-887e6a394b20"
 migrations_dir = "migrations"
 
 [[kv_namespaces]]
 binding = "SECRETARY_KV"
-id = "REPLACE_WITH_KV_NAMESPACE_ID"
+id = "99cd9bb041214e5a90a7ddf908d4d516"
 
 [vars]
-# Comma-separated origins. Do not add elmballoon.com until test approval.
 ALLOWED_ORIGINS = ""
 ADMIN_LINE_USER_IDS = ""
 
