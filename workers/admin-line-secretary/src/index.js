@@ -58,6 +58,11 @@ async function handleMessage(event, env) {
 }
 
 function parseCommand(text) {
+  const relativeClose = text.match(/^(今日|明日)(?:は)?(?:休業|休み)(?:にして)?$/u);
+  if (relativeClose) {
+    const date = japanDate(relativeClose[1] === '明日' ? 1 : 0);
+    return { date, status: 'closed', openTime: null, closeTime: null, summary: date + ' を終日休業' };
+  }
   let match = text.match(/^(?:休業|休み)\s*(\d{4}-\d{2}-\d{2})$/u);
   if (match) return { date: match[1], status: 'closed', openTime: null, closeTime: null, summary: match[1] + ' を終日休業' };
   match = text.match(/^営業(?:時間)?\s*(\d{4}-\d{2}-\d{2})\s*(\d{2}:\d{2})-(\d{2}:\d{2})$/u);
@@ -65,6 +70,15 @@ function parseCommand(text) {
   match = text.match(/^休業解除\s*(\d{4}-\d{2}-\d{2})$/u);
   if (match) return { date: match[1], status: 'open', openTime: null, closeTime: null, summary: match[1] + ' の休業を解除' };
   return null;
+}
+
+function japanDate(daysFromToday) {
+  const parts = new Intl.DateTimeFormat('en-CA', {
+    timeZone: 'Asia/Tokyo', year: 'numeric', month: '2-digit', day: '2-digit',
+  }).formatToParts(new Date());
+  const values = Object.fromEntries(parts.map(({ type, value }) => [type, value]));
+  const date = new Date(Date.UTC(Number(values.year), Number(values.month) - 1, Number(values.day) + daysFromToday));
+  return date.toISOString().slice(0, 10);
 }
 
 async function applyChange(change, userId, env) {
