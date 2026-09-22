@@ -105,9 +105,14 @@ function timingSafeEqual(left, right) {
 }
 
 async function reply(replyToken, message, env) {
-  return fetch('https://api.line.me/v2/bot/message/reply', {
+  if (!env.LINE_CHANNEL_ACCESS_TOKEN) {
+    console.log('LINE reply skipped: access token missing');
+    return;
+  }
+  const response = await fetch('https://api.line.me/v2/bot/message/reply', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json', Authorization: 'Bearer ' + env.LINE_CHANNEL_ACCESS_TOKEN },
     body: JSON.stringify({ replyToken, messages: [{ type: 'text', text: message }] }),
   });
+  console.log('LINE reply result', response.status, await response.text());
 }
