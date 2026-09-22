@@ -1,4 +1,5 @@
 const encoder = new TextEncoder();
+const CUSTOMER_SESSION_TTL = 60 * 60 * 24 * 14;
 
 export default {
   async fetch(request, env) {
@@ -19,32 +20,26 @@ export default {
 async function lineWebhook(request, env) {
   const body = await request.text();
   const signature = request.headers.get('x-line-signature') || '';
-  if (!(await signatureIsValid(body, signature, env.LINE_CHANNEL_SECRET))) {
-    return new Response('Invalid signature', { status: 401 });
-  }
-
+  if (!(await signatureIsValid(body, signature, env.LINE_CHANNEL_SECRET))) return new Response('Invalid signature', { status: 401 });
   const payload = JSON.parse(body);
-  for (const event of payload.events || []) {
-    if (event.type !== 'message' || event.message?.type !== 'text') continue;
-    await handleMessage(event, env);
-  }
+  for (const event of payload.events || []) if (event.type === 'message') await handleEvent(event, env);
   return new Response('OK');
 }
 
-async function handleMessage(event, env) {
+async function handleEvent(event, env) {
   const userId = event.source?.userId;
+  if (!userId || !event.replyToken) return;
   const admins = new Set((env.ADMIN_LINE_USER_IDS || '').split(',').map((id) => id.trim()).filter(Boolean));
-  if (!admins.has(userId)) {
-    return reply(event.replyToken, 'この操作は店主専用です。管理者登録を確認してください。', env);
-  }
+  return admins.has(userId) ? handleAdmin(event, env) : handleCustomer(event, env);
+}
 
-  const text = event.message.text.trim();
-  const pendingKey = 'pending:' + userId;
+async function handleAdmin(event, env) {
+  if (event.message?.type !== 'text') return reply(event.replyToken, '営業時間の変更は文字でお送りください。', env);
+  const userId = event.source.userId, text = event.message.text.trim(), pendingKey = 'pending:' + userId;
   if (/^(はい|確定|承認)$/u.test(text)) {
     const pending = await env.SECRETARY_KV.get(pendingKey, 'json');
     if (!pending) return reply(event.replyToken, '確認待ちの変更はありません。', env);
-    await applyChange(pending, userId, env);
-    await env.SECRETARY_KV.delete(pendingKey);
+    await applyChange(pending, userId, env); await env.SECRETARY_KV.delete(pendingKey);
     return reply(event.replyToken, pending.summary + ' を反映しました。', env);
   }
   if (/^(取消|キャンセル)$/u.test(text)) {
@@ -58,11 +53,8 @@ async function handleMessage(event, env) {
 
   const route = routeManagerRequest(text);
   if (route) return reply(event.replyToken, route, env);
-
   const change = parseCommand(text);
-  if (!change) {
-    return reply(event.replyToken, '例: 「休業 2026-09-22」または「営業時間 2026-09-23 10:00-18:00」。内容を確認後に「確定」と返信してください。', env);
-  }
+  if (!change) return reply(event.replyToken, '例:「休業 2026-09-22」または「営業時間 2026-09-23 10:00-18:00」。内容を確認後に「確定」と返信してください。', env);
   await env.SECRETARY_KV.put(pendingKey, JSON.stringify(change), { expirationTtl: 600 });
   return reply(event.replyToken, change.summary + '。よろしければ10分以内に「確定」と返信してください。', env);
 }
@@ -84,8 +76,9 @@ async function customerLineWebhook(request, env) {
   console.log('customer webhook signature valid', { eventCount: (payload.events || []).length });
   for (const event of payload.events || []) {
     console.log('customer webhook event', { type: event.type, messageType: event.message?.type || null });
-    if (event.type !== 'message' || event.message?.type !== 'text') continue;
-    await recordCustomerMessage(event, env);
+    if (event.type !== 'message' || !['text', 'image'].includes(event.message?.type)) continue;
+    if (event.message.type === 'text') await recordCustomerMessage(event, env);
+    else await replyCustomerConversation(event, env);
   }
   return new Response('OK');
 }
@@ -120,9 +113,7 @@ async function recordCustomerMessage(event, env) {
   const candidate = extractScheduleCandidate(text);
   if (!candidate) {
     console.log('customer message recorded without schedule candidate');
-    if (!customerNames.confirmedName && event.replyToken) {
-      await replyCustomer(event.replyToken, 'お問い合わせありがとうございます。注文内容の確認を進めるため、お名前を教えてください。例：「お名前は田中花子です」', env);
-    }
+    await replyCustomerConversation(event, env);
     return;
   }
   const candidateId = 'candidate:' + (event.webhookEventId || event.message.id);
@@ -136,12 +127,27 @@ async function recordCustomerMessage(event, env) {
   const deliveryPlace = candidate.type === 'delivery' ? extractDeliveryPlaceHint(text) : null;
   const deliveryNote = formatDeliveryPlaceNote(deliveryPlace);
   await notifyOwners(`統括マネージャーです。\n\n注文担当から、${customerLabel}の予定に関する情報が共有されました。\n店長への案内内容と合っているか、ご確認をお願いします。\n\n【${customerLabel}からのご注文・予定候補】\n・${candidate.typeLabel}予定：${scheduledAt}${dateNote}${deliveryNote}\n・お客様のご希望：\n　「${text}」\n\n問題なければ、スケジュール担当に予定登録を依頼します。\n登録してよければ「予定登録 ${candidateId}」と返信してください。\n修正がある場合は、変更内容をそのまま返信してください。`, env);
-  if (candidate.type === 'delivery' && !deliveryPlace && event.replyToken) {
-    await replyCustomer(event.replyToken, '配達先の確認を進めるため、郵便番号・ご住所・建物名（部屋番号がある場合は部屋番号）を教えてください。店舗名や会場名の場合は、市区町村もあわせてお願いします。', env);
-  }
-  if (!customerNames.confirmedName && event.replyToken) {
-    await replyCustomer(event.replyToken, 'お問い合わせありがとうございます。注文内容の確認を進めるため、お名前を教えてください。例：「お名前は田中花子です」', env);
-  }
+  await replyCustomerConversation(event, env);
+}
+
+async function replyCustomerConversation(event, env) {
+  if (!event.replyToken || !event.source?.userId) return;
+  const key = 'customer-session:' + event.source.userId;
+  const session = (await env.SECRETARY_KV.get(key, 'json')) || { stage: 'new', fields: {} };
+  const result = event.message?.type === 'image'
+    ? receiveReferenceImage(session)
+    : buildCustomerReply(event.message?.text?.trim() || '', session);
+  await env.SECRETARY_KV.put(key, JSON.stringify(result.session), { expirationTtl: CUSTOMER_SESSION_TTL });
+  await replyCustomer(event.replyToken, result.message, env);
+}
+
+function receiveReferenceImage(session) {
+  session.fields.referenceImage = true;
+  session.stage = 'collecting';
+  return {
+    session,
+    message: '参考画像をお送りいただき、ありがとうございます。\n\n送っていただいた画像をもとに、当店でご用意できる商品と照らし合わせながら、色味・大きさ・全体の雰囲気に近い形でご提案いたします。\n\n在庫状況により、まったく同じ仕上がりをお約束するものではありませんが、ご希望のイメージに合わせてお作りできるよう確認します。\n\nご希望の色、入れたいお名前やメッセージ、ご予算、必要な日または受取・配達のご希望を教えてください。確認後、改めてご連絡いたします。',
+  };
 }
 
 async function fetchCustomerDisplayName(customerId, env) {
@@ -324,23 +330,24 @@ async function applyChange(change, userId, env) {
     .bind(userId, change.date, JSON.stringify({ before: before || null, after: change })).run();
 }
 
-async function publicSchedule(request, env) {
-  const origin = request.headers.get('Origin');
-  const allowed = new Set((env.ALLOWED_ORIGINS || '').split(',').map((value) => value.trim()).filter(Boolean));
-  if (origin && !allowed.has(origin)) return new Response('Forbidden origin', { status: 403 });
-  const { results } = await env.DB.prepare('SELECT date, status, open_time, close_time, note, updated_at FROM business_schedule ORDER BY date').all();
-  return Response.json({ updatedAt: new Date().toISOString(), schedule: results }, {
-    headers: { 'Access-Control-Allow-Origin': origin || 'null', 'Cache-Control': 'public, max-age=60' },
-  });
+function buildCustomerReply(text, session) {
+  if (/^(こんにちは|こんばんは|はじめまして|お世話になります)[！!。]*$/u.test(text)) return { session, message: 'こんにちは☺︎ ご連絡ありがとうございます。気になるお写真やご希望の内容がありましたら、そのままお送りください。ご用途・ご希望日・ご予算が分かるとスムーズにご案内できます🎈' };
+  if (/(今日|本日|明日|あした|急ぎ|至急)/u.test(text)) return urgentReply(session);
+  if (/(ヘリウム|浮[かき]|ガス)/u.test(text)) return heliumReply(session);
+  if (/(配送|配達|送[っり]て|郵送)/u.test(text)) return deliveryReply(session);
+  if (/(しぼ|どのくらい持|日持ち|持ちます)/u.test(text)) return longevityReply(session);
+  if (/(注文|お願い|作れ|作って|欲しい|ほしい|祝い|誕生日|開店|結婚|出産|発表会|卒業|退職)/u.test(text)) return orderReply(text, session);
+  if (session.stage === 'collecting') return collectOrderDetail(text, session);
+  return { session, message: 'ご連絡ありがとうございます☺︎ 内容を確認して、できるだけご希望に沿えるようご案内します。差し支えなければ、①ご用途 ②ご希望日 ③ご予算 ④お受け取り・配達のどちらか を教えてください。参考のお写真があれば一緒に送っていただいて大丈夫です🎈' };
 }
 
-async function signatureIsValid(body, signature, secret) {
-  if (!secret || !signature) return false;
-  const key = await crypto.subtle.importKey('raw', encoder.encode(secret), { name: 'HMAC', hash: 'SHA-256' }, false, ['sign']);
-  const digest = await crypto.subtle.sign('HMAC', key, encoder.encode(body));
-  const expected = btoa(String.fromCharCode(...new Uint8Array(digest)));
-  return timingSafeEqual(expected, signature);
-}
+function urgentReply(session) { session.stage = 'urgent'; session.fields.urgent = true; return { session, message: 'お急ぎですね。ご相談ありがとうございます☺︎ 当日・翌日のご注文は、制作状況と商品の内容を確認してからのご案内になります。\nご希望日と、①ご用途 ②ご予算 ③お受け取り・配達のどちらか ④参考のお写真または商品番号 をお送りいただけますか？確認でき次第、可能な範囲をお返事します。' }; }
+function heliumReply(session) { session.stage = 'helium'; return { session, message: 'ヘリウムバルーンのご相談ですね☺︎ バルーンの大きさ・種類・個数で必要量が変わるため、商品パッケージのお写真か、サイズと個数をお送りください。持ち込みの場合も確認してご案内します。\n※在庫状況や対応可能な時間は日によって変わるため、希望日も一緒にお願いします。' }; }
+function deliveryReply(session) { session.stage = 'delivery'; return { session, message: '配達のご相談ありがとうございます☺︎ お届け地域・ご希望日・ご希望時間・ご予算を確認してご案内します。夏場は高温による破損を防ぐため、発送を控える場合があります。近隣への配達や店頭受け取りも含めて、いちばん良い方法をご提案しますね。' }; }
+function longevityReply(session) { session.stage = 'faq'; return { session, message: 'ご質問ありがとうございます☺︎ バルーンは種類や飾る環境によって異なります。直射日光・高温・尖った物を避けて室内に飾ると、より長く楽しんでいただけます。お写真を送っていただければ、その商品に合わせた目安と保管方法をご案内します🎈' }; }
+function orderReply(text, session) { session.stage = 'collecting'; session.fields.purpose = ['開店','結婚','出産','誕生日','発表会','卒業','退職'].find((purpose) => text.includes(purpose)) || 'other'; return { session, message: 'ご注文のご相談ありがとうございます☺︎ できるだけイメージに近づけたいので、①ご用途 ②ご希望日・お渡し希望時間 ③ご予算 ④お受け取り／配達 ⑤ご希望の色味・雰囲気 ⑥文字入れ・メッセージカードの有無 を、分かる範囲で教えてください。ホームページの商品番号、または参考画像だけでも大丈夫です🎈' }; }
+function collectOrderDetail(text, session) { const f = session.fields; f.lastCustomerMessage = redactContactDetails(text); if (/\d{4}[/-]\d{1,2}[/-]\d{1,2}|今日|明日|あした/u.test(text)) f.hasDate = true; if (/円/u.test(text)) f.hasBudget = true; if (/(受取|受け取|来店|配達|配送)/u.test(text)) f.hasMethod = true; const missing = [!f.hasDate && 'ご希望日', !f.hasBudget && 'ご予算', !f.hasMethod && 'お受け取り・配達'].filter(Boolean); if (missing.length) return { session, message: 'ありがとうございます☺︎ 内容、確認しました。あと「' + missing.join('・') + '」を教えていただければ、作成可否とご提案を具体的にご案内できます。文字入れやカードをご希望でしたら、その内容も一緒にお願いします🎈' }; session.stage = 'review'; return { session, message: 'ありがとうございます☺︎ ご希望内容を確認しました。制作・在庫・配達の状況を確認して、対応可否とお見積りをご案内します。文字入れをご希望の場合は、お入れするお名前・メッセージをそのままお送りください。カードは50文字以内が目安です。' }; }
+function redactContactDetails(text) { return text.replace(/\b\d{2,4}[- ]?\d{2,4}[- ]?\d{3,4}\b/g, '[連絡先]').slice(0, 500); }
 
 function timingSafeEqual(left, right) {
   if (left.length !== right.length) return false;
@@ -360,6 +367,18 @@ async function reply(replyToken, message, env) {
     body: JSON.stringify({ replyToken, messages: [{ type: 'text', text: message }] }),
   });
   console.log('LINE reply result', response.status, await response.text());
+}
+
+async function replyCustomer(replyToken, message, env) {
+  const response = await fetch('https://api.line.me/v2/bot/message/reply', {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      Authorization: 'Bearer ' + env.CUSTOMER_LINE_CHANNEL_ACCESS_TOKEN,
+    },
+    body: JSON.stringify({ replyToken, messages: [{ type: 'text', text: message.slice(0, 4900) }] }),
+  });
+  console.log('customer LINE reply result', response.status, await response.text());
 }
 
 async function notifyOwners(message, env) {
