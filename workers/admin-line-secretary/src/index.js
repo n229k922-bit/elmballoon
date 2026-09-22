@@ -36,6 +36,16 @@ async function handleEvent(event, env) {
 async function handleAdmin(event, env) {
   if (event.message?.type !== 'text') return reply(event.replyToken, '営業時間の変更は文字でお送りください。', env);
   const userId = event.source.userId, text = event.message.text.trim(), pendingKey = 'pending:' + userId;
+  const ownerDecision = text.match(/^店長確認\s+(decision:[^\s]+)\s+(.+)$/u);
+  if (ownerDecision) {
+    const result = await env.DB.prepare(`UPDATE owner_decision_requests
+        SET status = 'recorded', owner_response = ?, decided_at = ?, decided_by = ?
+        WHERE id = ? AND status = 'needs_owner_review'`)
+      .bind(ownerDecision[2].slice(0, 1000), new Date().toISOString(), userId, ownerDecision[1]).run();
+    return reply(event.replyToken, result.meta.changes
+      ? '店長判断を記録しました。見積・在庫・配達・予定の確定処理は、この後に追加する確認手順で行います。'
+      : '確認待ちのフォームが見つからないか、すでに記録済みです。', env);
+  }
   if (/^(はい|確定|承認)$/u.test(text)) {
     const pending = await env.SECRETARY_KV.get(pendingKey, 'json');
     if (!pending) return reply(event.replyToken, '確認待ちの変更はありません。', env);
@@ -112,6 +122,17 @@ async function recordCustomerMessage(event, env) {
   if (confirmedName) {
     await notifyOwners(`統括マネージャーです。\n\n注文担当から、${customerLabel}のお名前確認が取れたと共有がありました。\n今後の注文・予定候補は、このお名前で管理します。`, env);
   }
+
+  const ownerRequest = await createOwnerDecisionRequest({
+    threadId,
+    sourceEventId: event.webhookEventId || event.message.id,
+    text,
+    candidate,
+    customerLabel,
+    now,
+    env,
+  });
+  if (ownerRequest) await notifyOwners(formatOwnerDecisionRequest(ownerRequest), env);
 
   if (!candidate) {
     console.log('customer message recorded without schedule candidate');
@@ -224,6 +245,53 @@ function summarizeOrderDetails(details) {
     requestedDate: details.requestedDate,
     requestedTime: details.requestedTime,
   });
+}
+
+async function createOwnerDecisionRequest({ threadId, sourceEventId, text, candidate, customerLabel, now, env }) {
+  const requestTypes = detectOwnerDecisionTypes(text, candidate);
+  if (!requestTypes.length) return null;
+  const requestId = `decision:${sourceEventId}`;
+  const details = extractOrderDetails(text, candidate);
+  const customerSummary = summarizeOwnerReview(customerLabel, text, details);
+  const result = await env.DB.prepare(`INSERT OR IGNORE INTO owner_decision_requests
+      (id, source_event_id, order_thread_id, order_card_id, request_types, status, customer_summary, created_at)
+      VALUES (?, ?, ?, ?, ?, 'needs_owner_review', ?, ?)`)
+    .bind(requestId, sourceEventId, threadId, `order-card:${threadId}`, JSON.stringify(requestTypes), customerSummary, now).run();
+  return result.meta.changes ? { id: requestId, requestTypes, customerSummary } : null;
+}
+
+function detectOwnerDecisionTypes(text, candidate) {
+  const types = [];
+  if (candidate) types.push('schedule');
+  if (/配達|お届け|配送/u.test(text)) types.push('delivery');
+  if (/(?:商品番号|品番|参考画像|見積|予算|注文|お願い|作れ|作って|欲しい|ほしい|祝い|誕生日|開店|結婚|出産|発表会|卒業|退職)/u.test(text)) types.push('quote_and_production');
+  if (/(?:ヘリウム|浮[かき]|ガス|在庫|発送|郵送|キャンセル|天気|台風|休業|休み)/u.test(text)) types.push('store_policy');
+  return [...new Set(types)];
+}
+
+function summarizeOwnerReview(customerLabel, text, details) {
+  const lines = [
+    `${customerLabel}からの内容`,
+    `・お問い合わせ：${redactContactDetails(text).slice(0, 500)}`,
+  ];
+  if (details.purpose) lines.push(`・用途：${details.purpose}`);
+  if (details.productReference) lines.push(`・商品番号・参照：${details.productReference}`);
+  if (details.quantity) lines.push(`・個数：${details.quantity}`);
+  if (details.budgetYen) lines.push(`・予算：${details.budgetYen.toLocaleString('ja-JP')}円`);
+  if (details.requestedDate) lines.push(`・希望日時：${formatScheduleDate(details.requestedDate, details.requestedTime)}`);
+  if (details.fulfillmentType !== 'unknown') lines.push(`・方法：${{ pickup: '受取', delivery: '配達', visit: '来店', shipping: '発送' }[details.fulfillmentType]}`);
+  return lines.join('\n');
+}
+
+function formatOwnerDecisionRequest(request) {
+  const labels = {
+    schedule: '予約・受取時間の可否',
+    delivery: '配達エリア・配達料・対応可否',
+    quote_and_production: '見積・制作可否・納期',
+    store_policy: '在庫・休業・キャンセル等の個別判断',
+  };
+  const checks = request.requestTypes.map((type) => `・${labels[type]}`).join('\n');
+  return `統括マネージャーです。\n\n注文担当から店長確認が必要な内容を受け取りました。AIは価格・在庫・納期・配達可否を確約しません。\n\n【店長確認フォーム】\n${request.customerSummary}\n\n【ご判断をお願いします】\n${checks}\n\n判断内容は「店長確認 ${request.id} （判断内容）」と返信してください。\n例：店長確認 ${request.id} 配達可。配達料は個別見積、16時以降は不可`;
 }
 
 async function replyCustomerConversation(event, env) {
