@@ -53,12 +53,28 @@ async function handleMessage(event, env) {
     return reply(event.replyToken, '「週末」は土曜・日曜のどちらか、または両日かを確認したいです。例: 「今週末の土曜休み」「来週末の日曜休み」', env);
   }
 
+  const route = routeManagerRequest(text);
+  if (route) return reply(event.replyToken, route, env);
+
   const change = parseCommand(text);
   if (!change) {
     return reply(event.replyToken, '例: 「休業 2026-09-22」または「営業時間 2026-09-23 10:00-18:00」。内容を確認後に「確定」と返信してください。', env);
   }
   await env.SECRETARY_KV.put(pendingKey, JSON.stringify(change), { expirationTtl: 600 });
   return reply(event.replyToken, change.summary + '。よろしければ10分以内に「確定」と返信してください。', env);
+}
+
+function routeManagerRequest(text) {
+  if (/(?:配達|受取|引取|制作|納期|進捗|スケジュール|カレンダー)/u.test(text)) {
+    return 'バルーンマネージャーです。スケジュール管理AIへの依頼として受け取りました。Googleカレンダー連携はまだ設定前のため、予定の登録は行っていません。対象の注文名・受取または配達日・時間を教えてください。';
+  }
+  if (/(?:注文|見積|お客様|問い合わせ|問合せ|予約)/u.test(text)) {
+    return 'バルーンマネージャーです。注文受付AIへの依頼として整理します。お客様向けLINEはまだこの店主窓口と接続していないため、お客様への送信や注文確定は行っていません。内容・希望日・予算を教えてください。';
+  }
+  if (/(?:ホームページ|サイト|掲載|ページ|文章|写真)/u.test(text)) {
+    return 'バルーンマネージャーです。ホームページ管理AIへの依頼として受け取りました。現在は営業日・営業時間のテスト更新だけが有効です。変更したいページと内容を教えてください。';
+  }
+  return null;
 }
 
 function parseCommand(text) {
