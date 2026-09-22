@@ -133,7 +133,12 @@ async function recordCustomerMessage(event, env) {
   console.log('schedule candidate created', { type: candidate.type, date: candidate.date });
   const scheduledAt = formatScheduleDate(candidate.date, candidate.time);
   const dateNote = candidate.dateExpression ? `\n・日付の解釈：${candidate.dateExpression} → ${formatJapanDate(candidate.date)}` : '';
-  await notifyOwners(`統括マネージャーです。\n\n注文担当から、${customerLabel}の予定に関する情報が共有されました。\n店長への案内内容と合っているか、ご確認をお願いします。\n\n【${customerLabel}からのご注文・予定候補】\n・${candidate.typeLabel}予定：${scheduledAt}${dateNote}\n・お客様のご希望：\n　「${text}」\n\n問題なければ、スケジュール担当に予定登録を依頼します。\n登録してよければ「予定登録 ${candidateId}」と返信してください。\n修正がある場合は、変更内容をそのまま返信してください。`, env);
+  const deliveryPlace = candidate.type === 'delivery' ? extractDeliveryPlaceHint(text) : null;
+  const deliveryNote = formatDeliveryPlaceNote(deliveryPlace);
+  await notifyOwners(`統括マネージャーです。\n\n注文担当から、${customerLabel}の予定に関する情報が共有されました。\n店長への案内内容と合っているか、ご確認をお願いします。\n\n【${customerLabel}からのご注文・予定候補】\n・${candidate.typeLabel}予定：${scheduledAt}${dateNote}${deliveryNote}\n・お客様のご希望：\n　「${text}」\n\n問題なければ、スケジュール担当に予定登録を依頼します。\n登録してよければ「予定登録 ${candidateId}」と返信してください。\n修正がある場合は、変更内容をそのまま返信してください。`, env);
+  if (candidate.type === 'delivery' && !deliveryPlace && event.replyToken) {
+    await replyCustomer(event.replyToken, '配達先の確認を進めるため、郵便番号・ご住所・建物名（部屋番号がある場合は部屋番号）を教えてください。店舗名や会場名の場合は、市区町村もあわせてお願いします。', env);
+  }
   if (!customerNames.confirmedName && event.replyToken) {
     await replyCustomer(event.replyToken, 'お問い合わせありがとうございます。注文内容の確認を進めるため、お名前を教えてください。例：「お名前は田中花子です」', env);
   }
@@ -227,6 +232,24 @@ function formatJapanDate(date) {
 
 function formatScheduleDate(date, time) {
   return `${formatJapanDate(date)}${time ? ' ' + time : ''}`;
+}
+
+function extractDeliveryPlaceHint(text) {
+  const labeled = text.match(/(?:配達先|お届け先|場所|会場)\s*(?:は|:|：)?\s*([^、。！!\n]{2,80})/u);
+  if (labeled) return sanitizePlaceHint(labeled[1]);
+  const directional = text.match(/([^、。！!\n]{2,60}?)(?:に|へ|まで)(?:配達|お届け)(?:を|は|お願いします|して)?/u);
+  return directional ? sanitizePlaceHint(directional[1]) : null;
+}
+
+function sanitizePlaceHint(value) {
+  const place = value.replace(/^(?:明日|今日|来週|今週|再来週|\d{4}[/-]\d{1,2}[/-]\d{1,2})\s*/u, '').trim();
+  return place.length >= 2 ? place : null;
+}
+
+function formatDeliveryPlaceNote(place) {
+  if (!place) return '\n・配達先：住所・建物名を確認中';
+  const mapSearch = `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(place)}`;
+  return `\n・配達先候補：${place}\n・地図で確認：${mapSearch}\n※候補が正しいか店長確認後に、住所を確定します。`;
 }
 
 function routeManagerRequest(text) {
