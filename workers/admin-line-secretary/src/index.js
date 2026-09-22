@@ -95,19 +95,34 @@ async function recordCustomerMessage(event, env) {
   const text = event.message.text.trim();
   const now = new Date().toISOString();
   const threadId = 'customer:' + customerId;
+  const displayName = await fetchCustomerDisplayName(customerId, env);
+  const confirmedName = extractConfirmedCustomerName(text);
   await env.DB.prepare(`INSERT INTO customer_order_threads
-      (id, customer_line_user_id, status, created_at, updated_at)
-      VALUES (?, ?, 'collecting', ?, ?)
-      ON CONFLICT(id) DO UPDATE SET updated_at = excluded.updated_at`)
-    .bind(threadId, customerId, now, now).run();
+      (id, customer_line_user_id, customer_display_name, customer_confirmed_name, status, created_at, updated_at)
+      VALUES (?, ?, ?, ?, 'collecting', ?, ?)
+      ON CONFLICT(id) DO UPDATE SET
+        customer_display_name = COALESCE(excluded.customer_display_name, customer_order_threads.customer_display_name),
+        customer_confirmed_name = COALESCE(excluded.customer_confirmed_name, customer_order_threads.customer_confirmed_name),
+        updated_at = excluded.updated_at`)
+    .bind(threadId, customerId, displayName, confirmedName, now, now).run();
   await env.DB.prepare(`INSERT OR IGNORE INTO order_messages
       (webhook_event_id, order_thread_id, direction, message_text, occurred_at)
       VALUES (?, ?, 'customer_inbound', ?, ?)`)
     .bind(event.webhookEventId || event.message.id, threadId, text, now).run();
 
+  const customerNames = await getCustomerNames(threadId, env);
+  const customerName = customerNames.confirmedName || customerNames.displayName;
+  const customerLabel = formatCustomerLabel(customerName);
+  if (confirmedName) {
+    await notifyOwners(`統括マネージャーです。\n\n注文担当から、${customerLabel}のお名前確認が取れたと共有がありました。\n今後の注文・予定候補は、このお名前で管理します。`, env);
+  }
+
   const candidate = extractScheduleCandidate(text);
   if (!candidate) {
     console.log('customer message recorded without schedule candidate');
+    if (!customerNames.confirmedName && event.replyToken) {
+      await replyCustomer(event.replyToken, 'お問い合わせありがとうございます。注文内容の確認を進めるため、お名前を教えてください。例：「お名前は田中花子です」', env);
+    }
     return;
   }
   const candidateId = 'candidate:' + (event.webhookEventId || event.message.id);
@@ -116,7 +131,43 @@ async function recordCustomerMessage(event, env) {
       VALUES (?, ?, ?, ?, ?, 'needs_owner_review', ?, ?)`)
     .bind(candidateId, threadId, candidate.type, candidate.date, candidate.time, text, now).run();
   console.log('schedule candidate created', { type: candidate.type, date: candidate.date });
-  await notifyOwners(`統括マネージャーです。\n\n注文担当から、予定に関する情報が共有されました。\n店長への案内内容と合っているか、ご確認をお願いします。\n\n【ご注文の予定候補】\n・${candidate.typeLabel}予定：${candidate.date}${candidate.time ? ' ' + candidate.time : ''}\n・お客様のご希望：\n　「${text}」\n\n問題なければ、スケジュール担当に予定登録を依頼します。\n登録してよければ「予定登録 ${candidateId}」と返信してください。\n修正がある場合は、変更内容をそのまま返信してください。`, env);
+  await notifyOwners(`統括マネージャーです。\n\n注文担当から、${customerLabel}の予定に関する情報が共有されました。\n店長への案内内容と合っているか、ご確認をお願いします。\n\n【${customerLabel}からのご注文・予定候補】\n・${candidate.typeLabel}予定：${candidate.date}${candidate.time ? ' ' + candidate.time : ''}\n・お客様のご希望：\n　「${text}」\n\n問題なければ、スケジュール担当に予定登録を依頼します。\n登録してよければ「予定登録 ${candidateId}」と返信してください。\n修正がある場合は、変更内容をそのまま返信してください。`, env);
+  if (!customerNames.confirmedName && event.replyToken) {
+    await replyCustomer(event.replyToken, 'お問い合わせありがとうございます。注文内容の確認を進めるため、お名前を教えてください。例：「お名前は田中花子です」', env);
+  }
+}
+
+async function fetchCustomerDisplayName(customerId, env) {
+  if (!customerId) return null;
+  try {
+    const response = await fetch(`https://api.line.me/v2/bot/profile/${encodeURIComponent(customerId)}`, {
+      headers: { Authorization: 'Bearer ' + env.CUSTOMER_LINE_CHANNEL_ACCESS_TOKEN },
+    });
+    if (!response.ok) return null;
+    const profile = await response.json();
+    return typeof profile.displayName === 'string' ? profile.displayName.trim().slice(0, 80) : null;
+  } catch {
+    return null;
+  }
+}
+
+function extractConfirmedCustomerName(text) {
+  const match = text.match(/(?:お名前|名前)\s*(?:は|：|:)\s*([^、。！!\n]{1,40})(?:です)?[。！!]?$/u);
+  return match ? match[1].trim().replace(/です$/u, '').trim() : null;
+}
+
+async function getCustomerNames(threadId, env) {
+  const row = await env.DB.prepare(`SELECT customer_confirmed_name, customer_display_name
+      FROM customer_order_threads WHERE id = ?`).bind(threadId).first();
+  return {
+    confirmedName: row?.customer_confirmed_name || null,
+    displayName: row?.customer_display_name || null,
+  };
+}
+
+function formatCustomerLabel(name) {
+  if (!name) return 'お名前確認中のお客様';
+  return `${name.replace(/さん$/u, '')}さん`;
 }
 
 function extractScheduleCandidate(text) {
