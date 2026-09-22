@@ -68,17 +68,22 @@ async function handleMessage(event, env) {
 }
 
 async function customerLineWebhook(request, env) {
+  console.log('customer webhook received');
   if (!env.CUSTOMER_LINE_CHANNEL_SECRET || !env.CUSTOMER_LINE_CHANNEL_ACCESS_TOKEN) {
+    console.log('customer channel credentials missing');
     return new Response('Customer channel is not configured', { status: 503 });
   }
   const body = await request.text();
   const signature = request.headers.get('x-line-signature') || '';
   if (!(await signatureIsValid(body, signature, env.CUSTOMER_LINE_CHANNEL_SECRET))) {
+    console.log('customer webhook signature invalid');
     return new Response('Invalid signature', { status: 401 });
   }
 
   const payload = JSON.parse(body);
+  console.log('customer webhook signature valid', { eventCount: (payload.events || []).length });
   for (const event of payload.events || []) {
+    console.log('customer webhook event', { type: event.type, messageType: event.message?.type || null });
     if (event.type !== 'message' || event.message?.type !== 'text') continue;
     await recordCustomerMessage(event, env);
   }
@@ -101,13 +106,17 @@ async function recordCustomerMessage(event, env) {
     .bind(event.webhookEventId || event.message.id, threadId, text, now).run();
 
   const candidate = extractScheduleCandidate(text);
-  if (!candidate) return;
+  if (!candidate) {
+    console.log('customer message recorded without schedule candidate');
+    return;
+  }
   const candidateId = 'candidate:' + (event.webhookEventId || event.message.id);
   await env.DB.prepare(`INSERT OR IGNORE INTO schedule_candidates
       (id, order_thread_id, event_type, event_date, event_time, status, source_summary, created_at)
       VALUES (?, ?, ?, ?, ?, 'needs_owner_review', ?, ?)`)
     .bind(candidateId, threadId, candidate.type, candidate.date, candidate.time, text, now).run();
-  await notifyOwners(`バルーンマネージャーです。お客様の会話から予定候補を検出しました。\n${candidate.typeLabel}：${candidate.date}${candidate.time ? ' ' + candidate.time : ''}\n内容：${text}\n店長の案内内容と一致することを確認後、「予定登録 ${candidateId}」と返信してください。`, env);
+  console.log('schedule candidate created', { type: candidate.type, date: candidate.date });
+  await notifyOwners(`統括マネージャーです。\n\n注文担当から、予定に関する情報が共有されました。\n店長への案内内容と合っているか、ご確認をお願いします。\n\n【ご注文の予定候補】\n・${candidate.typeLabel}予定：${candidate.date}${candidate.time ? ' ' + candidate.time : ''}\n・お客様のご希望：\n　「${text}」\n\n問題なければ、スケジュール担当に予定登録を依頼します。\n登録してよければ「予定登録 ${candidateId}」と返信してください。\n修正がある場合は、変更内容をそのまま返信してください。`, env);
 }
 
 function extractScheduleCandidate(text) {
@@ -127,13 +136,13 @@ function extractScheduleCandidate(text) {
 
 function routeManagerRequest(text) {
   if (/(?:配達|受取|引取|制作|納期|進捗|スケジュール|カレンダー)/u.test(text)) {
-    return 'バルーンマネージャーです。スケジュール管理AIへの依頼として受け取りました。Googleカレンダー連携はまだ設定前のため、予定の登録は行っていません。対象の注文名・受取または配達日・時間を教えてください。';
+    return '統括マネージャーです。スケジュール担当への依頼として受け取りました。Googleカレンダー連携はまだ設定前のため、予定の登録は行っていません。対象の注文名・受取または配達日・時間を教えてください。';
   }
   if (/(?:注文|見積|お客様|問い合わせ|問合せ|予約)/u.test(text)) {
-    return 'バルーンマネージャーです。注文受付AIへの依頼として整理します。お客様向けLINEはまだこの店主窓口と接続していないため、お客様への送信や注文確定は行っていません。内容・希望日・予算を教えてください。';
+    return '統括マネージャーです。注文担当への依頼として整理します。お客様向けLINEはまだこの店主窓口と接続していないため、お客様への送信や注文確定は行っていません。内容・希望日・予算を教えてください。';
   }
   if (/(?:ホームページ|サイト|掲載|ページ|文章|写真)/u.test(text)) {
-    return 'バルーンマネージャーです。ホームページ管理AIへの依頼として受け取りました。現在は営業日・営業時間のテスト更新だけが有効です。変更したいページと内容を教えてください。';
+    return '統括マネージャーです。ホームページ管理AIへの依頼として受け取りました。現在は営業日・営業時間のテスト更新だけが有効です。変更したいページと内容を教えてください。';
   }
   return null;
 }

@@ -15,6 +15,9 @@ id = "99cd9bb041214e5a90a7ddf908d4d516"
 [vars]
 ALLOWED_ORIGINS = ""
 
+[observability]
+enabled = true
+
 # Set these with `wrangler secret put`; never commit their values:
 # LINE_CHANNEL_SECRET
 # LINE_CHANNEL_ACCESS_TOKEN
