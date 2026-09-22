@@ -49,6 +49,10 @@ async function handleMessage(event, env) {
     return reply(event.replyToken, '確認待ちの変更を取り消しました。', env);
   }
 
+  if (/^(?:今週|来週|再来週)末(?:は)?(?:休業|休み)(?:にして)?$/u.test(text)) {
+    return reply(event.replyToken, '「週末」は土曜・日曜のどちらか、または両日かを確認したいです。例: 「今週末の土曜休み」「来週末の日曜休み」', env);
+  }
+
   const change = parseCommand(text);
   if (!change) {
     return reply(event.replyToken, '例: 「休業 2026-09-22」または「営業時間 2026-09-23 10:00-18:00」。内容を確認後に「確定」と返信してください。', env);
@@ -58,9 +62,10 @@ async function handleMessage(event, env) {
 }
 
 function parseCommand(text) {
-  const relativeClose = text.match(/^(今日|明日)(?:は)?(?:休業|休み)(?:にして)?$/u);
+  const relativeClose = text.match(/^(今日|明日|明後日|(?:今週|来週|再来週)(?:の)?[日月火水木金土](?:曜(?:日)?)?|(?:次|今度)の?[日月火水木金土](?:曜(?:日)?)?|(?:今週|来週|再来週)末(?:の)?[土日](?:曜(?:日)?)?)(?:は)?(?:休業|休み)(?:にして)?$/u);
   if (relativeClose) {
-    const date = japanDate(relativeClose[1] === '明日' ? 1 : 0);
+    const date = resolveJapanDate(relativeClose[1]);
+    if (!date) return null;
     return { date, status: 'closed', openTime: null, closeTime: null, summary: date + ' を終日休業' };
   }
   let match = text.match(/^(?:休業|休み)\s*(\d{4}-\d{2}-\d{2})$/u);
@@ -79,6 +84,28 @@ function japanDate(daysFromToday) {
   const values = Object.fromEntries(parts.map(({ type, value }) => [type, value]));
   const date = new Date(Date.UTC(Number(values.year), Number(values.month) - 1, Number(values.day) + daysFromToday));
   return date.toISOString().slice(0, 10);
+}
+
+function resolveJapanDate(expression) {
+  if (expression === '今日') return japanDate(0);
+  if (expression === '明日') return japanDate(1);
+  if (expression === '明後日') return japanDate(2);
+
+  const match = expression.match(/^(今週|来週|再来週|次|今度)(?:(?:の)?|末(?:の)?)?([日月火水木金土])/u);
+  if (!match) return null;
+  const targetWeekday = '日月火水木金土'.indexOf(match[2]);
+  const today = japanDate(0);
+  const todayWeekday = new Date(today + 'T00:00:00Z').getUTCDay();
+  const kind = match[1];
+  let offset;
+  if (kind === '今週') offset = targetWeekday - todayWeekday;
+  else if (kind === '来週') offset = 7 - todayWeekday + targetWeekday;
+  else if (kind === '再来週') offset = 14 - todayWeekday + targetWeekday;
+  else {
+    offset = targetWeekday - todayWeekday;
+    if (offset <= 0) offset += 7;
+  }
+  return japanDate(offset);
 }
 
 async function applyChange(change, userId, env) {
