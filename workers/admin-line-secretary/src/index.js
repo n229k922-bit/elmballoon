@@ -103,6 +103,9 @@ async function recordCustomerMessage(event, env) {
       VALUES (?, ?, 'customer_inbound', ?, ?)`)
     .bind(event.webhookEventId || event.message.id, threadId, text, now).run();
 
+  const candidate = extractScheduleCandidate(text);
+  await upsertOrderCard(threadId, text, candidate, now, env);
+
   const customerNames = await getCustomerNames(threadId, env);
   const customerName = customerNames.confirmedName || customerNames.displayName;
   const customerLabel = formatCustomerLabel(customerName);
@@ -110,7 +113,6 @@ async function recordCustomerMessage(event, env) {
     await notifyOwners(`統括マネージャーです。\n\n注文担当から、${customerLabel}のお名前確認が取れたと共有がありました。\n今後の注文・予定候補は、このお名前で管理します。`, env);
   }
 
-  const candidate = extractScheduleCandidate(text);
   if (!candidate) {
     console.log('customer message recorded without schedule candidate');
     await replyCustomerConversation(event, env);
@@ -128,6 +130,100 @@ async function recordCustomerMessage(event, env) {
   const deliveryNote = formatDeliveryPlaceNote(deliveryPlace);
   await notifyOwners(`統括マネージャーです。\n\n注文担当から、${customerLabel}の予定に関する情報が共有されました。\n店長への案内内容と合っているか、ご確認をお願いします。\n\n【${customerLabel}からのご注文・予定候補】\n・${candidate.typeLabel}予定：${scheduledAt}${dateNote}${deliveryNote}\n・お客様のご希望：\n　「${text}」\n\n問題なければ、スケジュール担当に予定登録を依頼します。\n登録してよければ「予定登録 ${candidateId}」と返信してください。\n修正がある場合は、変更内容をそのまま返信してください。`, env);
   await replyCustomerConversation(event, env);
+}
+
+async function upsertOrderCard(threadId, text, candidate, now, env) {
+  const details = extractOrderDetails(text, candidate);
+  const cardId = `order-card:${threadId}`;
+  await env.DB.prepare(`INSERT INTO order_cards
+      (id, order_thread_id, status, purpose, recipient_profile, product_reference,
+       requested_quantity, budget_yen, color_preference, size_preference,
+       character_request, balloon_message, card_message, fulfillment_type,
+       requested_date, requested_time, created_at, updated_at)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      ON CONFLICT(order_thread_id) DO UPDATE SET
+        status = CASE WHEN order_cards.status IN ('intake', 'needs_details') THEN excluded.status ELSE order_cards.status END,
+        purpose = COALESCE(NULLIF(excluded.purpose, ''), order_cards.purpose),
+        recipient_profile = COALESCE(NULLIF(excluded.recipient_profile, ''), order_cards.recipient_profile),
+        product_reference = COALESCE(NULLIF(excluded.product_reference, ''), order_cards.product_reference),
+        requested_quantity = COALESCE(excluded.requested_quantity, order_cards.requested_quantity),
+        budget_yen = COALESCE(excluded.budget_yen, order_cards.budget_yen),
+        color_preference = COALESCE(NULLIF(excluded.color_preference, ''), order_cards.color_preference),
+        size_preference = COALESCE(NULLIF(excluded.size_preference, ''), order_cards.size_preference),
+        character_request = COALESCE(NULLIF(excluded.character_request, ''), order_cards.character_request),
+        balloon_message = COALESCE(NULLIF(excluded.balloon_message, ''), order_cards.balloon_message),
+        card_message = COALESCE(NULLIF(excluded.card_message, ''), order_cards.card_message),
+        fulfillment_type = CASE WHEN excluded.fulfillment_type <> 'unknown' THEN excluded.fulfillment_type ELSE order_cards.fulfillment_type END,
+        requested_date = COALESCE(excluded.requested_date, order_cards.requested_date),
+        requested_time = COALESCE(excluded.requested_time, order_cards.requested_time),
+        updated_at = excluded.updated_at`)
+    .bind(
+      cardId, threadId, details.status, details.purpose, details.recipientProfile, details.productReference,
+      details.quantity, details.budgetYen, details.colorPreference, details.sizePreference,
+      details.characterRequest, details.balloonMessage, details.cardMessage, details.fulfillmentType,
+      details.requestedDate, details.requestedTime, now, now,
+    ).run();
+  await env.DB.prepare(`INSERT INTO order_card_events
+      (order_card_id, event_type, actor, detail, occurred_at) VALUES (?, 'customer.message_analyzed', 'assistant', ?, ?)`)
+    .bind(cardId, summarizeOrderDetails(details), now).run();
+}
+
+function extractOrderDetails(text, candidate) {
+  const purpose = ['誕生日', 'バースデー', '開店', '周年', '退職', '卒業', '入学', '発表会', '結婚', '出産', 'お見舞い', '記念', 'お祝い']
+    .find((value) => text.includes(value)) || null;
+  const budgetMatch = text.match(/(?:予算|ご予算)?\s*([0-9０-９][0-9０-９,，]*)\s*円/u);
+  const quantityMatch = text.match(/([0-9０-９]+)\s*(?:個|本|組|セット)/u);
+  const fulfillmentType = candidate?.type || (/発送|郵送/u.test(text) ? 'shipping' : 'unknown');
+  return {
+    status: orderDetailsAreSufficient(text, candidate) ? 'owner_review' : 'needs_details',
+    purpose,
+    recipientProfile: extractLabeledText(text, /(?:贈る相手|お相手|年齢|性別)\s*(?:は|:|：)?\s*/u),
+    productReference: extractProductReference(text),
+    quantity: quantityMatch ? parseJapaneseNumber(quantityMatch[1]) : null,
+    budgetYen: budgetMatch ? parseJapaneseNumber(budgetMatch[1]) : null,
+    colorPreference: extractLabeledText(text, /(?:色味|色|カラー)\s*(?:は|:|：)?\s*/u),
+    sizePreference: extractLabeledText(text, /(?:大きさ|サイズ)\s*(?:は|:|：)?\s*/u),
+    characterRequest: extractLabeledText(text, /(?:キャラクター)\s*(?:は|:|：)?\s*/u),
+    balloonMessage: extractLabeledText(text, /(?:文字入れ|バルーン(?:の)?(?:文字|メッセージ))\s*(?:は|:|：)?\s*/u),
+    cardMessage: extractLabeledText(text, /(?:メッセージカード|カード(?:の内容)?)\s*(?:は|:|：)?\s*/u),
+    fulfillmentType,
+    requestedDate: candidate?.date || null,
+    requestedTime: candidate?.time || null,
+  };
+}
+
+function extractLabeledText(text, labelPattern) {
+  const match = text.match(new RegExp(labelPattern.source + '([^、。！!\\n]{1,80})', 'u'));
+  return match ? match[1].trim() : null;
+}
+
+function extractProductReference(text) {
+  const number = text.match(/(?:商品番号|品番|商品No\.?|No\.?)\s*(?:は|:|：)?\s*([A-Za-z0-9_-]{1,40})/iu);
+  if (number) return number[1];
+  const url = text.match(/https?:\/\/[^\s]+/u);
+  return url ? url[0].slice(0, 300) : null;
+}
+
+function parseJapaneseNumber(value) {
+  const normalized = value.replace(/[０-９]/g, (digit) => String.fromCharCode(digit.charCodeAt(0) - 0xFEE0)).replace(/[，,]/g, '');
+  const number = Number.parseInt(normalized, 10);
+  return Number.isFinite(number) ? number : null;
+}
+
+function orderDetailsAreSufficient(text, candidate) {
+  return Boolean(candidate?.date && (/(?:予算|[0-9０-９][0-9０-９,，]*円)/u.test(text) || /(?:商品番号|品番|https?:\/\/)/iu.test(text)));
+}
+
+function summarizeOrderDetails(details) {
+  return JSON.stringify({
+    purpose: details.purpose,
+    productReference: details.productReference,
+    quantity: details.quantity,
+    budgetYen: details.budgetYen,
+    fulfillmentType: details.fulfillmentType,
+    requestedDate: details.requestedDate,
+    requestedTime: details.requestedTime,
+  });
 }
 
 async function replyCustomerConversation(event, env) {
