@@ -131,7 +131,9 @@ async function recordCustomerMessage(event, env) {
       VALUES (?, ?, ?, ?, ?, 'needs_owner_review', ?, ?)`)
     .bind(candidateId, threadId, candidate.type, candidate.date, candidate.time, text, now).run();
   console.log('schedule candidate created', { type: candidate.type, date: candidate.date });
-  await notifyOwners(`統括マネージャーです。\n\n注文担当から、${customerLabel}の予定に関する情報が共有されました。\n店長への案内内容と合っているか、ご確認をお願いします。\n\n【${customerLabel}からのご注文・予定候補】\n・${candidate.typeLabel}予定：${candidate.date}${candidate.time ? ' ' + candidate.time : ''}\n・お客様のご希望：\n　「${text}」\n\n問題なければ、スケジュール担当に予定登録を依頼します。\n登録してよければ「予定登録 ${candidateId}」と返信してください。\n修正がある場合は、変更内容をそのまま返信してください。`, env);
+  const scheduledAt = formatScheduleDate(candidate.date, candidate.time);
+  const dateNote = candidate.dateExpression ? `\n・日付の解釈：${candidate.dateExpression} → ${formatJapanDate(candidate.date)}` : '';
+  await notifyOwners(`統括マネージャーです。\n\n注文担当から、${customerLabel}の予定に関する情報が共有されました。\n店長への案内内容と合っているか、ご確認をお願いします。\n\n【${customerLabel}からのご注文・予定候補】\n・${candidate.typeLabel}予定：${scheduledAt}${dateNote}\n・お客様のご希望：\n　「${text}」\n\n問題なければ、スケジュール担当に予定登録を依頼します。\n登録してよければ「予定登録 ${candidateId}」と返信してください。\n修正がある場合は、変更内容をそのまま返信してください。`, env);
   if (!customerNames.confirmedName && event.replyToken) {
     await replyCustomer(event.replyToken, 'お問い合わせありがとうございます。注文内容の確認を進めるため、お名前を教えてください。例：「お名前は田中花子です」', env);
   }
@@ -174,15 +176,57 @@ function extractScheduleCandidate(text) {
   const type = /配達|お届け/u.test(text) ? 'delivery' : /受取|受け取り|引取/u.test(text) ? 'pickup' : /来店/u.test(text) ? 'visit' : null;
   if (!type) return null;
   let dateMatch = text.match(/(\d{4})[-/](\d{1,2})[-/](\d{1,2})/u);
+  let dateExpression = null;
   if (!dateMatch) {
     const japaneseDate = text.match(/(\d{1,2})月(\d{1,2})日/u);
     if (japaneseDate) dateMatch = [null, japanDate(0).slice(0, 4), japaneseDate[1], japaneseDate[2]];
   }
-  if (!dateMatch) return null;
-  const date = `${dateMatch[1]}-${String(dateMatch[2]).padStart(2, '0')}-${String(dateMatch[3]).padStart(2, '0')}`;
+  let date;
+  if (dateMatch) {
+    date = `${dateMatch[1]}-${String(dateMatch[2]).padStart(2, '0')}-${String(dateMatch[3]).padStart(2, '0')}`;
+  } else {
+    const relative = extractRelativeCustomerDate(text);
+    if (!relative) return null;
+    date = relative.date;
+    dateExpression = relative.expression;
+  }
   const timeMatch = text.match(/(\d{1,2}):(\d{2})/u);
   const typeLabel = { pickup: '受取', delivery: '配達', visit: '来店' }[type];
-  return { type, typeLabel, date, time: timeMatch ? `${timeMatch[1].padStart(2, '0')}:${timeMatch[2]}` : null };
+  return { type, typeLabel, date, time: timeMatch ? `${timeMatch[1].padStart(2, '0')}:${timeMatch[2]}` : null, dateExpression };
+}
+
+function extractRelativeCustomerDate(text) {
+  const simple = text.match(/(今日|明日|明後日)/u);
+  if (simple) return { expression: simple[1], date: resolveJapanDate(simple[1]) };
+
+  const weekday = text.match(/(今週|来週|再来週|今度|次|次の)\s*(?:の)?\s*([日月火水木金土])(?:曜(?:日)?)?/u);
+  if (!weekday) return null;
+  const expression = weekday[0];
+  const target = '日月火水木金土'.indexOf(weekday[2]);
+  const today = japanDate(0);
+  const todayWeekday = new Date(today + 'T00:00:00Z').getUTCDay();
+  let offset;
+  if (weekday[1] === '今週') {
+    offset = target - todayWeekday;
+  } else if (weekday[1] === '来週') {
+    offset = 7 - todayWeekday + target;
+  } else if (weekday[1] === '再来週') {
+    offset = 14 - todayWeekday + target;
+  } else {
+    offset = target - todayWeekday;
+    if (offset <= 0) offset += 7;
+  }
+  return { expression, date: japanDate(offset) };
+}
+
+function formatJapanDate(date) {
+  const [year, month, day] = date.split('-').map(Number);
+  const weekday = '日月火水木金土'[new Date(Date.UTC(year, month - 1, day)).getUTCDay()];
+  return `${year}年${month}月${day}日（${weekday}）`;
+}
+
+function formatScheduleDate(date, time) {
+  return `${formatJapanDate(date)}${time ? ' ' + time : ''}`;
 }
 
 function routeManagerRequest(text) {
