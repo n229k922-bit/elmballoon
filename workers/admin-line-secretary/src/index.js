@@ -9,6 +9,9 @@ export default {
     if (request.method === 'POST' && url.pathname === '/webhook/line') {
       return lineWebhook(request, env);
     }
+    if (request.method === 'POST' && url.pathname === '/webhook/customer-line') {
+      return customerLineWebhook(request, env);
+    }
     return new Response('Not found', { status: 404 });
   },
 };
@@ -62,6 +65,64 @@ async function handleMessage(event, env) {
   }
   await env.SECRETARY_KV.put(pendingKey, JSON.stringify(change), { expirationTtl: 600 });
   return reply(event.replyToken, change.summary + '。よろしければ10分以内に「確定」と返信してください。', env);
+}
+
+async function customerLineWebhook(request, env) {
+  if (!env.CUSTOMER_LINE_CHANNEL_SECRET || !env.CUSTOMER_LINE_CHANNEL_ACCESS_TOKEN) {
+    return new Response('Customer channel is not configured', { status: 503 });
+  }
+  const body = await request.text();
+  const signature = request.headers.get('x-line-signature') || '';
+  if (!(await signatureIsValid(body, signature, env.CUSTOMER_LINE_CHANNEL_SECRET))) {
+    return new Response('Invalid signature', { status: 401 });
+  }
+
+  const payload = JSON.parse(body);
+  for (const event of payload.events || []) {
+    if (event.type !== 'message' || event.message?.type !== 'text') continue;
+    await recordCustomerMessage(event, env);
+  }
+  return new Response('OK');
+}
+
+async function recordCustomerMessage(event, env) {
+  const customerId = event.source?.userId;
+  const text = event.message.text.trim();
+  const now = new Date().toISOString();
+  const threadId = 'customer:' + customerId;
+  await env.DB.prepare(`INSERT INTO customer_order_threads
+      (id, customer_line_user_id, status, created_at, updated_at)
+      VALUES (?, ?, 'collecting', ?, ?)
+      ON CONFLICT(id) DO UPDATE SET updated_at = excluded.updated_at`)
+    .bind(threadId, customerId, now, now).run();
+  await env.DB.prepare(`INSERT OR IGNORE INTO order_messages
+      (webhook_event_id, order_thread_id, direction, message_text, occurred_at)
+      VALUES (?, ?, 'customer_inbound', ?, ?)`)
+    .bind(event.webhookEventId || event.message.id, threadId, text, now).run();
+
+  const candidate = extractScheduleCandidate(text);
+  if (!candidate) return;
+  const candidateId = 'candidate:' + (event.webhookEventId || event.message.id);
+  await env.DB.prepare(`INSERT OR IGNORE INTO schedule_candidates
+      (id, order_thread_id, event_type, event_date, event_time, status, source_summary, created_at)
+      VALUES (?, ?, ?, ?, ?, 'needs_owner_review', ?, ?)`)
+    .bind(candidateId, threadId, candidate.type, candidate.date, candidate.time, text, now).run();
+  await notifyOwners(`バルーンマネージャーです。お客様の会話から予定候補を検出しました。\n${candidate.typeLabel}：${candidate.date}${candidate.time ? ' ' + candidate.time : ''}\n内容：${text}\n店長の案内内容と一致することを確認後、「予定登録 ${candidateId}」と返信してください。`, env);
+}
+
+function extractScheduleCandidate(text) {
+  const type = /配達|お届け/u.test(text) ? 'delivery' : /受取|受け取り|引取/u.test(text) ? 'pickup' : /来店/u.test(text) ? 'visit' : null;
+  if (!type) return null;
+  let dateMatch = text.match(/(\d{4})[-/](\d{1,2})[-/](\d{1,2})/u);
+  if (!dateMatch) {
+    const japaneseDate = text.match(/(\d{1,2})月(\d{1,2})日/u);
+    if (japaneseDate) dateMatch = [null, japanDate(0).slice(0, 4), japaneseDate[1], japaneseDate[2]];
+  }
+  if (!dateMatch) return null;
+  const date = `${dateMatch[1]}-${String(dateMatch[2]).padStart(2, '0')}-${String(dateMatch[3]).padStart(2, '0')}`;
+  const timeMatch = text.match(/(\d{1,2}):(\d{2})/u);
+  const typeLabel = { pickup: '受取', delivery: '配達', visit: '来店' }[type];
+  return { type, typeLabel, date, time: timeMatch ? `${timeMatch[1].padStart(2, '0')}:${timeMatch[2]}` : null };
 }
 
 function routeManagerRequest(text) {
@@ -172,4 +233,16 @@ async function reply(replyToken, message, env) {
     body: JSON.stringify({ replyToken, messages: [{ type: 'text', text: message }] }),
   });
   console.log('LINE reply result', response.status, await response.text());
+}
+
+async function notifyOwners(message, env) {
+  const owners = (env.ADMIN_LINE_USER_IDS || '').split(',').map((id) => id.trim()).filter(Boolean);
+  for (const to of owners) {
+    const response = await fetch('https://api.line.me/v2/bot/message/push', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', Authorization: 'Bearer ' + env.LINE_CHANNEL_ACCESS_TOKEN },
+      body: JSON.stringify({ to, messages: [{ type: 'text', text: message }] }),
+    });
+    console.log('LINE owner notification result', response.status, await response.text());
+  }
 }
