@@ -74,9 +74,9 @@ async function applyChange(change, userId, env) {
     ON CONFLICT(date) DO UPDATE SET status = excluded.status, open_time = excluded.open_time,
       close_time = excluded.close_time, updated_at = excluded.updated_at, updated_by = excluded.updated_by`)
     .bind(change.date, change.status, change.openTime, change.closeTime, userId).run();
-  await env.DB.prepare(`INSERT INTO audit_log (timestamp, actor_line_user_id, action, before_json, after_json, result)
-    VALUES (datetime('now'), ?, 'schedule.update', ?, ?, 'success')`)
-    .bind(userId, JSON.stringify(before || null), JSON.stringify(change)).run();
+  await env.DB.prepare(`INSERT INTO audit_log (actor_line_user_id, action, business_date, detail)
+    VALUES (?, 'schedule.update', ?, ?)`)
+    .bind(userId, change.date, JSON.stringify({ before: before || null, after: change })).run();
 }
 
 async function publicSchedule(request, env) {
