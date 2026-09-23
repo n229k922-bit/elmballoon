@@ -38,6 +38,9 @@ async function handleAdmin(event, env) {
   const userId = event.source.userId, text = event.message.text.trim(), pendingKey = 'pending:' + userId;
   const sendReply = text.match(/^送信\s+(review:[^\s]+)(?:\s+([\s\S]+))?$/u);
   if (sendReply) return prepareCustomerReplySend(event.replyToken, userId, sendReply[1], sendReply[2]?.trim() || null, false, env);
+  if (/^送信(?:\s|$)/u.test(text)) {
+    return reply(event.replyToken, '注文担当の返信案を送る場合は、統括マネージャーから届いたレビューIDを付けて「送信 review:xxxxx」と入力してください。営業日・休業日の変更はこの操作では行いません。', env);
+  }
   const confirmReply = text.match(/^送信確認\s+(review:[^\s]+)$/u);
   if (confirmReply) return prepareCustomerReplySend(event.replyToken, userId, confirmReply[1], null, true, env);
   const holdReply = text.match(/^保留\s+(review:[^\s]+)(?:\s+([\s\S]+))?$/u);
