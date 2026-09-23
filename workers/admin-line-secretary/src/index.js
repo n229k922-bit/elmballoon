@@ -811,7 +811,7 @@ function missingIntakeFields(fields) {
     !fields.hasBudget && 'ご予算',
   ].filter(Boolean);
 }
-function missingIntakePrompt(missing, productType) { return 'お問い合わせありがとうございます☺︎\n\nご希望の内容をもとに、制作内容や対応方法を確認するため、まだ分かっていない内容だけ教えてください。\n\n下の項目をコピーして、分かるところだけご記入のうえご返信ください。\n\n【ご注文内容】\n' + intakeRows(missing) + '\n\n内容を確認し、対応可能か確認を進めます。\n対応可能な場合は、商品タイプに合わせて必要な内容を追加でお伺いします。'; }
+function missingIntakePrompt(missing, productType) { return 'ご回答ありがとうございます☺︎\n\n確認に必要な項目が一部不足しているため、以下の項目をご記入ください。全項目の確認ができましたら、次のご案内へ進みます。\n\n下の項目をコピーして、分かるところだけご記入のうえご返信ください。分からない項目は「未定」で大丈夫です。\n\n【ご注文内容】\n' + intakeRows(missing) + '\n\n内容を確認し、在庫や対応可否を確認いたします。\n対応可能な場合は、当店の価格と納期を改めてご案内いたします。'; }
 function intakeIntro(productType) { return ({ arrangement: '置き型アレンジをご希望ですね。', floating_balloon: '浮くタイプのバルーンをご希望ですね。', venue_decoration: '会場装飾のご相談ですね。', balloon_stand: 'バルーンスタンドのご相談ですね。', balloon_bouquet: 'バルーンブーケ・手渡し用ギフトのご相談ですね。', store_consultation: 'ご来店でのご相談ですね。' }[productType] || 'ご希望の内容を確認しながらご案内いたします。'); }
 function intakeFollowUp(productType) { return ({ arrangement: '\n色味・大きさ・飾る場所、文字入れやカードの有無も教えてください。', floating_balloon: '\n室内・屋外、飾り始める時刻、サイズ・個数、固定方法の希望も教えてください。ヘリウム在庫は確認してご案内します。', venue_decoration: '\n会場名、設置・撤去の希望時刻、装飾する範囲、会場写真や平面図、テーマ・色味も教えてください。', balloon_stand: '\n設置先、希望の高さ・幅、名札や文字、設置・撤去の希望も教えてください。', balloon_bouquet: '\n贈る相手、色味・大きさ、文字入れ・カード内容も教えてください。', store_consultation: '\nご相談内容、希望日時、人数、参考画像の有無、予算の目安も教えてください。' }[productType] || '\nご希望の色味・雰囲気、文字入れ・メッセージカードの有無も分かる範囲で教えてください。'); }
 function redactContactDetails(text) { return text.replace(/\b\d{2,4}[- ]?\d{2,4}[- ]?\d{3,4}\b/g, '[連絡先]').slice(0, 500); }
