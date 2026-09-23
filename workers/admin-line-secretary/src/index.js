@@ -511,6 +511,10 @@ function formatDeliveryPlaceNote(place) {
 }
 
 function routeManagerRequest(text) {
+  const isScheduleCommand = /^(?:休業|休み|営業(?:時間)?|休業解除)\s*(?:\d{4}-\d{2}-\d{2}|\d{4}-\d{2}-\d{2}\s+\d{2}:\d{2}-\d{2}:\d{2})$/u.test(text);
+  if (!isScheduleCommand && /(?:営業日|営業(?:時間)?|休業日|休業|休み|休日|臨時休業|営業再開)/u.test(text)) {
+    return '統括マネージャーです。営業日・休業日・営業時間の変更として受け取りました。システム担当へ引き継ぎます。\n\n変更内容を「休業 2026-09-22」「営業 2026-09-23 10:00-18:00」「休業解除 2026-09-22」の形式で送ってください。内容を確認後、反映前に改めて確認します。';
+  }
   if (/(?:配達|受取|引取|制作|納期|進捗|スケジュール|カレンダー)/u.test(text)) {
     return '統括マネージャーです。スケジュール担当への依頼として受け取りました。Googleカレンダー連携はまだ設定前のため、予定の登録は行っていません。対象の注文名・受取または配達日・時間を教えてください。';
   }
@@ -627,7 +631,7 @@ function collectOrderDetail(text, session) {
   return { session, message: orderDetailsReceivedReply() };
 }
 function orderDetailsReceivedReply() {
-  return 'ありがとうございます☺︎\n\nご希望内容を承りました。\n\n制作・在庫・配達・予約状況を店長が確認し、対応可否とお見積りを改めてご連絡いたします。\n\n現時点では価格・在庫・納期は確約せず、確認してご案内します。';
+  return 'ありがとうございます☺︎\n\nまずは以下の基本内容を承りました。\n商品タイプ・ご予算・ご希望日時・受取方法\n\nこの内容で対応可能か、店長に確認いたします。\n確認後、商品タイプに合わせて色味・サイズ・個数・文字入れなど、必要な内容だけ追加でお伺いします。\n\n現時点では価格・在庫・納期は確約せず、確認してご案内します。';
 }
 function intakePrompt(missing, productType, customerKind, hasKnownDetails) {
   const greeting = customerKind === 'returning' ? 'いつもありがとうございます☺︎ お久しぶりです。今回もご連絡いただき、うれしいです。' : 'はじめまして☺︎ ご連絡ありがとうございます。';
@@ -657,10 +661,13 @@ function mergeIntakeAnswers(fields, text) {
 }
 function hasLabeledAnswer(text, label) { return new RegExp(`(?:${label})\\s*[：:]\\s*(?!\\s*(?:$|未定|未入力))[^\\n]{1,80}`, 'u').test(text); }
 function missingIntakeFields(fields) {
-  const missing = [!fields.productType && '商品タイプ', !fields.hasPurpose && 'ご用途', !fields.hasDate && 'ご希望日', !fields.hasTime && 'ご希望時間', !fields.hasMethod && '受取方法', !fields.hasBudget && 'ご予算', !fields.hasColor && '色味・雰囲気'];
-  if (fields.productType === 'venue_decoration' || fields.productType === 'balloon_stand') missing.push(!fields.hasVenue && '会場名・設置先', !fields.hasInstallTime && '設置・搬入時間');
-  if (fields.productType === 'floating_balloon') missing.push(!fields.hasEnvironment && '室内・屋外の別');
-  return missing.filter(Boolean);
+  return [
+    !fields.productType && '商品タイプ',
+    !fields.hasDate && 'ご希望日',
+    !fields.hasTime && 'ご希望時間',
+    !fields.hasMethod && '受取方法',
+    !fields.hasBudget && 'ご予算',
+  ].filter(Boolean);
 }
 function missingIntakePrompt(missing, productType) { return 'ありがとうございます☺︎ 受け取りました。\n\nあと、次の項目だけ教えてください。該当部分をコピーしてご返信いただければ大丈夫です。\n\n' + missing.map((item) => `${item}：`).join('\n') + intakeFollowUp(productType) + '\n\n確認後、制作・在庫・配達・予約状況を確認してご案内します。'; }
 function intakeIntro(productType) { return ({ arrangement: '置き型アレンジをご希望ですね。', floating_balloon: '浮くタイプのバルーンをご希望ですね。', venue_decoration: '会場装飾のご相談ですね。', balloon_stand: 'バルーンスタンドのご相談ですね。', balloon_bouquet: 'バルーンブーケ・手渡し用ギフトのご相談ですね。', store_consultation: 'ご来店でのご相談ですね。以下の内容で承りました。店舗の予約状況を確認し、改めてご連絡いたします。' }[productType] || 'できるだけイメージに近づけられるよう確認します。'); }
