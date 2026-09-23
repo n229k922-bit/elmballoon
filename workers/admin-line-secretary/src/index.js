@@ -304,7 +304,7 @@ function splitCustomerReply(message) {
   const closingMarker = '\n\n内容を確認し';
   const closingIndex = message.indexOf(closingMarker, index);
   if (closingIndex < 0) return [message.slice(0, index).trim(), message.slice(index).trim()];
-  return [message.slice(0, index).trim() + '\n\n' + message.slice(closingIndex).trim(), message.slice(index, closingIndex).trim()];
+  return [message.slice(0, index).trim(), message.slice(index, closingIndex).trim(), message.slice(closingIndex).trim()];
 }
 
 async function prepareCustomerReplySend(replyToken, userId, reviewId, replacement, confirmed, env) {
@@ -768,10 +768,10 @@ function basicOrderConfirmation(text, session) {
 }
 function intakePrompt(missing, productType, customerKind, hasKnownDetails) {
   const greeting = customerKind === 'returning' ? 'いつもありがとうございます☺︎ お久しぶりです。今回もお問い合わせありがとうございます。' : 'お問い合わせありがとうございます☺︎';
-  const guidance = hasKnownDetails
-    ? 'すでにいただいた内容は確認できています。ご希望の内容をもとに、制作内容や対応方法を確認するため、まだ分かっていない内容だけ教えてください。'
-    : 'ご希望の内容をもとに、制作内容や対応方法を確認するため、まずは以下の項目をすべてご記入ください。全項目の確認ができましたら、次のご案内へ進みます。';
-  return greeting + '\n\n' + guidance + '\n参考にしたい画像や、作りたいイメージに近い画像がありましたら、そのままお送りください。画像を確認しながら、色味・雰囲気・大きさなども含めてご案内します。\n\n下の項目をコピーして、分かるところだけご記入のうえご返信ください。\n\n【ご注文内容】\n' + intakeRows(missing) + '\n\n内容を確認し、対応可能か確認を進めます。\n対応可能な場合は、商品タイプに合わせて必要な内容を追加でお伺いします。';
+  const guidance = '作りたいイメージや参考にしたい画像がありましたら、まずはそのままお送りください。\n\n画像をもとに、色味・雰囲気・大きさなどを確認しながら、制作内容や対応方法を確認いたします。\n\n画像がない場合や、まだイメージが決まっていない場合も、分かる範囲でご希望をお聞かせください。\n\n下の項目をコピーして、分かるところだけご記入ください。\nまだ決まっていない項目や分からない項目は、「未定」とご記入いただいて大丈夫です。';
+  const rows = '【ご注文内容】\n\n・参考画像：\n（このトークに画像を添付してください）\n\n・ご希望の色味・雰囲気：\n（例：ピンク系／明るい感じ／落ち着いた雰囲気）\n\n・ご予算：\n（例：15,000円くらい）\n\n・プレゼント・使用予定日：\n（いつプレゼントするか、いつ使うか）\n\n・受取希望日：\n\n・受取希望時間：\n\n・受取方法：\n（店頭受取／配達／発送／未定）';
+  const closing = '内容を確認し、在庫や対応可否を確認いたします。\n\n対応可能な場合は、当店の価格と納期を改めてご案内いたします。\n\n画像やご希望内容について確認が必要な場合は、\n追加でお伺いすることがございます☺︎';
+  return greeting + '\n\n' + guidance + '\n\n' + rows + '\n\n' + closing;
 }
 function intakeRows(items) {
   const choices = {
