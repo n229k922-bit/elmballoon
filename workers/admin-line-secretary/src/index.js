@@ -175,6 +175,10 @@ async function queueCustomerReplyReview(event, env) {
 
   const threadId = 'customer:' + customerId;
   const reviewId = `review:${sourceEventId}`;
+  const duplicate = await env.DB.prepare(`SELECT id FROM customer_reply_reviews
+      WHERE order_thread_id = ? AND draft_message = ? AND status IN ('needs_review', 'needs_change_confirmation')
+      ORDER BY created_at DESC LIMIT 1`).bind(threadId, result.message).first();
+  if (duplicate) return;
   const inserted = await env.DB.prepare(`INSERT OR IGNORE INTO customer_reply_reviews
       (id, source_event_id, order_thread_id, customer_line_user_id, draft_message, status, created_at)
       VALUES (?, ?, ?, ?, ?, 'needs_review', ?)`)
