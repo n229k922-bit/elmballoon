@@ -645,8 +645,10 @@ function orderDetailsReceivedReply() {
 }
 function intakePrompt(missing, productType, customerKind, hasKnownDetails) {
   const greeting = customerKind === 'returning' ? 'いつもありがとうございます☺︎ お久しぶりです。今回もご連絡いただき、うれしいです。' : 'はじめまして☺︎ ご連絡ありがとうございます。';
-  const guidance = hasKnownDetails ? 'すでにいただいた内容は確認できています。次の項目だけ、コピーしてご返信ください。' : '分かるところだけで大丈夫です。下の項目をコピーしてご返信ください。';
-  return greeting + ' ' + intakeIntro(productType) + '\n\n' + guidance + '\n\n【確認したい内容】\n' + intakeRows(missing) + '\n\n参考画像は、このまま画像で送っていただいて大丈夫です。制作・在庫・配達・予約状況を確認し、改めてご連絡いたします。';
+  const guidance = hasKnownDetails
+    ? 'すでにいただいた内容は確認できています。ご希望に近い形で制作できるか確認するため、まだ分かっていない内容だけ教えていただけますでしょうか？'
+    : 'ご希望に近い形で制作できるか確認するため、まずは下記の内容を分かる範囲で教えていただけますでしょうか？';
+  return greeting + ' ' + intakeIntro(productType) + '\n\n' + guidance + '\n\n下の項目をコピーして、分かるところだけご記入のうえご返信ください。\n\n【ご注文内容】\n' + intakeRows(missing) + '\n\n内容を確認し、制作可能かどうか確認いたします。\n制作可能な場合は、商品タイプに合わせて必要な内容を追加でお伺いします。';
 }
 function intakeRows(items) {
   const choices = {
