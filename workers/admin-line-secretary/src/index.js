@@ -186,7 +186,7 @@ async function queueCustomerReplyReview(event, env) {
   // 初回の注文相談だけは自動で基本ヒアリングを返し、統括への通知は行わない。
   // お客様の回答が届いた次の段階で、内容を確認待ちとして統括へ回す。
   if (result.session.stage === 'collecting' && missingIntakeFields(result.session.fields).length > 0) {
-    const sent = await pushCustomerMessage(customerId, result.message, env);
+    const sent = await pushCustomerMessages(customerId, splitCustomerReply(result.message), env);
     if (sent) {
       await env.DB.prepare(`INSERT INTO order_messages (order_thread_id, direction, message_text, occurred_at) VALUES (?, 'assistant_outbound', ?, ?)`)
         .bind('customer:' + customerId, result.message.slice(0, 4900), new Date().toISOString()).run();
@@ -210,6 +210,13 @@ async function queueCustomerReplyReview(event, env) {
   const customerLabel = formatCustomerLabel(names.confirmedName || names.displayName);
   const incoming = event.message?.type === 'image' ? '参考画像が届きました。' : redactContactDetails(event.message?.text || '').slice(0, 500);
   await notifyOwners(`統括マネージャーです。\n\n【お客様への返信確認】\n${customerLabel}からの連絡：\n「${incoming}」\n\n【送信案】\n${result.message.slice(0, 2500)}\n\n内容を確認してから送信します。\n・このまま送る：送信 ${reviewId}\n・文章を修正して送る：送信 ${reviewId} 修正した文章\n・保留する：保留 ${reviewId} 理由`, env);
+}
+
+function splitCustomerReply(message) {
+  const marker = '【ご注文内容】';
+  const index = message.indexOf(marker);
+  if (index <= 0) return [message];
+  return [message.slice(0, index).trim(), message.slice(index).trim()];
 }
 
 async function prepareCustomerReplySend(replyToken, userId, reviewId, replacement, confirmed, env) {
@@ -751,6 +758,20 @@ async function pushCustomerMessage(to, message, env) {
   });
   const responseText = await response.text();
   console.log('customer LINE push result', response.status, responseText);
+  return response.ok;
+}
+
+async function pushCustomerMessages(to, messages, env) {
+  const response = await fetch('https://api.line.me/v2/bot/message/push', {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      Authorization: 'Bearer ' + env.CUSTOMER_LINE_CHANNEL_ACCESS_TOKEN,
+    },
+    body: JSON.stringify({ to, messages: messages.filter(Boolean).map((text) => ({ type: 'text', text: text.slice(0, 4900) })) }),
+  });
+  const responseText = await response.text();
+  console.log('customer LINE multi-message push result', response.status, responseText);
   return response.ok;
 }
 
