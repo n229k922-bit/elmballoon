@@ -627,7 +627,7 @@ function collectOrderDetail(text, session) {
   return { session, message: orderDetailsReceivedReply() };
 }
 function orderDetailsReceivedReply() {
-  return 'ありがとうございます☺︎ ご希望内容を承りました。制作・在庫・配達・予約状況を店長が確認し、対応可否とお見積りを改めてご連絡いたします。現時点では価格・在庫・納期は確約せず、確認してご案内します。';
+  return 'ありがとうございます☺︎\n\nご希望内容を承りました。\n\n制作・在庫・配達・予約状況を店長が確認し、対応可否とお見積りを改めてご連絡いたします。\n\n現時点では価格・在庫・納期は確約せず、確認してご案内します。';
 }
 function intakePrompt(missing, productType, customerKind, hasKnownDetails) {
   const greeting = customerKind === 'returning' ? 'いつもありがとうございます☺︎ お久しぶりです。今回もご連絡いただき、うれしいです。' : 'はじめまして☺︎ ご連絡ありがとうございます。';
