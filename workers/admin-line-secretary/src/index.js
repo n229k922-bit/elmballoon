@@ -111,6 +111,9 @@ async function recordCustomerMessage(event, env) {
   const threadId = 'customer:' + customerId;
   const displayName = await fetchCustomerDisplayName(customerId, env);
   const confirmedName = extractConfirmedCustomerName(text);
+  await env.DB.prepare(`INSERT INTO customer_profiles (customer_line_user_id, first_seen_at, last_seen_at)
+      VALUES (?, ?, ?) ON CONFLICT(customer_line_user_id) DO UPDATE SET last_seen_at = excluded.last_seen_at`)
+    .bind(customerId, now, now).run();
   await env.DB.prepare(`INSERT INTO customer_order_threads
       (id, customer_line_user_id, customer_display_name, customer_confirmed_name, status, created_at, updated_at)
       VALUES (?, ?, ?, ?, 'collecting', ?, ?)
@@ -155,11 +158,6 @@ async function recordCustomerMessage(event, env) {
       VALUES (?, ?, ?, ?, ?, 'needs_owner_review', ?, ?)`)
     .bind(candidateId, threadId, candidate.type, candidate.date, candidate.time, text, now).run();
   console.log('schedule candidate created', { type: candidate.type, date: candidate.date });
-  const scheduledAt = formatScheduleDate(candidate.date, candidate.time);
-  const dateNote = candidate.dateExpression ? `\n・日付の解釈：${candidate.dateExpression} → ${formatJapanDate(candidate.date)}` : '';
-  const deliveryPlace = candidate.type === 'delivery' ? extractDeliveryPlaceHint(text) : null;
-  const deliveryNote = formatDeliveryPlaceNote(deliveryPlace);
-  await notifyOwners(`統括マネージャーです。\n\n注文担当から、${customerLabel}の予定に関する情報が共有されました。\n店長への案内内容と合っているか、ご確認をお願いします。\n\n【${customerLabel}からのご注文・予定候補】\n・${candidate.typeLabel}予定：${scheduledAt}${dateNote}${deliveryNote}\n・お客様のご希望：\n　「${text}」\n\n問題なければ、スケジュール担当に予定登録を依頼します。\n登録してよければ「予定登録 ${candidateId}」と返信してください。\n修正がある場合は、変更内容をそのまま返信してください。`, env);
 }
 
 async function queueCustomerReplyReview(event, env) {
@@ -169,6 +167,7 @@ async function queueCustomerReplyReview(event, env) {
   if (!sourceEventId) return;
   const key = 'customer-session:' + customerId;
   const session = (await env.SECRETARY_KV.get(key, 'json')) || { stage: 'new', fields: {} };
+  if (!session.customerKind) session.customerKind = await getCustomerKind(customerId, event.message?.text || '', env);
   const result = event.message?.type === 'image'
     ? receiveReferenceImage(session)
     : buildCustomerReply(event.message?.text?.trim() || '', session);
@@ -266,7 +265,7 @@ function extractOrderDetails(text, candidate) {
     productReference: extractProductReference(text),
     quantity: quantityMatch ? parseJapaneseNumber(quantityMatch[1]) : null,
     budgetYen: budgetMatch ? parseJapaneseNumber(budgetMatch[1]) : null,
-    colorPreference: extractLabeledText(text, /(?:色味|色|カラー)\s*(?:は|:|：)?\s*/u),
+    colorPreference: extractLabeledText(text, /(?:色味(?:・雰囲気)?|色|カラー)\s*(?:は|:|：)?\s*/u),
     sizePreference: extractLabeledText(text, /(?:大きさ|サイズ)\s*(?:は|:|：)?\s*/u),
     characterRequest: extractLabeledText(text, /(?:キャラクター)\s*(?:は|:|：)?\s*/u),
     balloonMessage: extractLabeledText(text, /(?:文字入れ|バルーン(?:の)?(?:文字|メッセージ))\s*(?:は|:|：)?\s*/u),
@@ -323,11 +322,14 @@ function summarizeOrderDetails(details) {
 }
 
 async function createOwnerDecisionRequest({ threadId, sourceEventId, text, candidate, customerLabel, now, env }) {
-  const requestTypes = detectOwnerDecisionTypes(text, candidate);
-  if (!requestTypes.length) return null;
+  const card = await env.DB.prepare(`SELECT * FROM order_cards WHERE order_thread_id = ?`).bind(threadId).first();
+  if (!orderCardReadyForOwnerReview(card)) return null;
+  const existing = await env.DB.prepare(`SELECT id FROM owner_decision_requests
+      WHERE order_card_id = ? AND status != 'cancelled' AND customer_summary LIKE '%聞き取り内容%' LIMIT 1`).bind(`order-card:${threadId}`).first();
+  if (existing) return null;
+  const requestTypes = detectOwnerDecisionTypesFromCard(card);
   const requestId = `decision:${sourceEventId}`;
-  const details = extractOrderDetails(text, candidate);
-  const customerSummary = summarizeOwnerReview(customerLabel, text, details);
+  const customerSummary = summarizeOwnerReviewFromCard(customerLabel, card);
   const result = await env.DB.prepare(`INSERT OR IGNORE INTO owner_decision_requests
       (id, source_event_id, order_thread_id, order_card_id, request_types, status, customer_summary, created_at)
       VALUES (?, ?, ?, ?, ?, 'needs_owner_review', ?, ?)`)
@@ -335,26 +337,33 @@ async function createOwnerDecisionRequest({ threadId, sourceEventId, text, candi
   return result.meta.changes ? { id: requestId, requestTypes, customerSummary } : null;
 }
 
-function detectOwnerDecisionTypes(text, candidate) {
+function orderCardReadyForOwnerReview(card) {
+  return Boolean(card?.purpose && card?.product_type && card?.requested_date && card?.requested_time && card?.budget_yen && card?.fulfillment_type !== 'unknown' && card?.color_preference);
+}
+
+function detectOwnerDecisionTypesFromCard(card) {
   const types = [];
-  if (candidate) types.push('schedule');
-  if (/配達|お届け|配送/u.test(text)) types.push('delivery');
-  if (/(?:商品番号|品番|参考画像|見積|予算|注文|お願い|作れ|作って|欲しい|ほしい|祝い|誕生日|開店|結婚|出産|発表会|卒業|退職)/u.test(text)) types.push('quote_and_production');
-  if (/(?:ヘリウム|浮[かき]|ガス|在庫|発送|郵送|キャンセル|天気|台風|休業|休み)/u.test(text)) types.push('store_policy');
+  types.push('schedule', 'quote_and_production');
+  if (card.fulfillment_type === 'delivery') types.push('delivery');
+  if (card.product_type === 'floating_balloon' || card.fulfillment_type === 'shipping') types.push('store_policy');
   return [...new Set(types)];
 }
 
-function summarizeOwnerReview(customerLabel, text, details) {
+function summarizeOwnerReviewFromCard(customerLabel, card) {
   const lines = [
-    `${customerLabel}からの内容`,
-    `・お問い合わせ：${redactContactDetails(text).slice(0, 500)}`,
+    `${customerLabel}からの聞き取り内容`,
   ];
-  if (details.purpose) lines.push(`・用途：${details.purpose}`);
-  if (details.productReference) lines.push(`・商品番号・参照：${details.productReference}`);
-  if (details.quantity) lines.push(`・個数：${details.quantity}`);
-  if (details.budgetYen) lines.push(`・予算：${details.budgetYen.toLocaleString('ja-JP')}円`);
-  if (details.requestedDate) lines.push(`・希望日時：${formatScheduleDate(details.requestedDate, details.requestedTime)}`);
-  if (details.fulfillmentType !== 'unknown') lines.push(`・方法：${{ pickup: '受取', delivery: '配達', visit: '来店', shipping: '発送' }[details.fulfillmentType]}`);
+  lines.push(`・商品タイプ：${{ arrangement: 'アレンジ', floating_balloon: '浮くタイプ', venue_decoration: '会場装飾', balloon_stand: 'バルーンスタンド', balloon_bouquet: 'バルーンブーケ', store_consultation: '来店相談', other: 'その他' }[card.product_type] || card.product_type}`);
+  lines.push(`・用途：${card.purpose}`);
+  lines.push(`・希望日時：${formatScheduleDate(card.requested_date, card.requested_time)}`);
+  lines.push(`・方法：${{ pickup: '店頭受取', delivery: '配達', visit: '来店相談', shipping: '発送' }[card.fulfillment_type]}`);
+  lines.push(`・予算：${Number(card.budget_yen).toLocaleString('ja-JP')}円`);
+  lines.push(`・色味・雰囲気：${card.color_preference}`);
+  if (card.product_reference) lines.push(`・商品番号・参照：${card.product_reference}`);
+  if (card.requested_quantity) lines.push(`・個数：${card.requested_quantity}`);
+  if (card.size_preference) lines.push(`・大きさ：${card.size_preference}`);
+  if (card.balloon_message) lines.push(`・文字入れ：${card.balloon_message}`);
+  if (card.card_message) lines.push(`・メッセージカード：${card.card_message}`);
   return lines.join('\n');
 }
 
@@ -569,6 +578,14 @@ async function applyChange(change, userId, env) {
     .bind(userId, change.date, JSON.stringify({ before: before || null, after: change })).run();
 }
 
+async function getCustomerKind(customerId, text, env) {
+  const profile = await env.DB.prepare(`SELECT completed_order_count, relationship_override
+      FROM customer_profiles WHERE customer_line_user_id = ?`).bind(customerId).first();
+  if (profile?.relationship_override === 'returning' || Number(profile?.completed_order_count || 0) > 0) return 'returning';
+  if (/(?:前回|以前|またお願い|いつも|リピート)/u.test(text)) return 'returning';
+  return 'new';
+}
+
 function buildCustomerReply(text, session) {
   if (/^(こんにちは|こんばんは|はじめまして|お世話になります)[！!。]*$/u.test(text)) return { session, message: 'こんにちは☺︎ ご連絡ありがとうございます。気になるお写真やご希望の内容がありましたら、そのままお送りください。ご用途・ご希望日・ご予算が分かるとスムーズにご案内できます🎈' };
   if (/(今日|本日|明日|あした|急ぎ|至急)/u.test(text)) return urgentReply(session);
@@ -584,7 +601,7 @@ function urgentReply(session) { session.stage = 'urgent'; session.fields.urgent 
 function heliumReply(session) { session.stage = 'helium'; return { session, message: 'ヘリウムバルーンのご相談ですね☺︎ バルーンの大きさ・種類・個数で必要量が変わるため、商品パッケージのお写真か、サイズと個数をお送りください。持ち込みの場合も確認してご案内します。\n※在庫状況や対応可能な時間は日によって変わるため、希望日も一緒にお願いします。' }; }
 function deliveryReply(session) { session.stage = 'delivery'; return { session, message: '配達のご相談ありがとうございます☺︎ お届け地域・ご希望日・ご希望時間・ご予算を確認してご案内します。夏場は高温による破損を防ぐため、発送を控える場合があります。近隣への配達や店頭受け取りも含めて、いちばん良い方法をご提案しますね。' }; }
 function longevityReply(session) { session.stage = 'faq'; return { session, message: 'ご質問ありがとうございます☺︎ バルーンは種類や飾る環境によって異なります。直射日光・高温・尖った物を避けて室内に飾ると、より長く楽しんでいただけます。お写真を送っていただければ、その商品に合わせた目安と保管方法をご案内します🎈' }; }
-function orderReply(text, session) { session.stage = 'collecting'; session.fields.purpose = ['開店','結婚','出産','誕生日','発表会','卒業','退職'].find((purpose) => text.includes(purpose)) || null; session.fields.productType = detectProductType(text); return { session, message: intakePrompt(session.fields.productType) }; }
+function orderReply(text, session) { session.stage = 'collecting'; session.fields.purpose = ['開店','結婚','出産','誕生日','発表会','卒業','退職'].find((purpose) => text.includes(purpose)) || null; session.fields.productType = detectProductType(text); return { session, message: intakePrompt(session.fields.productType, session.customerKind) }; }
 function collectOrderDetail(text, session) {
   const fields = session.fields;
   fields.lastCustomerMessage = redactContactDetails(text);
@@ -594,7 +611,7 @@ function collectOrderDetail(text, session) {
   session.stage = 'review';
   return { session, message: 'ありがとうございます☺︎ ご希望内容を承りました。制作・在庫・配達・予約状況を店長が確認し、対応可否とお見積りを改めてご連絡いたします。現時点では価格・在庫・納期は確約せず確認してご案内します。' + intakeFollowUp(fields.productType) };
 }
-function intakePrompt(productType) { return 'ご注文のご相談ありがとうございます☺︎ ' + intakeIntro(productType) + '\n\n分かるところだけで大丈夫です。下の枠をコピーして、空欄を埋めてご返信ください。\n\n【ご注文内容】\n商品タイプ：バルーンブーケ／アレンジ／浮くタイプ／会場装飾／スタンド／来店相談／未定\nご用途：\nご希望日：\nご希望時間：\n受取方法：店頭受取／配達／来店相談／発送\nご予算：\n商品番号・参考画像：\n色味・雰囲気：\n大きさ・個数：\n文字入れ：\nメッセージカード：\n贈るお相手（任意）：\n\n参考画像は、このまま画像で送っていただいて大丈夫です。制作・在庫・配達・予約状況を確認し、改めてご連絡いたします。'; }
+function intakePrompt(productType, customerKind) { const greeting = customerKind === 'returning' ? 'いつもありがとうございます☺︎ お久しぶりです。今回もご連絡いただき、うれしいです。' : 'はじめまして☺︎ ご連絡ありがとうございます。'; return greeting + ' ' + intakeIntro(productType) + '\n\n分かるところだけで大丈夫です。下の枠をコピーして、空欄を埋めてご返信ください。\n\n【ご注文内容】\n商品タイプ：バルーンブーケ／アレンジ／浮くタイプ／会場装飾／スタンド／来店相談／未定\nご用途：\nご希望日：\nご希望時間：\n受取方法：店頭受取／配達／来店相談／発送\nご予算：\n商品番号・参考画像：\n色味・雰囲気：\n大きさ・個数：\n文字入れ：\nメッセージカード：\n贈るお相手（任意）：\n\n参考画像は、このまま画像で送っていただいて大丈夫です。制作・在庫・配達・予約状況を確認し、改めてご連絡いたします。'; }
 function mergeIntakeAnswers(fields, text) {
   fields.productType = fields.productType || detectProductType(text) || (hasLabeledAnswer(text, '商品タイプ') ? 'other' : null);
   fields.hasPurpose = fields.hasPurpose || Boolean(fields.purpose) || hasLabeledAnswer(text, 'ご用途|用途');
