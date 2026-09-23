@@ -177,6 +177,7 @@ async function queueCustomerReplyReview(event, env) {
   if (!sourceEventId) return;
   const key = 'customer-session:' + customerId;
   const session = (await env.SECRETARY_KV.get(key, 'json')) || { stage: 'new', fields: {} };
+  const wasCollecting = session.stage === 'collecting';
   if (!session.customerKind) session.customerKind = await getCustomerKind(customerId, event.message?.text || '', env);
   const result = event.message?.type === 'image'
     ? receiveReferenceImage(session)
@@ -190,6 +191,18 @@ async function queueCustomerReplyReview(event, env) {
     if (sent) {
       await env.DB.prepare(`INSERT INTO order_messages (order_thread_id, direction, message_text, occurred_at) VALUES (?, 'assistant_outbound', ?, ?)`)
         .bind('customer:' + customerId, result.message.slice(0, 4900), new Date().toISOString()).run();
+    }
+    return;
+  }
+
+  // 基本5項目が揃った直後は、注文担当が内容を復唱してお客様へ確認する。
+  // この確認段階では統括・店長へは通知せず、追加情報の回答後に引き継ぐ。
+  if (result.session.stage === 'review' && wasCollecting) {
+    const confirmation = basicOrderConfirmation(event.message?.text?.trim() || '', result.session);
+    const sent = await pushCustomerMessage(customerId, confirmation, env);
+    if (sent) {
+      await env.DB.prepare(`INSERT INTO order_messages (order_thread_id, direction, message_text, occurred_at) VALUES (?, 'assistant_outbound', ?, ?)`)
+        .bind('customer:' + customerId, confirmation.slice(0, 4900), new Date().toISOString()).run();
     }
     return;
   }
@@ -671,6 +684,14 @@ function collectOrderDetail(text, session) {
 }
 function orderDetailsReceivedReply() {
   return 'ありがとうございます☺︎\n\nまずは以下の基本内容を承りました。\n商品タイプ・ご予算・ご希望日時・受取方法\n\nこの内容で対応可能か、店長に確認いたします。\n確認後、商品タイプに合わせて色味・サイズ・個数・文字入れなど、必要な内容だけ追加でお伺いします。\n\n現時点では価格・在庫・納期は確約せず、確認してご案内します。';
+}
+function basicOrderConfirmation(text, session) {
+  const product = ({ arrangement: 'アレンジ', floating_balloon: '浮くタイプ', venue_decoration: '会場装飾', balloon_stand: 'バルーンスタンド', balloon_bouquet: 'バルーンブーケ', store_consultation: '来店相談' }[session.fields.productType] || '未定');
+  const budget = text.match(/([0-9０-９][0-9０-９,，]*)\s*円/u)?.[1] || '未定';
+  const date = text.match(/(今日|明日|明後日|今週|来週|再来週|\d{4}[/-]\d{1,2}[/-]\d{1,2}|\d{1,2}月\d{1,2}日)/u)?.[1] || '未定';
+  const time = text.match(/(午前|午後)?\s*\d{1,2}\s*時(?:頃|ごろ)?/u)?.[0]?.trim() || '未定';
+  const method = /配達|配送/u.test(text) ? '配達' : /来店/u.test(text) ? '来店相談' : /発送|郵送/u.test(text) ? '発送' : '店頭受取';
+  return `お問い合わせありがとうございます☺︎\n\n基本内容を確認しました。\n\n・商品タイプ：${product}\n・ご希望日：${date}\n・ご希望時間：${time}\n・受取方法：${method}\n・ご予算：${budget}円\n\nこちらの内容で確認を進めます。制作可能な場合は、商品タイプに合わせて色味・サイズ・個数・文字入れなど、必要な内容を追加でお伺いします。`;
 }
 function intakePrompt(missing, productType, customerKind, hasKnownDetails) {
   const greeting = customerKind === 'returning' ? 'いつもありがとうございます☺︎ お久しぶりです。今回もご連絡いただき、うれしいです。' : 'はじめまして☺︎ ご連絡ありがとうございます。';
