@@ -254,7 +254,7 @@ var bizcalOptions = {"holiday_title":"\u5e97\u4f11\u65e5","sun":"on","sat":"on",
       border-radius: 22px;
       box-shadow: 0 12px 30px rgba(22, 143, 196, .22);
     }
-    #line-order.top_banner h2 {
+    #line-order.top_banner > a > h2 {
       margin: 0 0 1.25rem;
       padding: .7rem 1rem;
       border-radius: 999px;
@@ -289,7 +289,13 @@ var bizcalOptions = {"holiday_title":"\u5e97\u4f11\u65e5","sun":"on","sat":"on",
       font-size: clamp(2rem, 6vw, 3.4rem);
       letter-spacing: .04em;
     }
+    #line-order.top_banner .tel_num::before,
+    #line-order.top_banner .tel_num::after {
+      color: #075d88 !important;
+      text-shadow: none !important;
+    }
     #line-order.top_banner .line_QR {
+      display: block !important;
       flex: 0 0 auto;
       padding: .5rem;
       background: #fff;
