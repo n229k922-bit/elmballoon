@@ -9,6 +9,9 @@ export default {
     if (request.method === 'GET' && url.pathname === '/api/business-schedule') {
       return publicSchedule(request, env);
     }
+    if (request.method === 'GET' && url.pathname === '/api/calendar/availability') {
+      return calendarAvailability(request, env);
+    }
     if (request.method === 'POST' && url.pathname === '/webhook/line') {
       return lineWebhook(request, env);
     }
@@ -46,6 +49,33 @@ async function googleOAuthCallback(url, env) {
   if (!response.ok || !token.refresh_token) return new Response('Google OAuth token exchange failed.', { status: 502 });
   await env.SECRETARY_KV.put('google-calendar-refresh-token', token.refresh_token);
   return new Response('Googleカレンダーの読み取り接続が完了しました。この画面は閉じて大丈夫です。', { headers: { 'Content-Type': 'text/plain; charset=utf-8' } });
+}
+
+async function calendarAvailability(request, env) {
+  const url = new URL(request.url);
+  const date = url.searchParams.get('date');
+  const startTime = url.searchParams.get('start') || '00:00';
+  const endTime = url.searchParams.get('end') || '23:59';
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(date || '')) return json({ error: 'date must be YYYY-MM-DD' }, 400);
+  const refreshToken = await env.SECRETARY_KV.get('google-calendar-refresh-token');
+  if (!refreshToken) return json({ error: 'calendar_not_connected' }, 503);
+  const tokenRes = await fetch('https://oauth2.googleapis.com/token', {
+    method: 'POST', headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+    body: new URLSearchParams({ client_id: env.GOOGLE_CLIENT_ID, client_secret: env.GOOGLE_CLIENT_SECRET, refresh_token: refreshToken, grant_type: 'refresh_token' }),
+  });
+  const token = await tokenRes.json();
+  if (!tokenRes.ok || !token.access_token) return json({ error: 'calendar_token_refresh_failed' }, 502);
+  const timeMin = `${date}T${startTime}:00+09:00`, timeMax = `${date}T${endTime}:00+09:00`;
+  const eventsUrl = new URL('https://www.googleapis.com/calendar/v3/calendars/primary/events');
+  eventsUrl.search = new URLSearchParams({ timeMin, timeMax, singleEvents: 'true', orderBy: 'startTime', maxResults: '50' });
+  const eventsRes = await fetch(eventsUrl, { headers: { Authorization: `Bearer ${token.access_token}` } });
+  const events = await eventsRes.json();
+  if (!eventsRes.ok) return json({ error: 'calendar_events_failed', detail: events.error || null }, 502);
+  return json({ date, timeMin, timeMax, busy: (events.items || []).filter((event) => event.status !== 'cancelled').map((event) => ({ id: event.id, summary: event.summary || '(予定)', start: event.start?.dateTime || event.start?.date, end: event.end?.dateTime || event.end?.date })) });
+}
+
+function json(value, status = 200) {
+  return new Response(JSON.stringify(value), { status, headers: { 'Content-Type': 'application/json; charset=utf-8' } });
 }
 
 async function lineWebhook(request, env) {
