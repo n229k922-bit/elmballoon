@@ -38,8 +38,15 @@ async function handleAdmin(event, env) {
   const userId = event.source.userId, text = event.message.text.trim(), pendingKey = 'pending:' + userId;
   const sendReply = text.match(/^送信\s+(review:[^\s]+)(?:\s+([\s\S]+))?$/u);
   if (sendReply) return prepareCustomerReplySend(event.replyToken, userId, sendReply[1], sendReply[2]?.trim() || null, false, env);
+  if (text === '送信') {
+    const latestReview = await env.DB.prepare(`SELECT id FROM customer_reply_reviews
+        WHERE status = 'needs_review'
+        ORDER BY created_at DESC LIMIT 1`).first();
+    if (!latestReview) return reply(event.replyToken, '送信できる確認待ちの返信案はありません。', env);
+    return prepareCustomerReplySend(event.replyToken, userId, latestReview.id, null, false, env);
+  }
   if (/^送信(?:\s|$)/u.test(text)) {
-    return reply(event.replyToken, '注文担当の返信案を送る場合は、統括マネージャーから届いたレビューIDを付けて「送信 review:xxxxx」と入力してください。営業日・休業日の変更はこの操作では行いません。', env);
+    return reply(event.replyToken, '「送信」だけで最新の確認待ち返信案を送れます。営業日・休業日の変更はこの操作では行いません。', env);
   }
   const confirmReply = text.match(/^送信確認\s+(review:[^\s]+)$/u);
   if (confirmReply) return prepareCustomerReplySend(event.replyToken, userId, confirmReply[1], null, true, env);
