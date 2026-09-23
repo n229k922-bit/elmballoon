@@ -177,7 +177,6 @@ async function queueCustomerReplyReview(event, env) {
   if (!sourceEventId) return;
   const key = 'customer-session:' + customerId;
   const session = (await env.SECRETARY_KV.get(key, 'json')) || { stage: 'new', fields: {} };
-  const wasNewSession = session.stage === 'new';
   if (!session.customerKind) session.customerKind = await getCustomerKind(customerId, event.message?.text || '', env);
   const result = event.message?.type === 'image'
     ? receiveReferenceImage(session)
@@ -186,7 +185,7 @@ async function queueCustomerReplyReview(event, env) {
 
   // 初回の注文相談だけは自動で基本ヒアリングを返し、統括への通知は行わない。
   // お客様の回答が届いた次の段階で、内容を確認待ちとして統括へ回す。
-  if (wasNewSession && result.session.stage === 'collecting') {
+  if (result.session.stage === 'collecting' && missingIntakeFields(result.session.fields).length > 0) {
     const sent = await pushCustomerMessage(customerId, result.message, env);
     if (sent) {
       await env.DB.prepare(`INSERT INTO order_messages (order_thread_id, direction, message_text, occurred_at) VALUES (?, 'assistant_outbound', ?, ?)`)
