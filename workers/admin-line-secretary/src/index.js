@@ -754,7 +754,7 @@ function collectOrderDetail(text, session) {
   return { session, message: orderDetailsReceivedReply() };
 }
 function orderDetailsReceivedReply() {
-  return 'お問い合わせありがとうございます☺︎\n\nご希望に近い形で制作できるか確認するためまずは以下の内容を確認させてください。\n商品タイプ・ご予算・ご希望日時・受取方法\n\nこちらの内容で対応可能か確認を進めます。\n確認できましたら、商品タイプに合わせて色味・サイズ・個数・文字入れなど、必要な内容だけ追加でお伺いします。\n\n現時点では価格・在庫・納期は確約せず、確認してご案内します。';
+  return 'お問い合わせありがとうございます☺︎\n\nご希望の内容をもとに、制作内容や対応方法を確認するため、まずは分かる範囲で以下の内容を教えてください。\n\n【ご注文内容】\n・商品タイプ：\n・ご用途：\n・プレゼント・使用予定日：\n・ご予算：\n・受取希望日：\n・受取希望時間：\n・受取方法（店頭受取／配達／来店相談／発送）：\n\n上の項目をコピーして、分かるところだけご記入いただければ大丈夫です。\nまだ決まっていない項目は「未定」とご記入ください。\n\n内容を確認し、対応可能か確認を進めます。\n対応可能な場合は、商品タイプに合わせて必要な内容を追加でお伺いします。\n\n価格・在庫・納期については、確認後に改めてご案内いたします☺︎';
 }
 function basicOrderConfirmation(text, session) {
   const product = ({ arrangement: 'アレンジ', floating_balloon: '浮くタイプ', venue_decoration: '会場装飾', balloon_stand: 'バルーンスタンド', balloon_bouquet: 'バルーンブーケ', store_consultation: '来店相談' }[session.fields.productType] || '未定');
@@ -775,6 +775,8 @@ function intakeRows(items) {
   const choices = {
     '商品タイプ': '（バルーンブーケ／アレンジ／浮くタイプ／会場装飾／バルーンスタンド／来店相談／未定）',
     'ご予算': '（例：5,000円くらい）',
+    'ご用途': '（例：誕生日／開店祝い／記念日）',
+    'プレゼント・使用予定日': '（例：2026年10月1日）',
     'ご希望日': '（例：2026年10月1日）',
     'ご希望時間': '（例：14時頃）',
     '受取方法': '（店頭受取／配達／来店相談／発送）',
@@ -785,6 +787,7 @@ function mergeIntakeAnswers(fields, text) {
   fields.productType = fields.productType || detectProductType(text) || (hasLabeledAnswer(text, '商品タイプ') ? 'other' : null);
   fields.hasPurpose = fields.hasPurpose || Boolean(fields.purpose) || hasLabeledAnswer(text, 'ご用途|用途');
   fields.hasDate = fields.hasDate || /\d{4}[/-]\d{1,2}[/-]\d{1,2}|\d{1,2}月\d{1,2}日|今日|明日|あした|今週|来週|今度/u.test(text) || hasLabeledAnswer(text, 'ご希望日|希望日');
+  fields.hasUseDate = fields.hasUseDate || hasLabeledAnswer(text, 'プレゼント・使用予定日|使用予定日|利用日|使用日');
   fields.hasTime = fields.hasTime || /\d{1,2}:\d{2}|午前|午後|時頃?|まで/u.test(text) || hasLabeledAnswer(text, 'ご希望時間|希望時間');
   fields.hasBudget = fields.hasBudget || /円/u.test(text) || hasLabeledAnswer(text, 'ご予算|予算');
   fields.hasMethod = fields.hasMethod || /受取|受け取|来店|配達|配送|発送|郵送/u.test(text) || hasLabeledAnswer(text, '受取方法|受け取り方法|方法');
@@ -799,6 +802,7 @@ function hasLabeledAnswer(text, label) { return new RegExp(`(?:${label})\\s*[：
 function missingIntakeFields(fields) {
   return [
     !fields.productType && '商品タイプ',
+    !fields.hasUseDate && 'プレゼント・使用予定日',
     !fields.hasDate && 'ご希望日',
     !fields.hasTime && 'ご希望時間',
     !fields.hasMethod && '受取方法',
