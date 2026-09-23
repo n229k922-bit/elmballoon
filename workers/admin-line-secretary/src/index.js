@@ -663,10 +663,13 @@ function intakePrompt(missing, productType, customerKind, hasKnownDetails) {
 }
 function intakeRows(items) {
   const choices = {
-    '商品タイプ': '商品タイプ：バルーンブーケ／アレンジ／浮くタイプ／会場装飾／スタンド／来店相談／未定',
-    '受取方法': '受取方法：店頭受取／配達／来店相談／発送',
+    '商品タイプ': '（バルーンブーケ／アレンジ／浮くタイプ／会場装飾／バルーンスタンド／来店相談／未定）',
+    'ご予算': '（例：5,000円くらい）',
+    'ご希望日': '（例：2026年10月1日）',
+    'ご希望時間': '（例：14時頃）',
+    '受取方法': '（店頭受取／配達／来店相談／発送）',
   };
-  return items.map((item) => choices[item] || `${item}：`).join('\n');
+  return items.map((item) => `・${item}：\n${choices[item] || ''}`).join('\n\n');
 }
 function mergeIntakeAnswers(fields, text) {
   fields.productType = fields.productType || detectProductType(text) || (hasLabeledAnswer(text, '商品タイプ') ? 'other' : null);
@@ -692,7 +695,7 @@ function missingIntakeFields(fields) {
     !fields.hasBudget && 'ご予算',
   ].filter(Boolean);
 }
-function missingIntakePrompt(missing, productType) { return 'ありがとうございます☺︎ 受け取りました。\n\nあと、次の項目だけ教えてください。該当部分をコピーしてご返信いただければ大丈夫です。\n\n' + missing.map((item) => `${item}：`).join('\n') + intakeFollowUp(productType) + '\n\n確認後、制作・在庫・配達・予約状況を確認してご案内します。'; }
+function missingIntakePrompt(missing, productType) { return 'お問い合わせありがとうございます☺︎\n\nご希望に近い形で制作できるか確認するため、あと下記の内容を教えていただけますでしょうか？\n\n下の項目をコピーして、分かるところだけご記入のうえご返信ください。\n\n【ご注文内容】\n' + intakeRows(missing) + '\n\n内容を確認し、制作可能かどうか確認いたします。\n制作可能な場合は、商品タイプに合わせて必要な内容を追加でお伺いします。'; }
 function intakeIntro(productType) { return ({ arrangement: '置き型アレンジをご希望ですね。', floating_balloon: '浮くタイプのバルーンをご希望ですね。', venue_decoration: '会場装飾のご相談ですね。', balloon_stand: 'バルーンスタンドのご相談ですね。', balloon_bouquet: 'バルーンブーケ・手渡し用ギフトのご相談ですね。', store_consultation: 'ご来店でのご相談ですね。以下の内容で承りました。店舗の予約状況を確認し、改めてご連絡いたします。' }[productType] || 'できるだけイメージに近づけられるよう確認します。'); }
 function intakeFollowUp(productType) { return ({ arrangement: '\n色味・大きさ・飾る場所、文字入れやカードの有無も教えてください。', floating_balloon: '\n室内・屋外、飾り始める時刻、サイズ・個数、固定方法の希望も教えてください。ヘリウム在庫は確認してご案内します。', venue_decoration: '\n会場名、設置・撤去の希望時刻、装飾する範囲、会場写真や平面図、テーマ・色味も教えてください。', balloon_stand: '\n設置先、希望の高さ・幅、名札や文字、設置・撤去の希望も教えてください。', balloon_bouquet: '\n贈る相手、色味・大きさ、文字入れ・カード内容も教えてください。', store_consultation: '\nご相談内容、希望日時、人数、参考画像の有無、予算の目安も教えてください。' }[productType] || '\nご希望の色味・雰囲気、文字入れ・メッセージカードの有無も分かる範囲で教えてください。'); }
 function redactContactDetails(text) { return text.replace(/\b\d{2,4}[- ]?\d{2,4}[- ]?\d{3,4}\b/g, '[連絡先]').slice(0, 500); }
