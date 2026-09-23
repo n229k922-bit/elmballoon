@@ -607,6 +607,10 @@ function orderReply(text, session) {
   session.fields.productType = detectProductType(text);
   mergeIntakeAnswers(session.fields, text);
   const missing = missingIntakeFields(session.fields);
+  if (!missing.length) {
+    session.stage = 'review';
+    return { session, message: orderDetailsReceivedReply() };
+  }
   return { session, message: intakePrompt(missing, session.fields.productType, session.customerKind, Boolean(session.fields.productType || session.fields.purpose)) };
 }
 function collectOrderDetail(text, session) {
@@ -616,14 +620,15 @@ function collectOrderDetail(text, session) {
   const missing = missingIntakeFields(fields);
   if (missing.length) return { session, message: missingIntakePrompt(missing, fields.productType) };
   session.stage = 'review';
-  return { session, message: 'ありがとうございます☺︎ ご希望内容を承りました。制作・在庫・配達・予約状況を店長が確認し、対応可否とお見積りを改めてご連絡いたします。現時点では価格・在庫・納期は確約せず確認してご案内します。' + intakeFollowUp(fields.productType) };
+  return { session, message: orderDetailsReceivedReply() };
+}
+function orderDetailsReceivedReply() {
+  return 'ありがとうございます☺︎ ご希望内容を承りました。制作・在庫・配達・予約状況を店長が確認し、対応可否とお見積りを改めてご連絡いたします。現時点では価格・在庫・納期は確約せず、確認してご案内します。';
 }
 function intakePrompt(missing, productType, customerKind, hasKnownDetails) {
   const greeting = customerKind === 'returning' ? 'いつもありがとうございます☺︎ お久しぶりです。今回もご連絡いただき、うれしいです。' : 'はじめまして☺︎ ご連絡ありがとうございます。';
-  const required = missing.length ? missing : ['商品タイプ', 'ご用途', 'ご希望日', 'ご希望時間', '受取方法', 'ご予算', '色味・雰囲気'];
-  const extra = missing.length ? '' : '\n\n【任意：分かる範囲で】\n商品番号・参考画像：\n大きさ・個数：\n文字入れ：\nメッセージカード：\n贈るお相手（任意）：';
   const guidance = hasKnownDetails ? 'すでにいただいた内容は確認できています。次の項目だけ、コピーしてご返信ください。' : '分かるところだけで大丈夫です。下の項目をコピーしてご返信ください。';
-  return greeting + ' ' + intakeIntro(productType) + '\n\n' + guidance + '\n\n【確認したい内容】\n' + intakeRows(required) + extra + '\n\n参考画像は、このまま画像で送っていただいて大丈夫です。制作・在庫・配達・予約状況を確認し、改めてご連絡いたします。';
+  return greeting + ' ' + intakeIntro(productType) + '\n\n' + guidance + '\n\n【確認したい内容】\n' + intakeRows(missing) + '\n\n参考画像は、このまま画像で送っていただいて大丈夫です。制作・在庫・配達・予約状況を確認し、改めてご連絡いたします。';
 }
 function intakeRows(items) {
   const choices = {
