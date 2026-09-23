@@ -713,6 +713,8 @@ async function getCustomerKind(customerId, text, env) {
 function buildCustomerReply(text, session) {
   if (/^(こんにちは|こんばんは|はじめまして|お世話になります)[！!。]*$/u.test(text)) return { session, message: 'こんにちは😊 ご連絡ありがとうございます。気になるお写真やご希望の内容がありましたら、そのままお送りください。ご用途・ご希望日・ご予算が分かるとスムーズにご案内できます🎈' };
   if (/^注文したい[。！!？?]*$/u.test(text.trim())) return orderReply(text, session);
+  if (session.stage === 'review' && /(?:注文お願いします|注文をお願いします|この内容で注文|お願いします)/u.test(text)) return requestCustomerContact(session);
+  if (session.stage === 'awaiting_contact') return recordCustomerContact(text, session);
   if (session.stage === 'collecting') return collectOrderDetail(text, session);
   if (/(今日|本日|明日|あした|急ぎ|至急)/u.test(text)) return urgentReply(session);
   if (/(ヘリウム|浮[かき]|ガス)/u.test(text)) return heliumReply(session);
@@ -740,6 +742,19 @@ function orderReply(text, session) {
     return { session, message: orderDetailsReceivedReply() };
   }
   return { session, message: intakePrompt(missing, session.fields.productType, session.customerKind, Boolean(session.fields.productType || session.fields.purpose)) };
+}
+
+function requestCustomerContact(session) {
+  session.stage = 'awaiting_contact';
+  return { session, message: 'ご注文ありがとうございます😊\n\n注文確定のため、以下の内容を教えてください。\n\n・お名前（本名）：\n・お電話番号：\n\nお預かりした情報は、ご注文内容の確認と当日のご連絡に使用いたします。' };
+}
+
+function recordCustomerContact(text, session) {
+  const phone = text.match(/(?:電話(?:番号)?|TEL)\s*[：:]?\s*([0-9０-９\-ー－ ]{10,})/iu)?.[1]?.trim() || text.match(/0\d{1,4}[\-ー－ ]?\d{1,4}[\-ー－ ]?\d{3,4}/u)?.[0];
+  const name = text.match(/(?:お名前|氏名|名前)\s*[：:]?\s*([^\n]+)/u)?.[1]?.trim();
+  if (!name || !phone) return { session, message: 'ご回答ありがとうございます😊\n\n注文確定に必要なため、お名前（本名）とお電話番号を以下の形式でお送りください。\n\n・お名前（本名）：\n・お電話番号：' };
+  session.stage = 'confirmed'; session.fields.customerName = name; session.fields.phone = phone;
+  return { session, message: 'お名前とお電話番号を確認しました😊\n\nご注文内容と合わせて記録し、制作準備へ進みます。価格・納期・受取日時の最終案内を改めてお送りします。' };
 }
 function unstructuredOrderInquiry(session) {
   session.stage = 'review';
@@ -770,7 +785,7 @@ function intakePrompt(missing, productType, customerKind, hasKnownDetails) {
   const greeting = customerKind === 'returning' ? 'いつもありがとうございます☺︎ お久しぶりです。今回もお問い合わせありがとうございます。' : 'お問い合わせありがとうございます🎈';
   const guidance = '作りたいイメージや参考にしたい画像がありましたら、まずはそのままお送りください。\n\n画像をもとに、色味・雰囲気・大きさなどを確認しながら、制作内容や対応方法を確認いたします。\n\n画像がない場合や、まだイメージが決まっていない場合も、分かる範囲でご希望をお聞かせください。\n\n下の項目をコピーして、分かるところだけご記入ください。\nまだ決まっていない項目や分からない項目は、「未定」とご記入いただいて大丈夫です。';
   const rows = '【ご注文内容】📷\n\n・参考画像：\n（このトークに画像を添付してください）\n\n・ご希望の色味・雰囲気：\n（例：ピンク系／明るい感じ／落ち着いた雰囲気）\n\n・ご予算：\n（例：15,000円くらい）\n\n・プレゼント・使用予定日：\n（いつプレゼントするか、いつ使うか）\n\n・受取希望日：\n\n・受取希望時間：\n\n・受取方法：\n（店頭受取／配達／発送／未定）';
-  const closing = '内容を確認し、在庫や対応可否を確認いたします。\n\n対応可能な場合は、当店の価格と納期を改めてご案内いたします。\n\n画像やご希望内容について確認が必要な場合は、\n追加でお伺いすることがございます✨';
+  const closing = '内容を確認し、在庫や対応可否を確認いたします。\n\n対応可能な場合は、当店の価格と納期を改めてご案内いたします。\n\n仕上がりのボリュームは、ご予算に合わせて調整いたします。\nご予算内でボリュームを優先するか、内容やデザインを優先するかは、店長と相談しながら決められます。\n\n画像やご希望内容について確認が必要な場合は、\n追加でお伺いすることがございます✨';
   return greeting + '\n\n' + guidance + '\n\n' + rows + '\n\n' + closing;
 }
 function intakeRows(items) {
