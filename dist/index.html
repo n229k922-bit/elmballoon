@@ -238,6 +238,70 @@ var bizcalOptions = {"holiday_title":"\u5e97\u4f11\u65e5","sun":"on","sat":"on",
       .best-sellers__card > span:last-child { min-height:3.4rem; padding:.55rem .25rem; }
       .best-sellers__rank { top:.35rem; left:.35rem; width:1.7rem; height:1.7rem; font-size:.86rem; }
     }
+
+    /* 予約案内：写真の上でも電話番号・営業時間を確実に読めるようにする */
+    #line-order.top_banner {
+      padding: clamp(2rem, 5vw, 4rem) 1rem;
+      background: linear-gradient(135deg, #dff5ff, #f8fdff 52%, #c8edfb) !important;
+    }
+    #line-order.top_banner > a {
+      display: block;
+      max-width: 760px;
+      margin: 0 auto;
+      padding: clamp(1.4rem, 4vw, 2.5rem);
+      background: rgba(255, 255, 255, .96);
+      border: 3px solid #168fc4;
+      border-radius: 22px;
+      box-shadow: 0 12px 30px rgba(22, 143, 196, .22);
+    }
+    #line-order.top_banner h2 {
+      margin: 0 0 1.25rem;
+      padding: .7rem 1rem;
+      border-radius: 999px;
+      background: #168fc4;
+      color: #fff !important;
+      font-size: clamp(1.25rem, 3vw, 1.8rem);
+      line-height: 1.4;
+      text-align: center;
+      text-shadow: none;
+    }
+    #line-order.top_banner .content_box {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: clamp(1rem, 4vw, 2.5rem);
+      margin: 0;
+      padding: 0;
+      background: transparent;
+      box-shadow: none;
+    }
+    #line-order.top_banner .text_box p,
+    #line-order.top_banner .text_box strong {
+      color: #163d52 !important;
+      font-weight: 700;
+      line-height: 1.8;
+      text-shadow: none;
+    }
+    #line-order.top_banner .tel_num {
+      display: inline-block;
+      margin-bottom: .3rem;
+      color: #075d88 !important;
+      font-size: clamp(2rem, 6vw, 3.4rem);
+      letter-spacing: .04em;
+    }
+    #line-order.top_banner .line_QR {
+      flex: 0 0 auto;
+      padding: .5rem;
+      background: #fff;
+      border: 1px solid #c6e6f1;
+      border-radius: 12px;
+    }
+    #line-order.top_banner .line_QR img { display: block; width: 148px; max-width: 28vw; height: auto; }
+    @media (max-width: 600px) {
+      #line-order.top_banner > a { border-radius: 16px; }
+      #line-order.top_banner .content_box { flex-direction: column; text-align: center; }
+      #line-order.top_banner .line_QR img { width: 138px; max-width: 42vw; }
+    }
   </style>
 </head>
 
