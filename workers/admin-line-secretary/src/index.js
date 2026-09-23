@@ -754,7 +754,7 @@ function collectOrderDetail(text, session) {
   return { session, message: orderDetailsReceivedReply() };
 }
 function orderDetailsReceivedReply() {
-  return 'お問い合わせありがとうございます☺︎\n\nご希望に近い形で制作できるか確認するため、まずは以下の基本内容を確認いたしました。\n商品タイプ・ご予算・ご希望日時・受取方法\n\nこちらの内容で対応可能か確認を進めます。\n確認できましたら、商品タイプに合わせて色味・サイズ・個数・文字入れなど、必要な内容だけ追加でお伺いします。\n\n現時点では価格・在庫・納期は確約せず、確認してご案内します。';
+  return 'お問い合わせありがとうございます☺︎\n\nご希望に近い形で制作できるか確認するためまずは以下の内容を確認させてください。\n商品タイプ・ご予算・ご希望日時・受取方法\n\nこちらの内容で対応可能か確認を進めます。\n確認できましたら、商品タイプに合わせて色味・サイズ・個数・文字入れなど、必要な内容だけ追加でお伺いします。\n\n現時点では価格・在庫・納期は確約せず、確認してご案内します。';
 }
 function basicOrderConfirmation(text, session) {
   const product = ({ arrangement: 'アレンジ', floating_balloon: '浮くタイプ', venue_decoration: '会場装飾', balloon_stand: 'バルーンスタンド', balloon_bouquet: 'バルーンブーケ', store_consultation: '来店相談' }[session.fields.productType] || '未定');
