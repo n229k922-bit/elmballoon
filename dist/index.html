@@ -195,11 +195,12 @@ var bizcalOptions = {"holiday_title":"\u5e97\u4f11\u65e5","sun":"on","sat":"on",
       color: #ffffff;
     }
 
-    .order-cta { display:flex; align-items:center; justify-content:center; gap:.7rem; width:min(92%,620px); margin:1.75rem auto 2.3rem; padding:.9rem 1.1rem; border-radius:999px; background:linear-gradient(100deg,#129bd0,#63cbed); box-shadow:0 10px 22px rgba(20,145,194,.28); color:#fff !important; text-align:center; text-decoration:none; transition:transform .2s ease,box-shadow .2s ease; animation:elm-order-pulse 2.6s ease-in-out infinite; }
-    .order-cta:hover,.order-cta:focus-visible { color:#fff !important; transform:translateY(-3px); box-shadow:0 14px 28px rgba(20,145,194,.36); }
-    .order-cta__small { display:none; }
-    .order-cta__main { font-size:1.05rem; font-weight:700; letter-spacing:.04em; }
-    .order-cta__arrow { display:inline-grid; place-items:center; width:1.7rem; height:1.7rem; border-radius:50%; background:rgba(255,255,255,.22); font-size:1.2rem; animation:elm-arrow-down 1.1s ease-in-out infinite; }
+    .order-cta { display:flex; align-items:center; justify-content:center; gap:.7rem; width:min(92%,720px); margin:1.75rem auto 2.5rem; padding:1.15rem 1.4rem; border:2px solid rgba(255,255,255,.86); border-radius:999px; background:linear-gradient(100deg,#1599ca,#71cce5); box-shadow:0 13px 26px rgba(20,145,194,.28),inset 0 1px 0 rgba(255,255,255,.35); color:#fff !important; cursor:pointer; text-align:center; text-decoration:none; transition:transform .2s ease,box-shadow .2s ease,filter .2s ease; animation:elm-order-pulse 2.6s ease-in-out infinite; }
+    .order-cta:hover,.order-cta:focus-visible { color:#fff !important; filter:brightness(1.04); transform:translateY(-4px); box-shadow:0 17px 32px rgba(20,145,194,.38),inset 0 1px 0 rgba(255,255,255,.4); }
+    .order-cta.is-pressed { animation:none; transform:scale(.975); box-shadow:0 7px 16px rgba(20,145,194,.26),inset 0 2px 6px rgba(8,104,145,.22); }
+    .order-cta__small { display:block; font-size:.82rem; font-weight:700; letter-spacing:.08em; opacity:.94; }
+    .order-cta__main { font-size:clamp(1.3rem,2.5vw,1.75rem); font-weight:800; letter-spacing:.06em; }
+    .order-cta__arrow { display:inline-grid; place-items:center; width:2rem; height:2rem; border-radius:50%; background:rgba(255,255,255,.24); font-size:1.45rem; font-weight:800; animation:elm-arrow-up 1.1s ease-in-out infinite; }
 
     .best-sellers { padding:4rem 1.25rem; background:linear-gradient(145deg,#effaff,#fff 48%,#e8f8ff); }
     .best-sellers__inner { max-width:1120px; margin:0 auto; }
@@ -219,7 +220,7 @@ var bizcalOptions = {"holiday_title":"\u5e97\u4f11\u65e5","sun":"on","sat":"on",
     .best-sellers__card img { display:block; aspect-ratio:1/1; width:100%; object-fit:cover; }
     .best-sellers__card > span:last-child { display:block; padding:.8rem .45rem; }
     .best-sellers__rank { position:absolute; z-index:1; top:.55rem; left:.55rem; display:grid; place-items:center; width:2rem; height:2rem; border-radius:50%; background:#1399cd; box-shadow:0 3px 9px rgba(10,113,157,.25); color:#fff; font-size:1rem; font-weight:800; }
-    @keyframes elm-arrow-down { 50% { transform:translateY(3px); } }
+    @keyframes elm-arrow-up { 50% { transform:translateY(-5px); } }
     @keyframes elm-order-pulse { 50% { box-shadow:0 10px 30px rgba(20,145,194,.46); } }
 
     @media screen and (max-width: 767px) {
@@ -227,8 +228,8 @@ var bizcalOptions = {"holiday_title":"\u5e97\u4f11\u65e5","sun":"on","sat":"on",
         padding-left: 12px;
         padding-right: 12px;
       }
-      .order-cta { flex-wrap:wrap; gap:.25rem .6rem; padding:.85rem .75rem; }
-      .order-cta__small { display:block; width:100%; font-size:.74rem; font-weight:700; opacity:.92; }
+      .order-cta { flex-wrap:wrap; gap:.25rem .6rem; padding:1rem .85rem; }
+      .order-cta__small { width:100%; font-size:.78rem; }
       .best-sellers { padding:3rem 1rem; }
       .best-sellers__group { padding:1rem; }
       .best-sellers__heading { align-items:flex-start; flex-direction:column; gap:.35rem; }
@@ -500,7 +501,7 @@ var bizcalOptions = {"holiday_title":"\u5e97\u4f11\u65e5","sun":"on","sat":"on",
   <a class="order-cta" href="#line-order" aria-label="LINEで相談・注文する">
     <span class="order-cta__small">はじめてでも安心</span>
     <span class="order-cta__main">ご注文・ご相談はこちら</span>
-    <span class="order-cta__arrow" aria-hidden="true">↓</span>
+    <span class="order-cta__arrow" aria-hidden="true">↑</span>
   </a>
 
   <!-- お知らせ -->
@@ -1576,6 +1577,23 @@ var cf7msm_posted_data = [];
 var sb_instagram_js_options = {"font_method":"svg","resized_url":"https:\/\/elmballoon.com\/wp\/wp-content\/uploads\/sb-instagram-feed-images\/","placeholder":"https:\/\/elmballoon.com\/wp\/wp-content\/plugins\/instagram-feed\/img\/placeholder.png","ajax_url":"https:\/\/elmballoon.com\/wp\/wp-admin\/admin-ajax.php"};
 </script>
 <script src='https://elmballoon.com/wp/wp-content/plugins/instagram-feed/js/sbi-scripts.min.js?ver=6.1.5' id='sbi_scripts-js'></script>
+<script>
+  (function () {
+    var orderCta = document.querySelector('.order-cta');
+    var orderTarget = document.getElementById('line-order');
+    if (!orderCta || !orderTarget) return;
+
+    orderCta.addEventListener('click', function (event) {
+      event.preventDefault();
+      orderCta.classList.add('is-pressed');
+      window.setTimeout(function () { orderCta.classList.remove('is-pressed'); }, 220);
+      orderTarget.scrollIntoView({
+        behavior: window.matchMedia('(prefers-reduced-motion: reduce)').matches ? 'auto' : 'smooth',
+        block: 'center'
+      });
+    });
+  }());
+</script>
 </body>
 
 </html>
