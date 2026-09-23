@@ -71,7 +71,15 @@ async function calendarAvailability(request, env) {
   const eventsRes = await fetch(eventsUrl, { headers: { Authorization: `Bearer ${token.access_token}` } });
   const events = await eventsRes.json();
   if (!eventsRes.ok) return json({ error: 'calendar_events_failed', detail: events.error || null }, 502);
-  return json({ date, timeMin, timeMax, busy: (events.items || []).filter((event) => event.status !== 'cancelled').map((event) => ({ id: event.id, summary: event.summary || '(予定)', start: event.start?.dateTime || event.start?.date, end: event.end?.dateTime || event.end?.date })) });
+  const busy = (events.items || []).filter((event) => event.status !== 'cancelled').map((event) => ({ id: event.id, summary: event.summary || '(予定名なし)', start: event.start?.dateTime || event.start?.date, end: event.end?.dateTime || event.end?.date }));
+  return json({ date, timeMin, timeMax, busy, report: formatCalendarReport(date, startTime, endTime, busy) });
+}
+
+function formatCalendarReport(date, startTime, endTime, busy) {
+  const lines = busy.length
+    ? busy.map((event) => `・${event.start?.slice(11, 16) || '終日'}〜${event.end?.slice(11, 16) || '終日'}：${event.summary}`).join('\n')
+    : '・重複する予定はありません。';
+  return `【カレンダー確認結果】\n\n対象日時：${formatJapanDate(date)} ${startTime}〜${endTime}\n\n【既存予定】\n${lines}`;
 }
 
 function json(value, status = 200) {
