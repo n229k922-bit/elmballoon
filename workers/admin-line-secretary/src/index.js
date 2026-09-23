@@ -216,7 +216,10 @@ function splitCustomerReply(message) {
   const marker = '【ご注文内容】';
   const index = message.indexOf(marker);
   if (index <= 0) return [message];
-  return [message.slice(0, index).trim(), message.slice(index).trim()];
+  const closingMarker = '\n\n内容を確認し';
+  const closingIndex = message.indexOf(closingMarker, index);
+  if (closingIndex < 0) return [message.slice(0, index).trim(), message.slice(index).trim()];
+  return [message.slice(0, index).trim() + '\n\n' + message.slice(closingIndex).trim(), message.slice(index, closingIndex).trim()];
 }
 
 async function prepareCustomerReplySend(replyToken, userId, reviewId, replacement, confirmed, env) {
@@ -638,6 +641,9 @@ function heliumReply(session) { session.stage = 'helium'; return { session, mess
 function deliveryReply(session) { session.stage = 'delivery'; return { session, message: '配達のご相談ありがとうございます☺︎ お届け地域・ご希望日・ご希望時間・ご予算を確認してご案内します。夏場は高温による破損を防ぐため、発送を控える場合があります。近隣への配達や店頭受け取りも含めて、いちばん良い方法をご提案しますね。' }; }
 function longevityReply(session) { session.stage = 'faq'; return { session, message: 'ご質問ありがとうございます☺︎ バルーンは種類や飾る環境によって異なります。直射日光・高温・尖った物を避けて室内に飾ると、より長く楽しんでいただけます。お写真を送っていただければ、その商品に合わせた目安と保管方法をご案内します🎈' }; }
 function orderReply(text, session) {
+  if (/^注文(?:したい|できますか|したいのですが)[。！!？?]*$/u.test(text.trim())) {
+    session.fields = {};
+  }
   session.stage = 'collecting';
   session.fields.purpose = ['開店','結婚','出産','誕生日','発表会','卒業','退職'].find((purpose) => text.includes(purpose)) || null;
   session.fields.productType = detectProductType(text);
