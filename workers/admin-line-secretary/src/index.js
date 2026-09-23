@@ -627,13 +627,13 @@ async function getCustomerKind(customerId, text, env) {
 
 function buildCustomerReply(text, session) {
   if (/^(こんにちは|こんばんは|はじめまして|お世話になります)[！!。]*$/u.test(text)) return { session, message: 'こんにちは☺︎ ご連絡ありがとうございます。気になるお写真やご希望の内容がありましたら、そのままお送りください。ご用途・ご希望日・ご予算が分かるとスムーズにご案内できます🎈' };
-  if (/^注文(?:したい|できますか|したいのですが|したいです)(?:。|！|!|？|\?)?$/u.test(text.trim())) return orderReply(text, session);
+  if (/^注文したい[。！!？?]*$/u.test(text.trim())) return orderReply(text, session);
   if (session.stage === 'collecting') return collectOrderDetail(text, session);
   if (/(今日|本日|明日|あした|急ぎ|至急)/u.test(text)) return urgentReply(session);
   if (/(ヘリウム|浮[かき]|ガス)/u.test(text)) return heliumReply(session);
   if (/(配送|配達|送[っり]て|郵送)/u.test(text)) return deliveryReply(session);
   if (/(しぼ|どのくらい持|日持ち|持ちます)/u.test(text)) return longevityReply(session);
-  if (/(注文|お願い|作れ|作って|欲しい|ほしい|祝い|誕生日|開店|結婚|出産|発表会|卒業|退職)/u.test(text)) return orderReply(text, session);
+  if (/(注文|お願い|作れ|作って|欲しい|ほしい|祝い|誕生日|開店|結婚|出産|発表会|卒業|退職)/u.test(text)) return unstructuredOrderInquiry(session);
   return { session, message: 'ご連絡ありがとうございます☺︎ 内容を確認して、できるだけご希望に沿えるようご案内します。差し支えなければ、①ご用途 ②ご希望日 ③ご予算 ④お受け取り・配達のどちらか を教えてください。参考のお写真があれば一緒に送っていただいて大丈夫です🎈' };
 }
 
@@ -642,7 +642,7 @@ function heliumReply(session) { session.stage = 'helium'; return { session, mess
 function deliveryReply(session) { session.stage = 'delivery'; return { session, message: '配達のご相談ありがとうございます☺︎ お届け地域・ご希望日・ご希望時間・ご予算を確認してご案内します。夏場は高温による破損を防ぐため、発送を控える場合があります。近隣への配達や店頭受け取りも含めて、いちばん良い方法をご提案しますね。' }; }
 function longevityReply(session) { session.stage = 'faq'; return { session, message: 'ご質問ありがとうございます☺︎ バルーンは種類や飾る環境によって異なります。直射日光・高温・尖った物を避けて室内に飾ると、より長く楽しんでいただけます。お写真を送っていただければ、その商品に合わせた目安と保管方法をご案内します🎈' }; }
 function orderReply(text, session) {
-  if (/^注文(?:したい|できますか|したいのですが|したいです)(?:。|！|!|？|\?)?$/u.test(text.trim())) {
+  if (/^注文したい[。！!？?]*$/u.test(text.trim())) {
     session.fields = {};
   }
   session.stage = 'collecting';
@@ -655,6 +655,10 @@ function orderReply(text, session) {
     return { session, message: orderDetailsReceivedReply() };
   }
   return { session, message: intakePrompt(missing, session.fields.productType, session.customerKind, Boolean(session.fields.productType || session.fields.purpose)) };
+}
+function unstructuredOrderInquiry(session) {
+  session.stage = 'review';
+  return { session, message: 'お問い合わせありがとうございます☺︎\n\n内容を確認し、対応について改めてご連絡いたします。' };
 }
 function collectOrderDetail(text, session) {
   const fields = session.fields;
