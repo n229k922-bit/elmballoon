@@ -757,18 +757,19 @@ function orderDetailsReceivedReply() {
   return 'お問い合わせありがとうございます☺︎\n\nご希望の内容をもとに、制作内容や対応方法を確認するため、まずは分かる範囲で以下の内容を教えてください。\n\n【ご注文内容】\n・商品タイプ：\n・ご用途：\n・プレゼント・使用予定日：\n・ご予算：\n・受取希望日：\n・受取希望時間：\n・受取方法（店頭受取／配達／来店相談／発送）：\n\n上の項目をコピーして、分かるところだけご記入いただければ大丈夫です。\nまだ決まっていない項目は「未定」とご記入ください。\n\n内容を確認し、対応可能か確認を進めます。\n対応可能な場合は、商品タイプに合わせて必要な内容を追加でお伺いします。\n\n価格・在庫・納期については、確認後に改めてご案内いたします☺︎';
 }
 function basicOrderConfirmation(text, session) {
-  const product = ({ arrangement: 'アレンジ', floating_balloon: '浮くタイプ', venue_decoration: '会場装飾', balloon_stand: 'バルーンスタンド', balloon_bouquet: 'バルーンブーケ', store_consultation: '来店相談' }[session.fields.productType] || '未定');
+  const productType = session.fields.productType || detectProductType(text);
+  const product = ({ arrangement: 'アレンジ', floating_balloon: '浮くタイプ', venue_decoration: '会場装飾', balloon_stand: 'バルーンスタンド', balloon_bouquet: 'バルーンブーケ', store_consultation: '来店相談' }[productType] || '未定');
   const budget = text.match(/([0-9０-９][0-9０-９,，]*)\s*円/u)?.[1] || '未定';
-  const date = text.match(/(今日|明日|明後日|今週|来週|再来週|\d{4}[/-]\d{1,2}[/-]\d{1,2}|\d{1,2}月\d{1,2}日)/u)?.[1] || '未定';
+  const date = text.match(/(今日|明日|明後日|今週|来週|再来週|\d{4}[年/-]\d{1,2}[月/-]\d{1,2}日?)/u)?.[1] || '未定';
   const time = text.match(/(午前|午後)?\s*\d{1,2}\s*時(?:頃|ごろ)?/u)?.[0]?.trim() || '未定';
   const method = /配達|配送/u.test(text) ? '配達' : /来店/u.test(text) ? '来店相談' : /発送|郵送/u.test(text) ? '発送' : '店頭受取';
-  return `お問い合わせありがとうございます☺︎\n\n基本内容を確認しました。\n\n・商品タイプ：${product}\n・ご希望日：${date}\n・ご希望時間：${time}\n・受取方法：${method}\n・ご予算：${budget}円\n\nこちらの内容で対応可能か確認を進めます。\n確認ができましたら、改めてご連絡いたします。\nその際、商品タイプに合わせた個別の基本情報や、必要な内容を追加でお伺いします。`;
+  return `回答ありがとうございます☺︎\n\n基本内容を確認しました。\n\n・商品タイプ：${product}\n・ご希望日：${date}\n・ご希望時間：${time}\n・受取方法：${method}\n・ご予算：${budget}円\n\nこちらの内容で対応可能か確認を進めます。\n確認ができましたら、改めてご連絡いたします。\nその際、商品タイプに合わせた個別の基本情報や、必要な内容を追加でお伺いします。`;
 }
 function intakePrompt(missing, productType, customerKind, hasKnownDetails) {
   const greeting = customerKind === 'returning' ? 'いつもありがとうございます☺︎ お久しぶりです。今回もお問い合わせありがとうございます。' : 'お問い合わせありがとうございます☺︎';
   const guidance = hasKnownDetails
     ? 'すでにいただいた内容は確認できています。ご希望の内容をもとに、制作内容や対応方法を確認するため、まだ分かっていない内容だけ教えてください。'
-    : 'ご希望の内容をもとに、制作内容や対応方法を確認するため、まずは分かる範囲で以下の内容を教えてください。';
+    : 'ご希望の内容をもとに、制作内容や対応方法を確認するため、まずは以下の項目をすべてご記入ください。全項目の確認ができましたら、次のご案内へ進みます。';
   return greeting + '\n\n' + guidance + '\n\n下の項目をコピーして、分かるところだけご記入のうえご返信ください。\n\n【ご注文内容】\n' + intakeRows(missing) + '\n\n内容を確認し、対応可能か確認を進めます。\n対応可能な場合は、商品タイプに合わせて必要な内容を追加でお伺いします。';
 }
 function intakeRows(items) {
