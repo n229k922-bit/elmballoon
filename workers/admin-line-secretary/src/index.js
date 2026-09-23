@@ -203,6 +203,8 @@ async function queueCustomerReplyReview(event, env) {
     if (sent) {
       await env.DB.prepare(`INSERT INTO order_messages (order_thread_id, direction, message_text, occurred_at) VALUES (?, 'assistant_outbound', ?, ?)`)
         .bind('customer:' + customerId, confirmation.slice(0, 4900), new Date().toISOString()).run();
+      const names = await getCustomerNames('customer:' + customerId, env);
+      await notifyOwners(`統括マネージャーです。\n\n【基本情報の確認完了】\n${formatCustomerLabel(names.confirmedName || names.displayName)}のお客様へ基本情報を復唱しました。\n\n${confirmation}\n\nこの後、対応可能か確認し、確認後に商品タイプに合わせた追加ヒアリングへ進みます。`, env);
     }
     return;
   }
@@ -691,7 +693,7 @@ function basicOrderConfirmation(text, session) {
   const date = text.match(/(今日|明日|明後日|今週|来週|再来週|\d{4}[/-]\d{1,2}[/-]\d{1,2}|\d{1,2}月\d{1,2}日)/u)?.[1] || '未定';
   const time = text.match(/(午前|午後)?\s*\d{1,2}\s*時(?:頃|ごろ)?/u)?.[0]?.trim() || '未定';
   const method = /配達|配送/u.test(text) ? '配達' : /来店/u.test(text) ? '来店相談' : /発送|郵送/u.test(text) ? '発送' : '店頭受取';
-  return `お問い合わせありがとうございます☺︎\n\n基本内容を確認しました。\n\n・商品タイプ：${product}\n・ご希望日：${date}\n・ご希望時間：${time}\n・受取方法：${method}\n・ご予算：${budget}円\n\nこちらの内容で確認を進めます。制作可能な場合は、商品タイプに合わせて色味・サイズ・個数・文字入れなど、必要な内容を追加でお伺いします。`;
+  return `お問い合わせありがとうございます☺︎\n\n基本内容を確認しました。\n\n・商品タイプ：${product}\n・ご希望日：${date}\n・ご希望時間：${time}\n・受取方法：${method}\n・ご予算：${budget}円\n\nこちらの内容で対応可能か確認を進めます。\n確認ができましたら、改めてご連絡いたします。\nその際、商品タイプに合わせた個別の基本情報や、必要な内容を追加でお伺いします。`;
 }
 function intakePrompt(missing, productType, customerKind, hasKnownDetails) {
   const greeting = customerKind === 'returning' ? 'いつもありがとうございます☺︎ お久しぶりです。今回もご連絡いただき、うれしいです。' : 'はじめまして☺︎ ご連絡ありがとうございます。';
