@@ -36,6 +36,17 @@ async function handleEvent(event, env) {
 async function handleAdmin(event, env) {
   if (event.message?.type !== 'text') return reply(event.replyToken, '営業時間の変更は文字でお送りください。', env);
   const userId = event.source.userId, text = event.message.text.trim(), pendingKey = 'pending:' + userId;
+  const sendReply = text.match(/^送信\s+(review:[^\s]+)(?:\s+([\s\S]+))?$/u);
+  if (sendReply) return prepareCustomerReplySend(event.replyToken, userId, sendReply[1], sendReply[2]?.trim() || null, false, env);
+  const confirmReply = text.match(/^送信確認\s+(review:[^\s]+)$/u);
+  if (confirmReply) return prepareCustomerReplySend(event.replyToken, userId, confirmReply[1], null, true, env);
+  const holdReply = text.match(/^保留\s+(review:[^\s]+)(?:\s+([\s\S]+))?$/u);
+  if (holdReply) {
+    const result = await env.DB.prepare(`UPDATE customer_reply_reviews
+        SET status = 'held', proposed_message = ? WHERE id = ? AND status IN ('needs_review', 'needs_change_confirmation')`)
+      .bind(holdReply[2]?.trim().slice(0, 500) || '店長確認待ち', holdReply[1]).run();
+    return reply(event.replyToken, result.meta.changes ? '返信を保留として記録しました。' : '確認待ちの返信案が見つからないか、すでに処理済みです。', env);
+  }
   const ownerDecision = text.match(/^店長確認\s+(decision:[^\s]+)\s+(.+)$/u);
   if (ownerDecision) {
     const result = await env.DB.prepare(`UPDATE owner_decision_requests
@@ -88,7 +99,7 @@ async function customerLineWebhook(request, env) {
     console.log('customer webhook event', { type: event.type, messageType: event.message?.type || null });
     if (event.type !== 'message' || !['text', 'image'].includes(event.message?.type)) continue;
     if (event.message.type === 'text') await recordCustomerMessage(event, env);
-    else await replyCustomerConversation(event, env);
+    await queueCustomerReplyReview(event, env);
   }
   return new Response('OK');
 }
@@ -136,7 +147,6 @@ async function recordCustomerMessage(event, env) {
 
   if (!candidate) {
     console.log('customer message recorded without schedule candidate');
-    await replyCustomerConversation(event, env);
     return;
   }
   const candidateId = 'candidate:' + (event.webhookEventId || event.message.id);
@@ -150,7 +160,60 @@ async function recordCustomerMessage(event, env) {
   const deliveryPlace = candidate.type === 'delivery' ? extractDeliveryPlaceHint(text) : null;
   const deliveryNote = formatDeliveryPlaceNote(deliveryPlace);
   await notifyOwners(`統括マネージャーです。\n\n注文担当から、${customerLabel}の予定に関する情報が共有されました。\n店長への案内内容と合っているか、ご確認をお願いします。\n\n【${customerLabel}からのご注文・予定候補】\n・${candidate.typeLabel}予定：${scheduledAt}${dateNote}${deliveryNote}\n・お客様のご希望：\n　「${text}」\n\n問題なければ、スケジュール担当に予定登録を依頼します。\n登録してよければ「予定登録 ${candidateId}」と返信してください。\n修正がある場合は、変更内容をそのまま返信してください。`, env);
-  await replyCustomerConversation(event, env);
+}
+
+async function queueCustomerReplyReview(event, env) {
+  const customerId = event.source?.userId;
+  if (!customerId) return;
+  const sourceEventId = event.webhookEventId || event.message?.id;
+  if (!sourceEventId) return;
+  const key = 'customer-session:' + customerId;
+  const session = (await env.SECRETARY_KV.get(key, 'json')) || { stage: 'new', fields: {} };
+  const result = event.message?.type === 'image'
+    ? receiveReferenceImage(session)
+    : buildCustomerReply(event.message?.text?.trim() || '', session);
+  await env.SECRETARY_KV.put(key, JSON.stringify(result.session), { expirationTtl: CUSTOMER_SESSION_TTL });
+
+  const threadId = 'customer:' + customerId;
+  const reviewId = `review:${sourceEventId}`;
+  const inserted = await env.DB.prepare(`INSERT OR IGNORE INTO customer_reply_reviews
+      (id, source_event_id, order_thread_id, customer_line_user_id, draft_message, status, created_at)
+      VALUES (?, ?, ?, ?, ?, 'needs_review', ?)`)
+    .bind(reviewId, sourceEventId, threadId, customerId, result.message, new Date().toISOString()).run();
+  if (!inserted.meta.changes) return;
+
+  const names = await getCustomerNames(threadId, env);
+  const customerLabel = formatCustomerLabel(names.confirmedName || names.displayName);
+  const incoming = event.message?.type === 'image' ? '参考画像が届きました。' : redactContactDetails(event.message?.text || '').slice(0, 500);
+  await notifyOwners(`統括マネージャーです。\n\n【お客様への返信確認】\n${customerLabel}からの連絡：\n「${incoming}」\n\n【送信案】\n${result.message.slice(0, 2500)}\n\n内容を確認してから送信します。\n・このまま送る：送信 ${reviewId}\n・文章を修正して送る：送信 ${reviewId} 修正した文章\n・保留する：保留 ${reviewId} 理由`, env);
+}
+
+async function prepareCustomerReplySend(replyToken, userId, reviewId, replacement, confirmed, env) {
+  const review = await env.DB.prepare(`SELECT * FROM customer_reply_reviews WHERE id = ?`).bind(reviewId).first();
+  if (!review || !['needs_review', 'needs_change_confirmation'].includes(review.status)) {
+    return reply(replyToken, '確認待ちの返信案が見つからないか、すでに処理済みです。', env);
+  }
+  const message = replacement || review.proposed_message || review.draft_message;
+  if (!confirmed && replacement && hasCriticalReplyDifference(review.draft_message, replacement)) {
+    await env.DB.prepare(`UPDATE customer_reply_reviews SET status = 'needs_change_confirmation', proposed_message = ? WHERE id = ?`)
+      .bind(replacement.slice(0, 4900), reviewId).run();
+    return reply(replyToken, `日付・時刻・金額・受取／配達に差分の可能性があります。内容を確認し、送信する場合は「送信確認 ${reviewId}」と返信してください。`, env);
+  }
+  const sent = await pushCustomerMessage(review.customer_line_user_id, message, env);
+  if (!sent) return reply(replyToken, 'お客様への送信に失敗しました。内容は送信せず、確認待ちのままです。', env);
+  const now = new Date().toISOString();
+  await env.DB.batch([
+    env.DB.prepare(`UPDATE customer_reply_reviews SET status = 'sent', proposed_message = ?, sent_at = ?, sent_by = ? WHERE id = ?`)
+      .bind(message.slice(0, 4900), now, userId, reviewId),
+    env.DB.prepare(`INSERT INTO order_messages (order_thread_id, direction, message_text, occurred_at) VALUES (?, 'assistant_outbound', ?, ?)`)
+      .bind(review.order_thread_id, message.slice(0, 4900), now),
+  ]);
+  return reply(replyToken, 'お客様へ送信し、注文記録にも残しました。', env);
+}
+
+function hasCriticalReplyDifference(draft, replacement) {
+  const tokens = (value) => value.match(/\d{4}[/-]\d{1,2}[/-]\d{1,2}|\d{1,2}月\d{1,2}日|\d{1,2}:\d{2}|[0-9０-９][0-9０-９,，]*円|受取|受け取り|配達|来店|発送/g) || [];
+  return JSON.stringify(tokens(draft)) !== JSON.stringify(tokens(replacement));
 }
 
 async function upsertOrderCard(threadId, text, candidate, now, env) {
@@ -558,6 +621,20 @@ async function replyCustomer(replyToken, message, env) {
     body: JSON.stringify({ replyToken, messages: [{ type: 'text', text: message.slice(0, 4900) }] }),
   });
   console.log('customer LINE reply result', response.status, await response.text());
+}
+
+async function pushCustomerMessage(to, message, env) {
+  const response = await fetch('https://api.line.me/v2/bot/message/push', {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      Authorization: 'Bearer ' + env.CUSTOMER_LINE_CHANNEL_ACCESS_TOKEN,
+    },
+    body: JSON.stringify({ to, messages: [{ type: 'text', text: message.slice(0, 4900) }] }),
+  });
+  const responseText = await response.text();
+  console.log('customer LINE push result', response.status, responseText);
+  return response.ok;
 }
 
 async function notifyOwners(message, env) {
