@@ -160,8 +160,8 @@ async function upsertOrderCard(threadId, text, candidate, now, env) {
       (id, order_thread_id, status, purpose, recipient_profile, product_reference,
        requested_quantity, budget_yen, color_preference, size_preference,
        character_request, balloon_message, card_message, fulfillment_type,
-       requested_date, requested_time, created_at, updated_at)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+       requested_date, requested_time, product_type, created_at, updated_at)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
       ON CONFLICT(order_thread_id) DO UPDATE SET
         status = CASE WHEN order_cards.status IN ('intake', 'needs_details') THEN excluded.status ELSE order_cards.status END,
         purpose = COALESCE(NULLIF(excluded.purpose, ''), order_cards.purpose),
@@ -177,12 +177,13 @@ async function upsertOrderCard(threadId, text, candidate, now, env) {
         fulfillment_type = CASE WHEN excluded.fulfillment_type <> 'unknown' THEN excluded.fulfillment_type ELSE order_cards.fulfillment_type END,
         requested_date = COALESCE(excluded.requested_date, order_cards.requested_date),
         requested_time = COALESCE(excluded.requested_time, order_cards.requested_time),
+        product_type = COALESCE(NULLIF(excluded.product_type, ''), order_cards.product_type),
         updated_at = excluded.updated_at`)
     .bind(
       cardId, threadId, details.status, details.purpose, details.recipientProfile, details.productReference,
       details.quantity, details.budgetYen, details.colorPreference, details.sizePreference,
       details.characterRequest, details.balloonMessage, details.cardMessage, details.fulfillmentType,
-      details.requestedDate, details.requestedTime, now, now,
+      details.requestedDate, details.requestedTime, details.productType, now, now,
     ).run();
   await env.DB.prepare(`INSERT INTO order_card_events
       (order_card_id, event_type, actor, detail, occurred_at) VALUES (?, 'customer.message_analyzed', 'assistant', ?, ?)`)
@@ -210,7 +211,18 @@ function extractOrderDetails(text, candidate) {
     fulfillmentType,
     requestedDate: candidate?.date || null,
     requestedTime: candidate?.time || null,
+    productType: detectProductType(text),
   };
+}
+
+function detectProductType(text) {
+  if (/(?:会場装飾|イベント装飾|フォトブース|装飾)/u.test(text)) return 'venue_decoration';
+  if (/スタンド/u.test(text)) return 'balloon_stand';
+  if (/(?:フロート|ヘリウム|浮[かき]|ガス)/u.test(text)) return 'floating_balloon';
+  if (/(?:アレンジ|アレンジメント|卓上|置き型)/u.test(text)) return 'arrangement';
+  if (/(?:ブーケ|花束|手渡し|ギフト)/u.test(text)) return 'balloon_bouquet';
+  if (/(?:来店相談|相談したい|見に行|見て決め)/u.test(text)) return 'store_consultation';
+  return null;
 }
 
 function extractLabeledText(text, labelPattern) {
@@ -509,8 +521,11 @@ function urgentReply(session) { session.stage = 'urgent'; session.fields.urgent 
 function heliumReply(session) { session.stage = 'helium'; return { session, message: 'ヘリウムバルーンのご相談ですね☺︎ バルーンの大きさ・種類・個数で必要量が変わるため、商品パッケージのお写真か、サイズと個数をお送りください。持ち込みの場合も確認してご案内します。\n※在庫状況や対応可能な時間は日によって変わるため、希望日も一緒にお願いします。' }; }
 function deliveryReply(session) { session.stage = 'delivery'; return { session, message: '配達のご相談ありがとうございます☺︎ お届け地域・ご希望日・ご希望時間・ご予算を確認してご案内します。夏場は高温による破損を防ぐため、発送を控える場合があります。近隣への配達や店頭受け取りも含めて、いちばん良い方法をご提案しますね。' }; }
 function longevityReply(session) { session.stage = 'faq'; return { session, message: 'ご質問ありがとうございます☺︎ バルーンは種類や飾る環境によって異なります。直射日光・高温・尖った物を避けて室内に飾ると、より長く楽しんでいただけます。お写真を送っていただければ、その商品に合わせた目安と保管方法をご案内します🎈' }; }
-function orderReply(text, session) { session.stage = 'collecting'; session.fields.purpose = ['開店','結婚','出産','誕生日','発表会','卒業','退職'].find((purpose) => text.includes(purpose)) || 'other'; return { session, message: 'ご注文のご相談ありがとうございます☺︎ できるだけイメージに近づけたいので、①ご用途 ②ご希望日・お渡し希望時間 ③ご予算 ④お受け取り／配達 ⑤ご希望の色味・雰囲気 ⑥文字入れ・メッセージカードの有無 を、分かる範囲で教えてください。ホームページの商品番号、または参考画像だけでも大丈夫です🎈' }; }
-function collectOrderDetail(text, session) { const f = session.fields; f.lastCustomerMessage = redactContactDetails(text); if (/\d{4}[/-]\d{1,2}[/-]\d{1,2}|今日|明日|あした/u.test(text)) f.hasDate = true; if (/円/u.test(text)) f.hasBudget = true; if (/(受取|受け取|来店|配達|配送)/u.test(text)) f.hasMethod = true; const missing = [!f.hasDate && 'ご希望日', !f.hasBudget && 'ご予算', !f.hasMethod && 'お受け取り・配達'].filter(Boolean); if (missing.length) return { session, message: 'ありがとうございます☺︎ 内容、確認しました。あと「' + missing.join('・') + '」を教えていただければ、作成可否とご提案を具体的にご案内できます。文字入れやカードをご希望でしたら、その内容も一緒にお願いします🎈' }; session.stage = 'review'; return { session, message: 'ありがとうございます☺︎ ご希望内容を確認しました。制作・在庫・配達の状況を確認して、対応可否とお見積りをご案内します。文字入れをご希望の場合は、お入れするお名前・メッセージをそのままお送りください。カードは50文字以内が目安です。' }; }
+function orderReply(text, session) { session.stage = 'collecting'; session.fields.purpose = ['開店','結婚','出産','誕生日','発表会','卒業','退職'].find((purpose) => text.includes(purpose)) || 'other'; session.fields.productType = detectProductType(text); return { session, message: intakePrompt(session.fields.productType) }; }
+function collectOrderDetail(text, session) { const f = session.fields; f.lastCustomerMessage = redactContactDetails(text); f.productType = f.productType || detectProductType(text); if (/\d{4}[/-]\d{1,2}[/-]\d{1,2}|\d{1,2}月\d{1,2}日|今日|明日|あした|今週|来週|今度/u.test(text)) f.hasDate = true; if (/円/u.test(text)) f.hasBudget = true; if (/(受取|受け取|来店|配達|配送|発送|郵送)/u.test(text)) f.hasMethod = true; const missing = [!f.hasDate && 'ご希望日', !f.hasBudget && 'ご予算', !f.hasMethod && 'お受け取り・配達・来店の別'].filter(Boolean); if (missing.length) return { session, message: 'ありがとうございます☺︎ 内容を確認しました。まずは「' + missing.join('・') + '」を教えてください。' + intakeFollowUp(f.productType) }; session.stage = 'review'; return { session, message: 'ありがとうございます☺︎ ご希望内容を承りました。制作・在庫・配達・予約状況を店長が確認し、対応可否とお見積りを改めてご連絡いたします。現時点では価格・在庫・納期は確約せず確認してご案内します。' + intakeFollowUp(f.productType) }; }
+function intakePrompt(productType) { return 'ご注文のご相談ありがとうございます☺︎ ' + intakeIntro(productType) + '\n\n①ご用途 ②ご希望日・時間 ③ご予算 ④受取・配達・来店の別 ⑤商品番号または参考画像 を、分かる範囲で教えてください。' + intakeFollowUp(productType) + '\n\n制作・在庫・配達・予約状況を確認し、改めてご連絡いたします。'; }
+function intakeIntro(productType) { return ({ arrangement: '置き型アレンジをご希望ですね。', floating_balloon: '浮くタイプのバルーンをご希望ですね。', venue_decoration: '会場装飾のご相談ですね。', balloon_stand: 'バルーンスタンドのご相談ですね。', balloon_bouquet: 'バルーンブーケ・手渡し用ギフトのご相談ですね。', store_consultation: 'ご来店でのご相談ですね。以下の内容で承りました。店舗の予約状況を確認し、改めてご連絡いたします。' }[productType] || 'できるだけイメージに近づけられるよう確認します。'); }
+function intakeFollowUp(productType) { return ({ arrangement: '\n色味・大きさ・飾る場所、文字入れやカードの有無も教えてください。', floating_balloon: '\n室内・屋外、飾り始める時刻、サイズ・個数、固定方法の希望も教えてください。ヘリウム在庫は確認してご案内します。', venue_decoration: '\n会場名、設置・撤去の希望時刻、装飾する範囲、会場写真や平面図、テーマ・色味も教えてください。', balloon_stand: '\n設置先、希望の高さ・幅、名札や文字、設置・撤去の希望も教えてください。', balloon_bouquet: '\n贈る相手、色味・大きさ、文字入れ・カード内容も教えてください。', store_consultation: '\nご相談内容、希望日時、人数、参考画像の有無、予算の目安も教えてください。' }[productType] || '\nご希望の色味・雰囲気、文字入れ・メッセージカードの有無も分かる範囲で教えてください。'); }
 function redactContactDetails(text) { return text.replace(/\b\d{2,4}[- ]?\d{2,4}[- ]?\d{3,4}\b/g, '[連絡先]').slice(0, 500); }
 
 function timingSafeEqual(left, right) {
