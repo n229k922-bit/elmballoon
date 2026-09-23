@@ -771,7 +771,7 @@ function intakePrompt(missing, productType, customerKind, hasKnownDetails) {
   const guidance = hasKnownDetails
     ? 'すでにいただいた内容は確認できています。ご希望の内容をもとに、制作内容や対応方法を確認するため、まだ分かっていない内容だけ教えてください。'
     : 'ご希望の内容をもとに、制作内容や対応方法を確認するため、まずは以下の項目をすべてご記入ください。全項目の確認ができましたら、次のご案内へ進みます。';
-  return greeting + '\n\n' + guidance + '\n\n下の項目をコピーして、分かるところだけご記入のうえご返信ください。\n\n【ご注文内容】\n' + intakeRows(missing) + '\n\n内容を確認し、対応可能か確認を進めます。\n対応可能な場合は、商品タイプに合わせて必要な内容を追加でお伺いします。';
+  return greeting + '\n\n' + guidance + '\n参考にしたい画像や、作りたいイメージに近い画像がありましたら、そのままお送りください。画像を確認しながら、色味・雰囲気・大きさなども含めてご案内します。\n\n下の項目をコピーして、分かるところだけご記入のうえご返信ください。\n\n【ご注文内容】\n' + intakeRows(missing) + '\n\n内容を確認し、対応可能か確認を進めます。\n対応可能な場合は、商品タイプに合わせて必要な内容を追加でお伺いします。';
 }
 function intakeRows(items) {
   const choices = {
