@@ -4,6 +4,8 @@ const CUSTOMER_SESSION_TTL = 60 * 60 * 24 * 14;
 export default {
   async fetch(request, env) {
     const url = new URL(request.url);
+    if (request.method === 'GET' && url.pathname === '/oauth/google/start') return googleOAuthStart(env);
+    if (request.method === 'GET' && url.pathname === '/oauth/google/callback') return googleOAuthCallback(url, env);
     if (request.method === 'GET' && url.pathname === '/api/business-schedule') {
       return publicSchedule(request, env);
     }
@@ -16,6 +18,35 @@ export default {
     return new Response('Not found', { status: 404 });
   },
 };
+
+const GOOGLE_REDIRECT_URI = 'https://elm-balloon-admin-line-secretary.n229k922.workers.dev/oauth/google/callback';
+
+function googleOAuthStart(env) {
+  if (!env.GOOGLE_CLIENT_ID) return new Response('Google OAuth client is not configured', { status: 503 });
+  const auth = new URL('https://accounts.google.com/o/oauth2/v2/auth');
+  auth.search = new URLSearchParams({
+    client_id: env.GOOGLE_CLIENT_ID,
+    redirect_uri: GOOGLE_REDIRECT_URI,
+    response_type: 'code',
+    access_type: 'offline',
+    prompt: 'consent',
+    scope: 'https://www.googleapis.com/auth/calendar.readonly',
+  });
+  return Response.redirect(auth.toString(), 302);
+}
+
+async function googleOAuthCallback(url, env) {
+  const code = url.searchParams.get('code');
+  if (!code) return new Response('Google OAuth was cancelled or failed.', { status: 400 });
+  const response = await fetch('https://oauth2.googleapis.com/token', {
+    method: 'POST', headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+    body: new URLSearchParams({ code, client_id: env.GOOGLE_CLIENT_ID, client_secret: env.GOOGLE_CLIENT_SECRET, redirect_uri: GOOGLE_REDIRECT_URI, grant_type: 'authorization_code' }),
+  });
+  const token = await response.json();
+  if (!response.ok || !token.refresh_token) return new Response('Google OAuth token exchange failed.', { status: 502 });
+  await env.SECRETARY_KV.put('google-calendar-refresh-token', token.refresh_token);
+  return new Response('Googleカレンダーの読み取り接続が完了しました。この画面は閉じて大丈夫です。', { headers: { 'Content-Type': 'text/plain; charset=utf-8' } });
+}
 
 async function lineWebhook(request, env) {
   const body = await request.text();
