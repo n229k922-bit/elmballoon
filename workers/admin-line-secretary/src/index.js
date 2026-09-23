@@ -765,10 +765,10 @@ function basicOrderConfirmation(text, session) {
   return `お問い合わせありがとうございます☺︎\n\n基本内容を確認しました。\n\n・商品タイプ：${product}\n・ご希望日：${date}\n・ご希望時間：${time}\n・受取方法：${method}\n・ご予算：${budget}円\n\nこちらの内容で対応可能か確認を進めます。\n確認ができましたら、改めてご連絡いたします。\nその際、商品タイプに合わせた個別の基本情報や、必要な内容を追加でお伺いします。`;
 }
 function intakePrompt(missing, productType, customerKind, hasKnownDetails) {
-  const greeting = customerKind === 'returning' ? 'いつもありがとうございます☺︎ お久しぶりです。今回もご連絡いただき、うれしいです。' : 'はじめまして☺︎ ご連絡ありがとうございます。';
+  const greeting = customerKind === 'returning' ? 'いつもありがとうございます☺︎ お久しぶりです。今回もお問い合わせありがとうございます。' : 'お問い合わせありがとうございます☺︎';
   const guidance = hasKnownDetails
-    ? 'すでにいただいた内容は確認できています。ご希望に近い形で制作できるか確認するため、まだ分かっていない内容だけ教えていただけますでしょうか？'
-    : 'ご希望に近い形で制作できるか確認するため、まずは下記の内容を分かる範囲で教えていただけますでしょうか？';
+    ? 'すでにいただいた内容は確認できています。ご希望の内容をもとに、制作内容や対応方法を確認するため、まだ分かっていない内容だけ教えてください。'
+    : 'ご希望の内容をもとに、制作内容や対応方法を確認するため、まずは分かる範囲で以下の内容を教えてください。';
   return greeting + ' ' + intakeIntro(productType) + '\n\n' + guidance + '\n\n下の項目をコピーして、分かるところだけご記入のうえご返信ください。\n\n【ご注文内容】\n' + intakeRows(missing) + '\n\n内容を確認し、制作可能かどうか確認いたします。\n制作可能な場合は、商品タイプに合わせて必要な内容を追加でお伺いします。';
 }
 function intakeRows(items) {
@@ -810,7 +810,7 @@ function missingIntakeFields(fields) {
   ].filter(Boolean);
 }
 function missingIntakePrompt(missing, productType) { return 'お問い合わせありがとうございます☺︎\n\nご希望に近い形で制作できるか確認するため、あと下記の内容を教えていただけますでしょうか？\n\n下の項目をコピーして、分かるところだけご記入のうえご返信ください。\n\n【ご注文内容】\n' + intakeRows(missing) + '\n\n内容を確認し、制作可能かどうか確認いたします。\n制作可能な場合は、商品タイプに合わせて必要な内容を追加でお伺いします。'; }
-function intakeIntro(productType) { return ({ arrangement: '置き型アレンジをご希望ですね。', floating_balloon: '浮くタイプのバルーンをご希望ですね。', venue_decoration: '会場装飾のご相談ですね。', balloon_stand: 'バルーンスタンドのご相談ですね。', balloon_bouquet: 'バルーンブーケ・手渡し用ギフトのご相談ですね。', store_consultation: 'ご来店でのご相談ですね。以下の内容で承りました。店舗の予約状況を確認し、改めてご連絡いたします。' }[productType] || 'できるだけイメージに近づけられるよう確認します。'); }
+function intakeIntro(productType) { return ({ arrangement: '置き型アレンジをご希望ですね。', floating_balloon: '浮くタイプのバルーンをご希望ですね。', venue_decoration: '会場装飾のご相談ですね。', balloon_stand: 'バルーンスタンドのご相談ですね。', balloon_bouquet: 'バルーンブーケ・手渡し用ギフトのご相談ですね。', store_consultation: 'ご来店でのご相談ですね。' }[productType] || 'ご希望の内容を確認しながらご案内いたします。'); }
 function intakeFollowUp(productType) { return ({ arrangement: '\n色味・大きさ・飾る場所、文字入れやカードの有無も教えてください。', floating_balloon: '\n室内・屋外、飾り始める時刻、サイズ・個数、固定方法の希望も教えてください。ヘリウム在庫は確認してご案内します。', venue_decoration: '\n会場名、設置・撤去の希望時刻、装飾する範囲、会場写真や平面図、テーマ・色味も教えてください。', balloon_stand: '\n設置先、希望の高さ・幅、名札や文字、設置・撤去の希望も教えてください。', balloon_bouquet: '\n贈る相手、色味・大きさ、文字入れ・カード内容も教えてください。', store_consultation: '\nご相談内容、希望日時、人数、参考画像の有無、予算の目安も教えてください。' }[productType] || '\nご希望の色味・雰囲気、文字入れ・メッセージカードの有無も分かる範囲で教えてください。'); }
 function redactContactDetails(text) { return text.replace(/\b\d{2,4}[- ]?\d{2,4}[- ]?\d{3,4}\b/g, '[連絡先]').slice(0, 500); }
 
