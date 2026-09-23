@@ -1,5 +1,6 @@
 const encoder = new TextEncoder();
 const CUSTOMER_SESSION_TTL = 60 * 60 * 24 * 14;
+const DATE_INPUT_PATTERN = '(?:令和\\s*\\d{1,2}年?\\s*\\d{1,2}[月/-]\\s*\\d{1,2}日?|R\\s*\\d{1,2}[年/月/-]\\s*\\d{1,2}[月/-]\\s*\\d{1,2}日?|\\d{4}年?\\s*\\d{1,2}[月/-]\\s*\\d{1,2}日?|\\d{1,2}月\\s*\\d{1,2}日?|\\d{4}[/-]\\d{1,2}[/-]\\d{1,2})';
 
 export default {
   async fetch(request, env) {
@@ -760,7 +761,7 @@ function basicOrderConfirmation(text, session) {
   const productType = session.fields.productType || detectProductType(text);
   const product = ({ arrangement: 'アレンジ', floating_balloon: '浮くタイプ', venue_decoration: '会場装飾', balloon_stand: 'バルーンスタンド', balloon_bouquet: 'バルーンブーケ', store_consultation: '来店相談' }[productType] || '未定');
   const budget = text.match(/([0-9０-９][0-9０-９,，]*)\s*円/u)?.[1] || '未定';
-  const date = text.match(/(今日|明日|明後日|今週|来週|再来週|\d{4}[年/-]\d{1,2}[月/-]\d{1,2}日?)/u)?.[1] || '未定';
+  const date = text.match(new RegExp(`(今日|明日|明後日|今週|来週|再来週|${DATE_INPUT_PATTERN})`, 'u'))?.[1] || '未定';
   const time = text.match(/(午前|午後)?\s*\d{1,2}\s*時(?:頃|ごろ)?/u)?.[0]?.trim() || '未定';
   const method = /配達|配送/u.test(text) ? '配達' : /来店/u.test(text) ? '来店相談' : /発送|郵送/u.test(text) ? '発送' : '店頭受取';
   return `回答ありがとうございます☺︎\n\n基本内容を確認しました。\n\n・商品タイプ：${product}\n・ご希望日：${date}\n・ご希望時間：${time}\n・受取方法：${method}\n・ご予算：${budget}円\n\nこちらの内容で対応可能か確認を進めます。\n確認ができましたら、改めてご連絡いたします。\nその際、商品タイプに合わせた個別の基本情報や、必要な内容を追加でお伺いします。`;
@@ -777,8 +778,8 @@ function intakeRows(items) {
     '商品タイプ': '（バルーンブーケ／アレンジ／浮くタイプ／会場装飾／バルーンスタンド／来店相談／未定）',
     'ご予算': '（例：5,000円くらい）',
     'ご用途': '（例：誕生日／開店祝い／記念日）',
-    'プレゼント・使用予定日': '（例：2026年10月1日）',
-    'ご希望日': '（例：2026年10月1日）',
+    'プレゼント・使用予定日': '（例：10月1日／年を付けても可）',
+    'ご希望日': '（例：10月1日／2026年10月1日など）',
     'ご希望時間': '（例：14時頃）',
     '受取方法': '（店頭受取／配達／来店相談／発送）',
   };
@@ -787,7 +788,7 @@ function intakeRows(items) {
 function mergeIntakeAnswers(fields, text) {
   fields.productType = fields.productType || detectProductType(text) || (hasLabeledAnswer(text, '商品タイプ') ? 'other' : null);
   fields.hasPurpose = fields.hasPurpose || Boolean(fields.purpose) || hasLabeledAnswer(text, 'ご用途|用途');
-  fields.hasDate = fields.hasDate || /\d{4}[/-]\d{1,2}[/-]\d{1,2}|\d{1,2}月\d{1,2}日|今日|明日|あした|今週|来週|今度/u.test(text) || hasLabeledAnswer(text, 'ご希望日|希望日');
+  fields.hasDate = fields.hasDate || new RegExp(`${DATE_INPUT_PATTERN}|今日|明日|あした|今週|来週|今度`, 'u').test(text) || hasLabeledAnswer(text, 'ご希望日|希望日');
   fields.hasUseDate = fields.hasUseDate || hasLabeledAnswer(text, 'プレゼント・使用予定日|使用予定日|利用日|使用日');
   fields.hasTime = fields.hasTime || /\d{1,2}:\d{2}|午前|午後|時頃?|まで/u.test(text) || hasLabeledAnswer(text, 'ご希望時間|希望時間');
   fields.hasBudget = fields.hasBudget || /円/u.test(text) || hasLabeledAnswer(text, 'ご予算|予算');
