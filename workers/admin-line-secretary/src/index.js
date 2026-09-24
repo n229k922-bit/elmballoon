@@ -226,6 +226,7 @@ async function recordCustomerMessage(event, env) {
     .bind(event.webhookEventId || event.message.id, threadId, text, now).run();
 
   const candidate = extractScheduleCandidate(text);
+  const scheduleConflict = candidate ? await findBusinessScheduleConflict(candidate, env) : null;
   await upsertOrderCard(threadId, text, candidate, now, env);
 
   const customerNames = await getCustomerNames(threadId, env);
@@ -254,8 +255,25 @@ async function recordCustomerMessage(event, env) {
   await env.DB.prepare(`INSERT OR IGNORE INTO schedule_candidates
       (id, order_thread_id, event_type, event_date, event_time, status, source_summary, created_at)
       VALUES (?, ?, ?, ?, ?, 'needs_owner_review', ?, ?)`)
-    .bind(candidateId, threadId, candidate.type, candidate.date, candidate.time, text, now).run();
+    .bind(candidateId, threadId, candidate.type, candidate.date, candidate.time,
+      scheduleConflict ? `【営業日注意】${scheduleConflict}\n${text}` : text, now).run();
+  if (scheduleConflict) {
+    await notifyOwners(`統括マネージャーです。\n\n【営業日との競合を検知】\n${customerLabel}の${formatScheduleDate(candidate.date, candidate.time)}の${candidate.typeLabel}希望について、${scheduleConflict}\n\n注文候補は自動確定せず、店長確認待ちで記録しました。`, env);
+  }
   console.log('schedule candidate created', { type: candidate.type, date: candidate.date });
+}
+
+async function findBusinessScheduleConflict(candidate, env) {
+  const row = await env.DB.prepare(`SELECT status, open_time, close_time, note
+      FROM business_schedule WHERE date = ?`).bind(candidate.date).first();
+  if (!row) return null;
+  if (row.status === 'closed') return row.note || 'この日は店休日です。';
+  if (row.status === 'special_hours' && candidate.time && row.open_time && row.close_time
+      && (candidate.time < row.open_time || candidate.time >= row.close_time)) {
+    return `${row.open_time}〜${row.close_time}のみ営業です（希望時刻は営業時間外）。`;
+  }
+  if (row.status === 'special_hours' && !candidate.time) return `${row.open_time}〜${row.close_time}のみ営業です（希望時刻の確認が必要）。`;
+  return null;
 }
 
 async function queueCustomerReplyReview(event, env) {

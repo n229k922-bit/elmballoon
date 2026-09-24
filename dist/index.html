@@ -93,6 +93,8 @@ var bizcalOptions = {"holiday_title":"\u5e97\u4f11\u65e5","sun":"on","sat":"on",
 
     .timed-notice { display:none; padding:.75rem 1rem; background:#087eae; color:#fff; font-weight:700; text-align:center; }
     .timed-notice.is-active { display:block; }
+    .calendar-sync-notice { display:none; padding:.6rem 1rem; background:#fff4d6; border-bottom:1px solid #edc66a; color:#74520a; font-size:.86rem; font-weight:700; text-align:center; }
+    .calendar-sync-notice.is-visible { display:block; }
 
     /* 自前の営業日カレンダー（WordPressプラグインには依存しません） */
     .elm-calendar { width:min(100%, 680px); aspect-ratio:1 / 1; box-sizing:border-box; margin:0 auto; padding:1.1rem; background:#fff; border:2px solid var(--sky-line); border-radius:18px; box-shadow:0 8px 22px rgba(22,143,196,.10); }
@@ -358,6 +360,7 @@ var bizcalOptions = {"holiday_title":"\u5e97\u4f11\u65e5","sun":"on","sat":"on",
       </div>
           </div>
     <div id="timed-notice" class="timed-notice" role="status"></div>
+    <div id="calendar-sync-notice" class="calendar-sync-notice" role="status"></div>
 
     <!-- ヘッダー -->
     <header>
@@ -1590,6 +1593,8 @@ https://www.facebook.com/elmballoon/⠀
       fetch('https://elm-balloon-admin-line-secretary.n229k922.workers.dev/api/business-schedule', { headers: { Accept: 'application/json' } }).then(function (response) { if (!response.ok) throw new Error('remote calendar'); return response.json(); }).catch(function () { return null; })
     ]).then(function (values) {
       var data = mergeRemote(values[0], values[1]);
+      var syncNotice = document.getElementById('calendar-sync-notice');
+      if (!values[1] && syncNotice) { syncNotice.textContent = '営業日情報を最新取得できないため、保存済みの情報を表示しています。'; syncNotice.classList.add('is-visible'); }
       function repaint() { render(data); }
       document.getElementById('calendar-prev').addEventListener('click', function () { state = new Date(state.getFullYear(), state.getMonth() - 1, 1); repaint(); });
       document.getElementById('calendar-next').addEventListener('click', function () { state = new Date(state.getFullYear(), state.getMonth() + 1, 1); repaint(); });
