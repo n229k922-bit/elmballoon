@@ -82,6 +82,13 @@ var bizcalOptions = {"holiday_title":"\u5e97\u4f11\u65e5","sun":"on","sat":"on",
       background: linear-gradient(90deg, #dff5ff, #f9fdff 48%, #dff5ff);
       border-bottom: 1px solid var(--sky-line);
     }
+    .notice_area .text p { margin:.2rem 0; font-size:clamp(.78rem,1.4vw,.98rem); line-height:1.45; }
+    #top_first_view .top_fv { position:relative; }
+    .hero-message { position:absolute; z-index:3; left:clamp(1rem,6vw,5rem); bottom:clamp(1.25rem,5vw,4rem); max-width:min(88%, 30rem); padding:1rem 1.25rem; border-radius:1rem; background:rgba(255,255,255,.9); box-shadow:0 8px 24px rgba(30,105,135,.2); color:#174c65; }
+    .hero-message strong { display:block; font-size:clamp(1.25rem,3.4vw,2.15rem); line-height:1.25; }
+    .hero-message span { display:block; margin-top:.35rem; font-size:clamp(.85rem,1.7vw,1.05rem); line-height:1.5; }
+    .hero-message__link { display:inline-flex; align-items:center; gap:.35rem; margin-top:.7rem; padding:.5rem .85rem; border-radius:999px; background:#168fc4; color:#fff !important; font-size:.9rem; font-weight:800; text-decoration:none; }
+    .hero-message__link:focus-visible, .hero-message__link:hover { background:#087eae; }
 
     .timed-notice { display:none; padding:.75rem 1rem; background:#087eae; color:#fff; font-weight:700; text-align:center; }
     .timed-notice.is-active { display:block; }
@@ -112,6 +119,7 @@ var bizcalOptions = {"holiday_title":"\u5e97\u4f11\u65e5","sun":"on","sat":"on",
     .elm-calendar__day.is-today .elm-calendar__date { background:#ffcc5d; color:#493506; box-shadow:0 0 0 3px #fff2c9; }
     .elm-calendar__details { display:none; margin-top:.65rem; padding:.5rem .7rem; border-radius:10px; background:#effaff; color:#176b8f; font-size:.88rem; font-weight:700; line-height:1.5; }
     .elm-calendar__details.is-visible { display:block; }
+    .elm-calendar__details strong { color:#8f263b; }
     @media (max-width:600px) { .elm-calendar { padding:.65rem; border-radius:12px; } .elm-calendar__title { font-size:1rem; } .elm-calendar__bar button { padding:.45rem .55rem; font-size:.78rem; } .elm-calendar__legend { gap:.3rem; font-size:.72rem; } .elm-calendar__legend span { padding:.25rem .48rem; } .elm-calendar__day { padding:.12rem; font-size:.72rem; } .elm-calendar__date { width:1.55rem; height:1.55rem; } #business-calendar .elm-calendar__day.is-closed::after { content:"休"; min-width:1.3rem; height:1.1rem; padding:0 .18rem; bottom:.1rem; font-size:.58rem; } #business-calendar .elm-calendar__day.has-partial::after { content:"時"; min-width:1.3rem; height:1.1rem; padding:0 .18rem; bottom:.1rem; font-size:.58rem; } .elm-calendar__details { font-size:.78rem; } }
 
     .notice_area a,
@@ -248,7 +256,7 @@ var bizcalOptions = {"holiday_title":"\u5e97\u4f11\u65e5","sun":"on","sat":"on",
       padding: clamp(2rem, 5vw, 4rem) 1rem;
       background: linear-gradient(135deg, #dff5ff, #f8fdff 52%, #c8edfb) !important;
     }
-    #line-order.top_banner > a {
+    #line-order.top_banner > .top_banner__link {
       display: block;
       max-width: 760px;
       margin: 0 auto;
@@ -258,7 +266,7 @@ var bizcalOptions = {"holiday_title":"\u5e97\u4f11\u65e5","sun":"on","sat":"on",
       border-radius: 22px;
       box-shadow: 0 12px 30px rgba(22, 143, 196, .22);
     }
-    #line-order.top_banner > a > h2 {
+    #line-order.top_banner > .top_banner__link > h2 {
       margin: 0 0 1.25rem;
       padding: .7rem 1rem;
       border-radius: 999px;
@@ -307,10 +315,24 @@ var bizcalOptions = {"holiday_title":"\u5e97\u4f11\u65e5","sun":"on","sat":"on",
       border-radius: 12px;
     }
     #line-order.top_banner .line_QR img { display: block; width: 148px; max-width: 28vw; height: auto; }
+    .order-actions { display:flex; flex-wrap:wrap; gap:.65rem; margin-top:.75rem; }
+    .order-actions a { display:inline-flex; align-items:center; justify-content:center; min-height:44px; padding:.55rem .9rem; border-radius:999px; font-weight:800; text-decoration:none; }
+    .order-actions__tel { background:#e9f7fd; border:1px solid #8acfe8; color:#075d88 !important; }
+    .order-actions__line { background:#06c755; border:1px solid #04a947; color:#fff !important; }
+    .order-actions a:focus-visible, .order-actions a:hover { transform:translateY(-1px); box-shadow:0 4px 10px rgba(22,143,196,.18); }
+    .line_QR__caption { margin:.35rem 0 0; color:#176b8f; font-size:.75rem; font-weight:700; text-align:center; }
+    .item_category .btn_anime a:focus-visible { outline:3px solid #168fc4; outline-offset:4px; }
+    .item_category .text_box .text { font-size:clamp(.82rem,1.5vw,1rem); line-height:1.55; }
+    .item_category > .content_box > .btn a { min-height:48px; display:inline-flex; align-items:center; justify-content:center; padding:.7rem 1.25rem; }
     @media (max-width: 600px) {
-      #line-order.top_banner > a { border-radius: 16px; }
+      #line-order.top_banner > .top_banner__link { border-radius: 16px; }
       #line-order.top_banner .content_box { flex-direction: column; text-align: center; }
       #line-order.top_banner .line_QR img { width: 138px; max-width: 42vw; }
+      .hero-message { left:1rem; right:1rem; bottom:1rem; max-width:none; padding:.8rem 1rem; }
+      .hero-message strong { font-size:1.25rem; }
+      .hero-message span { font-size:.82rem; }
+      .order-actions { justify-content:center; }
+      .order-actions a { flex:1 1 8.5rem; }
     }
   </style>
 </head>
@@ -457,6 +479,11 @@ var bizcalOptions = {"holiday_title":"\u5e97\u4f11\u65e5","sun":"on","sat":"on",
         style="background-image: url(https://elmballoon.com/wp/wp-content/themes/elmballoon3/img/front/top_fv4.jpg); background-size: cover; background-position: center;">
       </li>
     </ul>
+    <div class="hero-message">
+      <strong>大切な日を彩るバルーンギフト</strong>
+      <span>霧島市のバルーン専門店 elm・balloon</span>
+      <a class="hero-message__link" href="#line-order">ご注文・ご相談はこちら&nbsp;→</a>
+    </div>
   </section>
 
   <section class="calendar" id="business-calendar">
@@ -471,12 +498,12 @@ var bizcalOptions = {"holiday_title":"\u5e97\u4f11\u65e5","sun":"on","sat":"on",
   </section>
 
   <section class="top_banner" id="line-order">
-    <a href="https://elmballoon.com/contact/">
+    <div class="top_banner__link">
       <h2>ご予約・お問い合わせはこちら</h2>
       <div class="content_box">
         <div class="text_box">
           <p>
-            <strong class="tel_num"></strong>
+            <a class="tel_num" href="tel:09086200905" aria-label="電話で注文・相談する"></a>
             <br>【営業時間】10:00~16:00
             <br>【店休日】日曜・祝日（土曜は予約のみ）
           </p>
@@ -486,14 +513,19 @@ var bizcalOptions = {"holiday_title":"\u5e97\u4f11\u65e5","sun":"on","sat":"on",
               style="display: none;"></div>
             <script src="https://www.line-website.com/social-plugins/js/thirdparty/loader.min.js" async="async"
               defer="defer"></script>
+            <div class="order-actions" aria-label="注文方法">
+              <a class="order-actions__tel" href="tel:09086200905">電話で注文・相談</a>
+              <a class="order-actions__line" href="https://lin.ee/JouXL3T" target="_blank" rel="noopener">LINEで相談する</a>
+            </div>
           </div>
         </div>
         <div class="line_QR">
-          <img src="https://elmballoon.com/wp/wp-content/themes/elmballoon3/img/LINE@QR.png" alt="">
+          <img src="https://elmballoon.com/wp/wp-content/themes/elmballoon3/img/LINE@QR.png" alt="elm・balloon公式LINEの友だち追加用QRコード" loading="lazy">
+          <p class="line_QR__caption">スマホで読み取ってLINE相談</p>
         </div>
       </div>
 
-    </a>
+    </div>
   </section>
 </article>
 <!-- top_firstview -->
@@ -1574,6 +1606,14 @@ var cf7msm_posted_data = [];
 var sb_instagram_js_options = {"font_method":"svg","resized_url":"https:\/\/elmballoon.com\/wp\/wp-content\/uploads\/sb-instagram-feed-images\/","placeholder":"https:\/\/elmballoon.com\/wp\/wp-content\/plugins\/instagram-feed\/img\/placeholder.png","ajax_url":"https:\/\/elmballoon.com\/wp\/wp-admin\/admin-ajax.php"};
 </script>
 <script src='https://elmballoon.com/wp/wp-content/plugins/instagram-feed/js/sbi-scripts.min.js?ver=6.1.5' id='sbi_scripts-js'></script>
+<script>
+  (function () {
+    /* 初期表示に不要な商品・SNS画像は遅延読み込みにして、スマホの表示を軽くする */
+    document.querySelectorAll('img:not([loading])').forEach(function (image) {
+      if (!image.closest('header') && !image.closest('#top_first_view')) image.loading = 'lazy';
+    });
+  }());
+</script>
 <a class="order-cta" href="#line-order" aria-label="ご注文・ご相談はこちら。押すと予約・お問い合わせ欄へ移動します。">
   <span class="order-cta__main">ご注文・ご相談はこちら</span>
 </a>
@@ -1581,15 +1621,18 @@ var sb_instagram_js_options = {"font_method":"svg","resized_url":"https:\/\/elmb
   (function () {
     var orderCta = document.querySelector('.order-cta');
     var orderTarget = document.getElementById('line-order');
-    var topPanel = document.querySelector('.top_first_view');
+    var topPanel = document.getElementById('top_first_view') || document.querySelector('.top_first_view');
+    var calendarPanel = document.getElementById('business-calendar');
     if (!orderCta || !orderTarget) return;
 
     function updateOrderCta() {
       var targetBounds = orderTarget.getBoundingClientRect();
       var panelBounds = topPanel && topPanel.getBoundingClientRect();
+      var calendarBounds = calendarPanel && calendarPanel.getBoundingClientRect();
       var topPanelVisible = panelBounds && panelBounds.bottom > 0 && panelBounds.top < window.innerHeight;
+      var calendarVisible = calendarBounds && calendarBounds.bottom > 0 && calendarBounds.top < window.innerHeight;
       var orderSectionVisible = targetBounds.bottom > 0 && targetBounds.top < window.innerHeight;
-      var targetVisible = topPanelVisible || orderSectionVisible;
+      var targetVisible = topPanelVisible || calendarVisible || orderSectionVisible;
       orderCta.classList.toggle('is-target-visible', targetVisible);
       orderCta.setAttribute('aria-hidden', String(targetVisible));
     }
