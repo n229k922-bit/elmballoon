@@ -1544,7 +1544,7 @@ https://www.facebook.com/elmballoon/⠀
 <!-- フッター -->
 
 <script>
-  /* 自前データだけを読む営業日カレンダー。会話による更新では data/calendar.json を変更します。 */
+  /* Workerの公開APIを優先し、停止時は同梱データへ安全にフォールバックする営業日カレンダー。 */
   (function () {
     var grid = document.getElementById('elm-calendar-grid');
     var title = document.getElementById('calendar-title');
@@ -1571,13 +1571,25 @@ https://www.facebook.com/elmballoon/⠀
         var exception = exceptions.find(function (item) { return item.date === date; });
         var regular = (data.weekly_closed_days || [0,6]).indexOf(week) !== -1 || !!holidays[date];
         var partial = exception && exception.start && exception.end;
-        var label = partial ? (exception.start + '〜' + exception.end + ' ' + (exception.label || '臨時休業')) : (exception ? (exception.label || '臨時休業') : (regular ? (holidays[date] || '店休日') : '営業予定'));
-        var classes = 'elm-calendar__day' + (partial ? ' has-partial' : ((regular || exception) ? ' is-closed' : '')) + (date === today ? ' is-today' : '');
+        var explicitlyOpen = exception && exception.status === 'open';
+        var explicitlyClosed = exception && exception.status === 'closed';
+        var closed = !explicitlyOpen && (explicitlyClosed || regular);
+        var label = partial ? (exception.start + '〜' + exception.end + ' ' + (exception.label || '時間指定の休業')) : (exception ? (exception.label || (explicitlyOpen ? '営業予定' : '臨時休業')) : (regular ? (holidays[date] || '店休日') : '営業予定'));
+        var classes = 'elm-calendar__day' + (partial ? ' has-partial' : (closed ? ' is-closed' : '')) + (date === today ? ' is-today' : '');
         grid.insertAdjacentHTML('beforeend', '<button type="button" class="' + classes + '" data-date="' + date + '" data-label="' + label + '" aria-label="' + date + ' ' + label + '"><span class="elm-calendar__date">' + day + '</span></button>');
       }
       grid.querySelectorAll('button[data-date]').forEach(function (button) { button.addEventListener('click', function () { details.textContent = button.dataset.date + '：' + button.dataset.label; details.classList.add('is-visible'); }); });
     }
-    fetch('./data/calendar.json').then(function (response) { if (!response.ok) throw new Error('calendar'); return response.json(); }).then(function (data) {
+    function mergeRemote(base, remote) {
+      var remoteExceptions = remote && Array.isArray(remote.exceptions) ? remote.exceptions : [];
+      var dates = {}; remoteExceptions.forEach(function (item) { dates[item.date] = true; });
+      return Object.assign({}, base, { exceptions: (base.exceptions || []).filter(function (item) { return !dates[item.date]; }).concat(remoteExceptions) });
+    }
+    Promise.all([
+      fetch('./data/calendar.json').then(function (response) { if (!response.ok) throw new Error('fallback calendar'); return response.json(); }),
+      fetch('https://elm-balloon-admin-line-secretary.n229k922.workers.dev/api/business-schedule', { headers: { Accept: 'application/json' } }).then(function (response) { if (!response.ok) throw new Error('remote calendar'); return response.json(); }).catch(function () { return null; })
+    ]).then(function (values) {
+      var data = mergeRemote(values[0], values[1]);
       function repaint() { render(data); }
       document.getElementById('calendar-prev').addEventListener('click', function () { state = new Date(state.getFullYear(), state.getMonth() - 1, 1); repaint(); });
       document.getElementById('calendar-next').addEventListener('click', function () { state = new Date(state.getFullYear(), state.getMonth() + 1, 1); repaint(); });

@@ -25,6 +25,24 @@ export default {
 
 const GOOGLE_REDIRECT_URI = 'https://elm-balloon-admin-line-secretary.n229k922.workers.dev/oauth/google/callback';
 
+async function publicSchedule(request, env) {
+  const rows = await env.DB.prepare(`SELECT date, status, open_time, close_time, note, updated_at
+      FROM business_schedule ORDER BY date ASC`).all();
+  const exceptions = (rows.results || []).map((row) => {
+    if (row.status === 'special_hours') {
+      return { date: row.date, status: row.status, start: row.open_time, end: row.close_time, label: row.note || '時間指定の休業' };
+    }
+    return { date: row.date, status: row.status, label: row.note || (row.status === 'closed' ? '臨時休業' : '営業予定') };
+  });
+  const body = { timezone: 'Asia/Tokyo', exceptions, updated_at: rows.results?.[0]?.updated_at || null };
+  const origin = request.headers.get('Origin') || '';
+  const allowedOrigins = (env.ALLOWED_ORIGINS || 'https://n229k922-bit.github.io,https://elmballoon.com,https://www.elmballoon.com')
+    .split(',').map((value) => value.trim()).filter(Boolean);
+  const headers = { 'Cache-Control': 'no-store' };
+  if (allowedOrigins.includes(origin)) headers['Access-Control-Allow-Origin'] = origin;
+  return json(body, 200, headers);
+}
+
 function googleOAuthStart(env) {
   if (!env.GOOGLE_CLIENT_ID) return new Response('Google OAuth client is not configured', { status: 503 });
   const auth = new URL('https://accounts.google.com/o/oauth2/v2/auth');
@@ -83,8 +101,8 @@ function formatCalendarReport(date, startTime, endTime, busy) {
   return `【カレンダー確認結果】\n\n対象日時：${formatJapanDate(date)} ${startTime}〜${endTime}\n\n【既存予定】\n${lines}`;
 }
 
-function json(value, status = 200) {
-  return new Response(JSON.stringify(value), { status, headers: { 'Content-Type': 'application/json; charset=utf-8' } });
+function json(value, status = 200, extraHeaders = {}) {
+  return new Response(JSON.stringify(value), { status, headers: { 'Content-Type': 'application/json; charset=utf-8', ...extraHeaders } });
 }
 
 async function lineWebhook(request, env) {
@@ -697,9 +715,10 @@ async function applyChange(change, userId, env) {
     ON CONFLICT(date) DO UPDATE SET status = excluded.status, open_time = excluded.open_time,
       close_time = excluded.close_time, updated_at = excluded.updated_at, updated_by = excluded.updated_by`)
     .bind(change.date, change.status, change.openTime, change.closeTime, userId).run();
-  await env.DB.prepare(`INSERT INTO audit_log (actor_line_user_id, action, business_date, detail)
-    VALUES (?, 'schedule.update', ?, ?)`)
-    .bind(userId, change.date, JSON.stringify({ before: before || null, after: change })).run();
+  await env.DB.prepare(`INSERT INTO audit_log
+      (timestamp, actor_line_user_id, action, before_json, after_json, result, error_code)
+    VALUES (datetime('now'), ?, 'schedule.update', ?, ?, 'success', NULL)`)
+    .bind(userId, JSON.stringify(before || null), JSON.stringify({ ...change, date: change.date })).run();
 }
 
 async function getCustomerKind(customerId, text, env) {
