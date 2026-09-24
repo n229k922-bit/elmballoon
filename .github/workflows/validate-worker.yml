@@ -1,0 +1,31 @@
+name: Validate integrated systems
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+permissions:
+  contents: read
+
+jobs:
+  worker-syntax:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out source
+        uses: actions/checkout@v4
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: Check Worker syntax
+        run: node --check workers/admin-line-secretary/src/index.js
+      - name: Check required integration routes
+        shell: bash
+        run: |
+          grep -q "'/webhook/line'" workers/admin-line-secretary/src/index.js
+          grep -q "'/webhook/customer-line'" workers/admin-line-secretary/src/index.js
+          grep -q "'/api/business-schedule'" workers/admin-line-secretary/src/index.js
+          grep -q "function publicSchedule" workers/admin-line-secretary/src/index.js
+          grep -q "business-schedule" dist/index.html
