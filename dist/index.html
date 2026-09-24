@@ -1581,11 +1581,15 @@ var sb_instagram_js_options = {"font_method":"svg","resized_url":"https:\/\/elmb
   (function () {
     var orderCta = document.querySelector('.order-cta');
     var orderTarget = document.getElementById('line-order');
+    var topPanel = document.querySelector('.top_first_view');
     if (!orderCta || !orderTarget) return;
 
     function updateOrderCta() {
       var targetBounds = orderTarget.getBoundingClientRect();
-      var targetVisible = targetBounds.bottom > 0 && targetBounds.top < window.innerHeight;
+      var panelBounds = topPanel && topPanel.getBoundingClientRect();
+      var topPanelVisible = panelBounds && panelBounds.bottom > 0 && panelBounds.top < window.innerHeight;
+      var orderSectionVisible = targetBounds.bottom > 0 && targetBounds.top < window.innerHeight;
+      var targetVisible = topPanelVisible || orderSectionVisible;
       orderCta.classList.toggle('is-target-visible', targetVisible);
       orderCta.setAttribute('aria-hidden', String(targetVisible));
     }
