@@ -864,7 +864,7 @@ function collectOrderDetail(text, session) {
   return { session, message: orderDetailsReceivedReply() };
 }
 function orderDetailsReceivedReply() {
-  return 'ご回答ありがとうございます☺︎\n\nご希望内容を確認しました。制作可否・在庫・納期・お届け方法を店長が確認し、改めてご案内いたします。\n\n価格やお届け日時は、この時点ではまだ確定していません。追加で確認が必要な場合はご連絡いたします。';
+  return 'ご回答ありがとうございます😊\n\nすべての項目を確認しました。\n制作できる内容・在庫・納期・お届け方法を確認し、改めてご案内いたします。\n\n価格やお届け日時は、この時点ではまだ確定していません。追加で確認が必要な場合はご連絡いたします。';
 }
 function basicOrderConfirmation(text, session) {
   const productType = session.fields.productType || detectProductType(text);
@@ -877,9 +877,9 @@ function basicOrderConfirmation(text, session) {
 }
 function intakePrompt(missing, productType, customerKind, hasKnownDetails) {
   const greeting = customerKind === 'returning' ? 'いつもありがとうございます☺︎ お久しぶりです。今回もお問い合わせありがとうございます。' : 'お問い合わせありがとうございます🎈';
-  const guidance = '店長がご注文をお受けできるか確認するため、下の項目すべてにご回答ください。\n\n分からない・まだ決まっていない項目は「未定」、希望がない項目は「なし」とご記入ください。空欄がある場合は、店長確認へ進む前に不足項目をもう一度お伺いします。\n\nHPの商品番号が分かる場合は番号を、分からない場合はHPのスクリーンショットや参考画像を添付してください。';
+  const guidance = 'ご希望内容をもとに、制作できる内容や納期を確認いたします。確認をスムーズに進めるため、お手数ですが、下の項目すべてにご回答をお願いいたします。\n\nこの時点ですべてを決めていただく必要はありません。分からない・まだ決まっていない項目は「未定」、ご希望がない項目は「なし」とご記入いただければ大丈夫です。\n\nすべての項目を確認できてから次のご案内へ進みますので、各項目に「ご希望内容」「未定」「なし」のいずれかをご記入ください。\n\nHPの商品番号が分かる場合は番号を、分からない場合はHPのスクリーンショットや参考画像を添付してください。';
   const rows = '【ご注文内容】📷\n※すべての項目にご記入ください（未定・なしでも大丈夫です）\n\n・HPの商品番号 または参考画像：\n（例：バルーンアレンジ36番／画像添付済み／未定）\n\n・バルーンのタイプ：\n（ブーケ／置き型アレンジメント／ヘリウム〈浮く〉タイプ／未定）\n\n・ご予算：\n（例：15,000円くらい／未定）\n\n・全体的なお色味と雰囲気：\n（例：ピンク系で可愛い雰囲気／お任せ／未定）\n\n・バルーンへのご希望の文字入れ：\n（ご希望の文字／なし／未定）\n\n・メッセージカードの有無：\n（ご希望の場合は50文字以内の内容／なし／未定）\n\n・お届けご希望日時：\n（例：2026年10月1日 14:00 店頭受取／配達／発送／未定）\n\n・お名前：\n（未定の場合は「未定」）\n\n・ご連絡先：\n（未定の場合は「未定」）\n\n・その他ご質問等：\n（なし／未定でも大丈夫です）';
-  const closing = 'すべての項目を確認できましたら、店長へ対応可否の確認を進めます。\n\n対応可能な場合は、当店の価格と納期を改めてご案内いたします。\n\n仕上がりのボリュームは、ご予算に合わせて調整いたします。\nご予算内でボリュームを優先するか、内容やデザインを優先するかは、店長と相談しながら決められます。\n\n画像やご希望内容について確認が必要な場合は、追加でお伺いすることがございます✨';
+  const closing = 'すべての項目を確認できましたら、制作内容・在庫・納期・受取方法について確認を進めます。\n\n対応可能な場合は、当店の価格と納期を改めてご案内いたします。\n\n仕上がりのボリュームは、ご予算に合わせて調整いたします。\nご予算内でボリュームを優先するか、内容やデザインを優先するかは、ご相談しながら決めていただけます。\n\n画像やご希望内容について確認が必要な場合は、追加でお伺いすることがございます✨';
   return greeting + '\n\n' + guidance + '\n\n' + rows + '\n\n' + closing;
 }
 function intakeRows(items) {
@@ -939,7 +939,7 @@ function missingIntakeFields(fields) {
     !fields.hasOtherQuestions && 'その他ご質問等',
   ].filter(Boolean);
 }
-function missingIntakePrompt(missing, productType) { return 'ご回答ありがとうございます😊\n\n店長へ確認を進めるため、空欄になっている以下の項目にもご回答をお願いいたします。\n\n分からない・まだ決まっていない場合は「未定」、希望がない場合は「なし」とご記入ください。すべての項目が埋まりましたら、次の確認へ進みます。\n\n【不足している項目】\n' + intakeRows(missing) + '\n\nご回答後、内容をまとめて確認いたします。'; }
+function missingIntakePrompt(missing, productType) { return 'ご回答ありがとうございます😊\n\nご希望内容を正確に確認するため、空欄になっている以下の項目にもご回答をお願いいたします。\n\nこの時点で決まっていない項目は「未定」、ご希望がない項目は「なし」で大丈夫です。\n\nお手数をおかけしますが、以下の項目をご記入いただけましたら、内容をまとめて確認いたします。\n\n【不足している項目】\n' + intakeRows(missing); }
 function intakeIntro(productType) { return ({ arrangement: '置き型アレンジをご希望ですね。', floating_balloon: '浮くタイプのバルーンをご希望ですね。', venue_decoration: '会場装飾のご相談ですね。', balloon_stand: 'バルーンスタンドのご相談ですね。', balloon_bouquet: 'バルーンブーケ・手渡し用ギフトのご相談ですね。', store_consultation: 'ご来店でのご相談ですね。' }[productType] || 'ご希望の内容を確認しながらご案内いたします。'); }
 function intakeFollowUp(productType) { return ({ arrangement: '\n色味・大きさ・飾る場所、文字入れやカードの有無も教えてください。', floating_balloon: '\n室内・屋外、飾り始める時刻、サイズ・個数、固定方法の希望も教えてください。ヘリウム在庫は確認してご案内します。', venue_decoration: '\n会場名、設置・撤去の希望時刻、装飾する範囲、会場写真や平面図、テーマ・色味も教えてください。', balloon_stand: '\n設置先、希望の高さ・幅、名札や文字、設置・撤去の希望も教えてください。', balloon_bouquet: '\n贈る相手、色味・大きさ、文字入れ・カード内容も教えてください。', store_consultation: '\nご相談内容、希望日時、人数、参考画像の有無、予算の目安も教えてください。' }[productType] || '\nご希望の色味・雰囲気、文字入れ・メッセージカードの有無も分かる範囲で教えてください。'); }
 function redactContactDetails(text) { return text.replace(/\b\d{2,4}[- ]?\d{2,4}[- ]?\d{3,4}\b/g, '[連絡先]').slice(0, 500); }
