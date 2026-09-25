@@ -4,6 +4,7 @@ const DATE_INPUT_PATTERN = '(?:令和\\s*\\d{1,2}年?\\s*\\d{1,2}[月/-]\\s*\\d{
 const CUSTOMER_REPLY_TIMINGS = {
   initial_intake: { minDelayMs: 3000, maxDelayMs: 5000, loadingSeconds: 5 },
   missing_details: { minDelayMs: 4000, maxDelayMs: 7000, loadingSeconds: 10 },
+  faq_answer: { minDelayMs: 5000, maxDelayMs: 9000, loadingSeconds: 10 },
   details_confirmation: { minDelayMs: 7000, maxDelayMs: 11000, loadingSeconds: 15 },
 };
 
@@ -307,6 +308,27 @@ async function queueCustomerReplyReview(event, env, ctx) {
     ? receiveReferenceImage(session)
     : buildCustomerReply(event.message?.text?.trim() || '', session);
   await env.SECRETARY_KV.put(key, JSON.stringify(result.session), { expirationTtl: CUSTOMER_SESSION_TTL });
+
+  // 店舗資料で回答が確定しているお手入れ・安全案内は、注文状態を変えずに自動回答する。
+  if (result.autoReply) {
+    const delivery = deliverCustomerMessagesAfterDelay(
+      customerId,
+      [result.message],
+      'faq_answer',
+      env,
+      async () => {
+        await env.DB.prepare(`INSERT INTO order_messages (order_thread_id, direction, message_text, occurred_at) VALUES (?, 'assistant_outbound', ?, ?)`)
+          .bind('customer:' + customerId, result.message.slice(0, 4900), new Date().toISOString()).run();
+        if (result.notifyOwner) {
+          const names = await getCustomerNames('customer:' + customerId, env);
+          const incoming = event.message?.text || '破損・返品交換に関する連絡';
+          await notifyOwners(`統括マネージャーです。\n\n【商品状態の確認が必要です】\n${formatCustomerLabel(names.confirmedName || names.displayName)}から次の連絡がありました。\n「${redactContactDetails(incoming).slice(0, 500)}」\n\n説明書に基づく一次案内を送信しました。破損状況や個別対応について確認をお願いします。`, env);
+        }
+      },
+    );
+    await continueCustomerDelivery(delivery, ctx);
+    return;
+  }
 
   // 初回の注文相談だけは自動で基本ヒアリングを返し、統括への通知は行わない。
   // お客様の回答が届いた次の段階で、内容を確認待ちとして統括へ回す。
@@ -819,6 +841,8 @@ async function getCustomerKind(customerId, text, env) {
 function buildCustomerReply(text, session) {
   if (/^(こんにちは|こんばんは|はじめまして|お世話になります)[！!。]*$/u.test(text)) return { session, message: 'こんにちは😊 ご連絡ありがとうございます。気になるお写真やご希望の内容がありましたら、そのままお送りください。ご用途・ご希望日・ご予算が分かるとスムーズにご案内できます🎈' };
   if (isOrderStartTrigger(text)) return orderReply(text, session);
+  const careReply = balloonCareKnowledgeReply(text, session);
+  if (careReply) return careReply;
   if (session.stage === 'review' && /(?:注文お願いします|注文をお願いします|この内容で注文|お願いします)/u.test(text)) return requestCustomerContact(session);
   if (session.stage === 'awaiting_contact') return recordCustomerContact(text, session);
   if (session.stage === 'collecting') return collectOrderDetail(text, session);
@@ -832,6 +856,42 @@ function buildCustomerReply(text, session) {
 
 function isOrderStartTrigger(text) {
   return /^(?:注文したい|注文担当を呼び出します)[。！!？?]*$/u.test(text.trim());
+}
+
+function balloonCareKnowledgeReply(text, session) {
+  const reply = (message, notifyOwner = false) => ({ session, message, autoReply: true, notifyOwner });
+  const isHelium = /ヘリウム|浮[くき]|フロート|ガス/u.test(text) || session.fields?.productType === 'floating_balloon';
+
+  if (/返品|交換|返金|不良|壊れて|破損して|割れて(?:い|しま)/u.test(text)) {
+    return reply('ご心配をおかけして申し訳ございません。\n\n当店では、お渡しする数時間前にヘリウムや空気を入れて状態を確認しているため、ご購入後の返品・交換は原則として承っておりません。\n\nただし、お渡し時から気になる状態がある場合や、破損の状況を確認する必要がある場合は個別に確認いたします。破損した箇所のお写真と、いつ・どのような状況で気付かれたかをお送りください。確認後、改めてご案内いたします。', true);
+  }
+
+  if (isHelium && /割れ|破裂|爆発|燃え|引火|換気|吸(?:う|って|引)/u.test(text)) {
+    return reply('ヘリウムは不活性ガスに分類され、引火したり燃焼・爆発したりするものではありません。\n\n室内でヘリウム入りのバルーンが割れた場合は、念のため窓を開けるなど換気をお願いします。風船に充填しているヘリウムを意図的に吸い込むことはお控えください。\n\nバルーンや周囲に破損がある場合は、お写真をお送りいただけましたら状態を確認いたします。', /割れ|破裂/u.test(text));
+  }
+
+  if (/次亜塩素酸|消毒|除菌|除光液|有機溶剤|灯油|ライター|鉱物(?:製)?油|オイル|リモネン|レモン|オレンジ|柑橘|洗剤/u.test(text)) {
+    return reply('バルーンには、消毒液に使われる次亜塩素酸ナトリウム、除光液などの有機溶剤、灯油・ライターオイルなどの鉱物製油を付けないようにしてください。素材が傷み、破損や破裂につながる場合があります。\n\nまた、レモンやオレンジの皮に含まれる「リモネン」や、リモネンを含む洗剤もゴムを溶かすことがあります。柑橘類やオレンジ・レモン表示のある洗剤の近くでは、特にご注意ください。');
+  }
+
+  if (/火|暖房|ヒーター|ストーブ|吹出口/u.test(text)) {
+    return reply('火や暖房器具には近づけないでください。暖房の吹出口付近でも、熱で中の空気やヘリウムが膨張して破裂したり、一部の素材が溶けたりするおそれがあります。\n\n暖房の風が直接当たらない、温度変化の少ない場所に飾ってください。');
+  }
+
+  if (isHelium && /ひも|ヒモ|紐|引っ張|振り回|とがった|尖った|扱い|持ち運/u.test(text)) {
+    return reply('ヘリウムバルーンはとてもデリケートです。ヒモを強く引っ張ったり、振り回したりしないよう、やさしく扱ってください。\n\n結び目の強度が落ちたり、固い物やとがった物に触れて破損・破裂したりすることがあります。移動するときも、周囲に引っ掛からないようご注意ください。');
+  }
+
+  if (/高温|多湿|湿気|紫外線|直射日光|日光|窓|車内|車の中|夏場|寒|低温|温度|しぼ/u.test(text)) {
+    return reply('バルーンは高温多湿や紫外線、急な温度変化が苦手です。窓の近くや夏場の車内など高温になる場所では、中の空気やヘリウムが膨張して破裂する可能性があります。\n\n反対に、気温が下がると一時的にしぼんで見えることがあります。直射日光や暖房の風を避け、温度変化の少ない室内でお楽しみください。');
+  }
+
+  if (/長持ち|日持ち|どのくらい持|長く楽し|保管|飾る場所|お手入れ/u.test(text)) {
+    const handling = isHelium ? '\n\nヘリウムバルーンは、ヒモを強く引っ張ったり振り回したりせず、固い物やとがった物に触れないよう、やさしく扱ってください。' : '';
+    return reply(`長く楽しんでいただくため、直射日光・高温多湿・急な温度変化を避け、火や暖房器具から離れた室内に飾ってください。消毒液、除光液、油類、柑橘類やリモネンを含む洗剤が触れないようご注意ください。${handling}\n\n楽しめる期間はバルーンの種類や飾る環境によって異なるため、商品番号やお写真をお送りいただけましたら、その商品に合わせてご案内します🎈`);
+  }
+
+  return null;
 }
 
 function urgentReply(session) { session.stage = 'urgent'; session.fields.urgent = true; return { session, message: 'お急ぎですね。ご相談ありがとうございます☺︎ 当日・翌日のご注文は、制作状況と商品の内容を確認してからのご案内になります。\nご希望日と、①ご用途 ②ご予算 ③お受け取り・配達のどちらか ④参考のお写真または商品番号 をお送りいただけますか？確認でき次第、可能な範囲をお返事します。' }; }
