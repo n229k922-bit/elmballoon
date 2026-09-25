@@ -84,12 +84,16 @@ var bizcalOptions = {"holiday_title":"\u5e97\u4f11\u65e5","sun":"on","sat":"on",
     }
     .notice_area .text p { margin:.2rem 0; font-size:clamp(.78rem,1.4vw,.98rem); line-height:1.45; }
     #top_first_view .top_fv { position:relative; }
-    #top_first_view .top_fv > .hero-message { top:1rem !important; bottom:auto !important; left:30% !important; right:auto !important; transform:translateX(-50%) !important; }
-    .hero-message { display:block !important; visibility:visible !important; opacity:1 !important; position:absolute !important; z-index:20; top:1rem; bottom:auto; left:50%; transform:translateX(-50%); width:min(88%, 30rem); max-width:30rem; padding:.8rem 1.1rem; border-radius:1rem; background:rgba(255,255,255,.92); box-shadow:0 8px 24px rgba(30,105,135,.2); color:#174c65; text-align:center; }
-    .hero-message strong { display:block; font-size:clamp(1.25rem,3.4vw,2.15rem); line-height:1.25; }
-    .hero-message span { display:block; margin-top:.35rem; font-size:clamp(.85rem,1.7vw,1.05rem); line-height:1.5; }
-    .hero-message__link { display:inline-flex; align-items:center; gap:.35rem; margin-top:.7rem; padding:.5rem .85rem; border-radius:999px; background:#168fc4; color:#fff !important; font-size:.9rem; font-weight:800; text-decoration:none; }
-    .hero-message__link:focus-visible, .hero-message__link:hover { background:#087eae; }
+    @media screen and (min-width:768px) {
+      #top_first_view #business-calendar { width:clamp(360px, 36vw, 620px) !important; max-width:620px; box-sizing:border-box; }
+      #top_first_view #line-order { width:clamp(320px, 31vw, 560px) !important; max-width:560px; box-sizing:border-box; }
+      #top_first_view #line-order.top_banner { padding:clamp(1rem, 2vw, 1.7rem) .75rem; }
+      #top_first_view #line-order.top_banner > .top_banner__link { padding:clamp(1rem, 2vw, 1.6rem); }
+      #top_first_view #line-order.top_banner > .top_banner__link > h2 { margin-bottom:.8rem; padding:.55rem .7rem; font-size:clamp(1rem, 1.7vw, 1.35rem); }
+      #top_first_view #line-order .content_box { gap:1rem; }
+      #top_first_view #line-order .tel_num { font-size:clamp(1.65rem, 3.2vw, 2.5rem); }
+      #top_first_view #line-order .line_QR img { width:110px; }
+    }
 
     .timed-notice { display:none; padding:.75rem 1rem; background:#087eae; color:#fff; font-weight:700; text-align:center; }
     .timed-notice.is-active { display:block; }
@@ -331,9 +335,7 @@ var bizcalOptions = {"holiday_title":"\u5e97\u4f11\u65e5","sun":"on","sat":"on",
       #line-order.top_banner > .top_banner__link { border-radius: 16px; }
       #line-order.top_banner .content_box { flex-direction: column; text-align: center; }
       #line-order.top_banner .line_QR img { width: 138px; max-width: 42vw; }
-      #top_first_view .top_fv > .hero-message { top:auto !important; bottom:1rem !important; left:1rem !important; right:1rem !important; width:auto; max-width:none; transform:none !important; padding:.8rem 1rem; }
-      .hero-message strong { font-size:1.25rem; }
-      .hero-message span { font-size:.82rem; }
+      #top_first_view #business-calendar, #top_first_view #line-order { width:100% !important; max-width:none; }
       .order-actions { justify-content:center; }
       .order-actions a { flex:1 1 8.5rem; }
     }
@@ -483,11 +485,6 @@ var bizcalOptions = {"holiday_title":"\u5e97\u4f11\u65e5","sun":"on","sat":"on",
         style="background-image: url(https://elmballoon.com/wp/wp-content/themes/elmballoon3/img/front/top_fv4.jpg); background-size: cover; background-position: center;">
       </li>
     </ul>
-    <div class="hero-message">
-      <strong>大切な日を彩るバルーンギフト</strong>
-      <span>霧島市のバルーン専門店 elm・balloon</span>
-      <a class="hero-message__link" href="#line-order">ご注文・ご相談はこちら&nbsp;→</a>
-    </div>
   </section>
 
   <section class="calendar" id="business-calendar">
