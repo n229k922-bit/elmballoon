@@ -1,9 +1,15 @@
 const encoder = new TextEncoder();
 const CUSTOMER_SESSION_TTL = 60 * 60 * 24 * 14;
 const DATE_INPUT_PATTERN = '(?:令和\\s*\\d{1,2}年?\\s*\\d{1,2}[月/-]\\s*\\d{1,2}日?|R\\s*\\d{1,2}[年/月/-]\\s*\\d{1,2}[月/-]\\s*\\d{1,2}日?|\\d{4}年?\\s*\\d{1,2}[月/-]\\s*\\d{1,2}日?|\\d{1,2}月\\s*\\d{1,2}日?|\\d{4}[/-]\\d{1,2}[/-]\\d{1,2})';
+const CUSTOMER_REPLY_TIMINGS = {
+  initial_intake: { minDelayMs: 3000, maxDelayMs: 5000, loadingSeconds: 5 },
+  missing_details: { minDelayMs: 4000, maxDelayMs: 7000, loadingSeconds: 10 },
+  faq_answer: { minDelayMs: 5000, maxDelayMs: 9000, loadingSeconds: 10 },
+  details_confirmation: { minDelayMs: 7000, maxDelayMs: 11000, loadingSeconds: 15 },
+};
 
 export default {
-  async fetch(request, env) {
+  async fetch(request, env, ctx) {
     const url = new URL(request.url);
     if (request.method === 'GET' && url.pathname === '/oauth/google/start') return googleOAuthStart(env);
     if (request.method === 'GET' && url.pathname === '/oauth/google/callback') return googleOAuthCallback(url, env);
@@ -17,7 +23,7 @@ export default {
       return lineWebhook(request, env);
     }
     if (request.method === 'POST' && url.pathname === '/webhook/customer-line') {
-      return customerLineWebhook(request, env);
+      return customerLineWebhook(request, env, ctx);
     }
     return new Response('Not found', { status: 404 });
   },
@@ -178,7 +184,7 @@ async function handleAdmin(event, env) {
   return reply(event.replyToken, change.summary + '。よろしければ10分以内に「確定」と返信してください。', env);
 }
 
-async function customerLineWebhook(request, env) {
+async function customerLineWebhook(request, env, ctx) {
   console.log('customer webhook received');
   if (!env.CUSTOMER_LINE_CHANNEL_SECRET || !env.CUSTOMER_LINE_CHANNEL_ACCESS_TOKEN) {
     console.log('customer channel credentials missing');
@@ -197,7 +203,7 @@ async function customerLineWebhook(request, env) {
     console.log('customer webhook event', { type: event.type, messageType: event.message?.type || null });
     if (event.type !== 'message' || !['text', 'image'].includes(event.message?.type)) continue;
     if (event.message.type === 'text') await recordCustomerMessage(event, env);
-    await queueCustomerReplyReview(event, env);
+    await queueCustomerReplyReview(event, env, ctx);
   }
   return new Response('OK');
 }
@@ -227,13 +233,26 @@ async function recordCustomerMessage(event, env) {
 
   const candidate = extractScheduleCandidate(text);
   const scheduleConflict = candidate ? await findBusinessScheduleConflict(candidate, env) : null;
-  await upsertOrderCard(threadId, text, candidate, now, env);
+  const details = extractOrderDetails(text, candidate);
+  const catalogProduct = details.productReference ? await findProductCatalogMatch(details.productReference, env) : null;
+  await upsertOrderCard(threadId, text, candidate, now, env, details);
 
   const customerNames = await getCustomerNames(threadId, env);
   const customerName = customerNames.confirmedName || customerNames.displayName;
   const customerLabel = formatCustomerLabel(customerName);
   if (confirmedName) {
     await notifyOwners(`統括マネージャーです。\n\n注文担当から、${customerLabel}のお名前確認が取れたと共有がありました。\n今後の注文・予定候補は、このお名前で管理します。`, env);
+  }
+
+  if (details.productReference) {
+    if (catalogProduct) {
+      await recordProductCatalogMatch(threadId, details.productReference, catalogProduct, now, env);
+      await notifyOwners(formatProductCatalogMatch(customerLabel, details.productReference, catalogProduct), env, [
+        { type: 'image', originalContentUrl: catalogProduct.image_url, previewImageUrl: catalogProduct.image_url },
+      ]);
+    } else {
+      await notifyOwners(`統括マネージャーです。\n\n【商品番号確認】\n${customerLabel}から「${details.productReference}」の指定がありましたが、現在の商品マスターでは一致する商品を確認できませんでした。\n\nHPの商品番号・商品ページURL、または参考画像を確認してからご案内してください。`, env);
+    }
   }
 
   const ownerRequest = await createOwnerDecisionRequest({
@@ -276,7 +295,7 @@ async function findBusinessScheduleConflict(candidate, env) {
   return null;
 }
 
-async function queueCustomerReplyReview(event, env) {
+async function queueCustomerReplyReview(event, env, ctx) {
   const customerId = event.source?.userId;
   if (!customerId) return;
   const sourceEventId = event.webhookEventId || event.message?.id;
@@ -290,14 +309,40 @@ async function queueCustomerReplyReview(event, env) {
     : buildCustomerReply(event.message?.text?.trim() || '', session);
   await env.SECRETARY_KV.put(key, JSON.stringify(result.session), { expirationTtl: CUSTOMER_SESSION_TTL });
 
+  // 店舗資料で回答が確定しているお手入れ・安全案内は、注文状態を変えずに自動回答する。
+  if (result.autoReply) {
+    const delivery = deliverCustomerMessagesAfterDelay(
+      customerId,
+      [result.message],
+      'faq_answer',
+      env,
+      async () => {
+        await env.DB.prepare(`INSERT INTO order_messages (order_thread_id, direction, message_text, occurred_at) VALUES (?, 'assistant_outbound', ?, ?)`)
+          .bind('customer:' + customerId, result.message.slice(0, 4900), new Date().toISOString()).run();
+        if (result.notifyOwner) {
+          const names = await getCustomerNames('customer:' + customerId, env);
+          const incoming = event.message?.text || '破損・返品交換に関する連絡';
+          await notifyOwners(`統括マネージャーです。\n\n【商品状態の確認が必要です】\n${formatCustomerLabel(names.confirmedName || names.displayName)}から次の連絡がありました。\n「${redactContactDetails(incoming).slice(0, 500)}」\n\n説明書に基づく一次案内を送信しました。破損状況や個別対応について確認をお願いします。`, env);
+        }
+      },
+    );
+    await continueCustomerDelivery(delivery, ctx);
+    return;
+  }
+
   // 初回の注文相談だけは自動で基本ヒアリングを返し、統括への通知は行わない。
   // お客様の回答が届いた次の段階で、内容を確認待ちとして統括へ回す。
   if (result.session.stage === 'collecting' && missingIntakeFields(result.session.fields).length > 0) {
-    const sent = await pushCustomerMessages(customerId, splitCustomerReply(result.message), env);
-    if (sent) {
-      await env.DB.prepare(`INSERT INTO order_messages (order_thread_id, direction, message_text, occurred_at) VALUES (?, 'assistant_outbound', ?, ?)`)
-        .bind('customer:' + customerId, result.message.slice(0, 4900), new Date().toISOString()).run();
-    }
+    const timingProfile = wasCollecting ? 'missing_details' : 'initial_intake';
+    const delivery = deliverCustomerMessagesAfterDelay(
+      customerId,
+      splitCustomerReply(result.message),
+      timingProfile,
+      env,
+      async () => env.DB.prepare(`INSERT INTO order_messages (order_thread_id, direction, message_text, occurred_at) VALUES (?, 'assistant_outbound', ?, ?)`)
+        .bind('customer:' + customerId, result.message.slice(0, 4900), new Date().toISOString()).run(),
+    );
+    await continueCustomerDelivery(delivery, ctx);
     return;
   }
 
@@ -305,13 +350,19 @@ async function queueCustomerReplyReview(event, env) {
   // この確認段階では統括・店長へは通知せず、追加情報の回答後に引き継ぐ。
   if (result.session.stage === 'review' && wasCollecting) {
     const confirmation = basicOrderConfirmation(event.message?.text?.trim() || '', result.session);
-    const sent = await pushCustomerMessage(customerId, confirmation, env);
-    if (sent) {
-      await env.DB.prepare(`INSERT INTO order_messages (order_thread_id, direction, message_text, occurred_at) VALUES (?, 'assistant_outbound', ?, ?)`)
-        .bind('customer:' + customerId, confirmation.slice(0, 4900), new Date().toISOString()).run();
-      const names = await getCustomerNames('customer:' + customerId, env);
-      await notifyOwners(`統括マネージャーです。\n\n【基本情報の確認完了】\n${formatCustomerLabel(names.confirmedName || names.displayName)}のお客様へ基本情報を復唱しました。\n\n${confirmation}\n\nこの後、対応可能か確認し、確認後に商品タイプに合わせた追加ヒアリングへ進みます。`, env);
-    }
+    const delivery = deliverCustomerMessagesAfterDelay(
+      customerId,
+      [confirmation],
+      'details_confirmation',
+      env,
+      async () => {
+        await env.DB.prepare(`INSERT INTO order_messages (order_thread_id, direction, message_text, occurred_at) VALUES (?, 'assistant_outbound', ?, ?)`)
+          .bind('customer:' + customerId, confirmation.slice(0, 4900), new Date().toISOString()).run();
+        const names = await getCustomerNames('customer:' + customerId, env);
+        await notifyOwners(`統括マネージャーです。\n\n【基本情報の確認完了】\n${formatCustomerLabel(names.confirmedName || names.displayName)}のお客様へ基本情報を復唱しました。\n\n${confirmation}\n\nこの後、対応可能か確認し、確認後に商品タイプに合わせた追加ヒアリングへ進みます。`, env);
+      },
+    );
+    await continueCustomerDelivery(delivery, ctx);
     return;
   }
 
@@ -337,8 +388,11 @@ function splitCustomerReply(message) {
   const marker = '【ご注文内容】';
   const index = message.indexOf(marker);
   if (index <= 0) return [message];
-  const closingMarker = '\n\n内容を確認し';
-  const closingIndex = message.indexOf(closingMarker, index);
+  const closingMarkers = ['\n\n内容を確認し', '\n\nすべての項目を確認できましたら'];
+  const closingIndex = closingMarkers
+    .map((closingMarker) => message.indexOf(closingMarker, index))
+    .filter((markerIndex) => markerIndex >= 0)
+    .sort((left, right) => left - right)[0] ?? -1;
   if (closingIndex < 0) return [message.slice(0, index).trim(), message.slice(index).trim()];
   return [message.slice(0, index).trim(), message.slice(index, closingIndex).trim(), message.slice(closingIndex).trim()];
 }
@@ -371,8 +425,8 @@ function hasCriticalReplyDifference(draft, replacement) {
   return JSON.stringify(tokens(draft)) !== JSON.stringify(tokens(replacement));
 }
 
-async function upsertOrderCard(threadId, text, candidate, now, env) {
-  const details = extractOrderDetails(text, candidate);
+async function upsertOrderCard(threadId, text, candidate, now, env, providedDetails = null) {
+  const details = providedDetails || extractOrderDetails(text, candidate);
   const cardId = `order-card:${threadId}`;
   await env.DB.prepare(`INSERT INTO order_cards
       (id, order_thread_id, status, purpose, recipient_profile, product_reference,
@@ -449,10 +503,47 @@ function extractLabeledText(text, labelPattern) {
 }
 
 function extractProductReference(text) {
-  const number = text.match(/(?:商品番号|品番|商品No\.?|No\.?)\s*(?:は|:|：)?\s*([A-Za-z0-9_-]{1,40})/iu);
-  if (number) return number[1];
+  const circled = '[⓪①②③④⑤⑥⑦⑧⑨⑩⑪⑫⑬⑭⑮⑯⑰⑱⑲⑳㉑㉒㉓㉔㉕㉖㉗㉘㉙㉚㉛㉜㉝㉞㉟㊱㊲㊳㊴㊵㊶㊷㊸㊹㊺㊻㊼㊽㊾㊿]';
+  const numberPattern = `(?:${circled}|[0-9０-９]{1,4})`;
+  const labelled = text.match(new RegExp(`(?:商品番号|品番|商品No\\.?|No\\.?)\\s*(?:は|の|:|：)?\\s*[#＃]?(${numberPattern})\\s*(?:番|号)?`, 'iu'));
+  if (labelled) return normalizeProductNumber(labelled[1]);
+  const productName = text.match(new RegExp(`(?:バルーン|商品)?(?:アレンジ(?:メント)?|ブーケ|スタンド|ヘリウム|フロート)\\s*(?:の|No\\.?|番号)?\\s*[#＃]?(${numberPattern})\\s*(?:番|号)?`, 'iu'));
+  if (productName) return normalizeProductNumber(productName[1]);
   const url = text.match(/https?:\/\/[^\s]+/u);
   return url ? url[0].slice(0, 300) : null;
+}
+
+function normalizeProductNumber(value) {
+  if (!value) return null;
+  const circled = '⓪①②③④⑤⑥⑦⑧⑨⑩⑪⑫⑬⑭⑮⑯⑰⑱⑲⑳㉑㉒㉓㉔㉕㉖㉗㉘㉙㉚㉛㉜㉝㉞㉟㊱㊲㊳㊴㊵㊶㊷㊸㊹㊺㊻㊼㊽㊾㊿';
+  const normalized = String(value).replace(/[０-９]/g, (digit) => String.fromCharCode(digit.charCodeAt(0) - 0xFEE0));
+  if (normalized.length === 1) {
+    const index = circled.indexOf(normalized);
+    if (index >= 0) return String(index);
+  }
+  return /^\d{1,4}$/u.test(normalized) ? String(Number(normalized)) : normalized;
+}
+
+async function findProductCatalogMatch(reference, env) {
+  if (!reference) return null;
+  if (/^https?:\/\//u.test(reference)) {
+    return env.DB.prepare(`SELECT id, product_number, name, category, product_url, image_url, image_alt
+        FROM product_catalog WHERE status = 'published' AND product_url = ? LIMIT 1`).bind(reference).first();
+  }
+  const number = normalizeProductNumber(reference);
+  if (!number) return null;
+  return env.DB.prepare(`SELECT id, product_number, name, category, product_url, image_url, image_alt
+      FROM product_catalog WHERE status = 'published' AND product_number = ? LIMIT 1`).bind(number).first();
+}
+
+async function recordProductCatalogMatch(threadId, reference, product, now, env) {
+  await env.DB.prepare(`INSERT INTO order_card_events
+      (order_card_id, event_type, actor, detail, occurred_at) VALUES (?, 'product.reference_matched', 'system', ?, ?)`)
+    .bind(`order-card:${threadId}`, JSON.stringify({ reference, productId: product.id, productNumber: product.product_number, name: product.name }), now).run();
+}
+
+function formatProductCatalogMatch(customerLabel, reference, product) {
+  return `統括マネージャーです。\n\n【HP商品番号を照合しました】\n${customerLabel}から指定された商品番号：${reference}\n\n・商品名：${product.name}\n・カテゴリー：${product.category || '未分類'}\n・商品番号：${product.product_number}\n・商品ページ：${product.product_url}\n\nHPに登録されている該当画像を添付します。\n価格・在庫・納期は店長確認後にご案内します。`;
 }
 
 function parseJapaneseNumber(value) {
@@ -749,7 +840,9 @@ async function getCustomerKind(customerId, text, env) {
 
 function buildCustomerReply(text, session) {
   if (/^(こんにちは|こんばんは|はじめまして|お世話になります)[！!。]*$/u.test(text)) return { session, message: 'こんにちは😊 ご連絡ありがとうございます。気になるお写真やご希望の内容がありましたら、そのままお送りください。ご用途・ご希望日・ご予算が分かるとスムーズにご案内できます🎈' };
-  if (/^注文したい[。！!？?]*$/u.test(text.trim())) return orderReply(text, session);
+  if (isOrderStartTrigger(text)) return orderReply(text, session);
+  const careReply = balloonCareKnowledgeReply(text, session);
+  if (careReply) return careReply;
   if (session.stage === 'review' && /(?:注文お願いします|注文をお願いします|この内容で注文|お願いします)/u.test(text)) return requestCustomerContact(session);
   if (session.stage === 'awaiting_contact') return recordCustomerContact(text, session);
   if (session.stage === 'collecting') return collectOrderDetail(text, session);
@@ -761,12 +854,52 @@ function buildCustomerReply(text, session) {
   return { session, message: 'ご連絡ありがとうございます😊 内容を確認して、できるだけご希望に沿えるようご案内します。差し支えなければ、①ご用途 ②ご希望日 ③ご予算 ④お受け取り・配達のどちらか を教えてください。参考のお写真があれば一緒に送っていただいて大丈夫です🎈' };
 }
 
+function isOrderStartTrigger(text) {
+  return /^(?:注文したい|注文担当を呼び出します)[。！!？?]*$/u.test(text.trim());
+}
+
+function balloonCareKnowledgeReply(text, session) {
+  const reply = (message, notifyOwner = false) => ({ session, message, autoReply: true, notifyOwner });
+  const isHelium = /ヘリウム|浮[くき]|フロート|ガス/u.test(text) || session.fields?.productType === 'floating_balloon';
+
+  if (/返品|交換|返金|不良|壊れて|破損して|割れて(?:い|しま)/u.test(text)) {
+    return reply('ご心配をおかけして申し訳ございません。\n\n当店では、お渡しする数時間前にヘリウムや空気を入れて状態を確認しているため、ご購入後の返品・交換は原則として承っておりません。\n\nただし、お渡し時から気になる状態がある場合や、破損の状況を確認する必要がある場合は個別に確認いたします。破損した箇所のお写真と、いつ・どのような状況で気付かれたかをお送りください。確認後、改めてご案内いたします。', true);
+  }
+
+  if (isHelium && /割れ|破裂|爆発|燃え|引火|換気|吸(?:う|って|引)/u.test(text)) {
+    return reply('ヘリウムは不活性ガスに分類され、引火したり燃焼・爆発したりするものではありません。\n\n室内でヘリウム入りのバルーンが割れた場合は、念のため窓を開けるなど換気をお願いします。風船に充填しているヘリウムを意図的に吸い込むことはお控えください。\n\nバルーンや周囲に破損がある場合は、お写真をお送りいただけましたら状態を確認いたします。', /割れ|破裂/u.test(text));
+  }
+
+  if (/次亜塩素酸|消毒|除菌|除光液|有機溶剤|灯油|ライター|鉱物(?:製)?油|オイル|リモネン|レモン|オレンジ|柑橘|洗剤/u.test(text)) {
+    return reply('バルーンには、消毒液に使われる次亜塩素酸ナトリウム、除光液などの有機溶剤、灯油・ライターオイルなどの鉱物製油を付けないようにしてください。素材が傷み、破損や破裂につながる場合があります。\n\nまた、レモンやオレンジの皮に含まれる「リモネン」や、リモネンを含む洗剤もゴムを溶かすことがあります。柑橘類やオレンジ・レモン表示のある洗剤の近くでは、特にご注意ください。');
+  }
+
+  if (/火|暖房|ヒーター|ストーブ|吹出口/u.test(text)) {
+    return reply('火や暖房器具には近づけないでください。暖房の吹出口付近でも、熱で中の空気やヘリウムが膨張して破裂したり、一部の素材が溶けたりするおそれがあります。\n\n暖房の風が直接当たらない、温度変化の少ない場所に飾ってください。');
+  }
+
+  if (isHelium && /ひも|ヒモ|紐|引っ張|振り回|とがった|尖った|扱い|持ち運/u.test(text)) {
+    return reply('ヘリウムバルーンはとてもデリケートです。ヒモを強く引っ張ったり、振り回したりしないよう、やさしく扱ってください。\n\n結び目の強度が落ちたり、固い物やとがった物に触れて破損・破裂したりすることがあります。移動するときも、周囲に引っ掛からないようご注意ください。');
+  }
+
+  if (/高温|多湿|湿気|紫外線|直射日光|日光|窓|車内|車の中|夏場|寒|低温|温度|しぼ/u.test(text)) {
+    return reply('バルーンは高温多湿や紫外線、急な温度変化が苦手です。窓の近くや夏場の車内など高温になる場所では、中の空気やヘリウムが膨張して破裂する可能性があります。\n\n反対に、気温が下がると一時的にしぼんで見えることがあります。直射日光や暖房の風を避け、温度変化の少ない室内でお楽しみください。');
+  }
+
+  if (/長持ち|日持ち|どのくらい持|長く楽し|保管|飾る場所|お手入れ/u.test(text)) {
+    const handling = isHelium ? '\n\nヘリウムバルーンは、ヒモを強く引っ張ったり振り回したりせず、固い物やとがった物に触れないよう、やさしく扱ってください。' : '';
+    return reply(`長く楽しんでいただくため、直射日光・高温多湿・急な温度変化を避け、火や暖房器具から離れた室内に飾ってください。消毒液、除光液、油類、柑橘類やリモネンを含む洗剤が触れないようご注意ください。${handling}\n\n楽しめる期間はバルーンの種類や飾る環境によって異なるため、商品番号やお写真をお送りいただけましたら、その商品に合わせてご案内します🎈`);
+  }
+
+  return null;
+}
+
 function urgentReply(session) { session.stage = 'urgent'; session.fields.urgent = true; return { session, message: 'お急ぎですね。ご相談ありがとうございます☺︎ 当日・翌日のご注文は、制作状況と商品の内容を確認してからのご案内になります。\nご希望日と、①ご用途 ②ご予算 ③お受け取り・配達のどちらか ④参考のお写真または商品番号 をお送りいただけますか？確認でき次第、可能な範囲をお返事します。' }; }
 function heliumReply(session) { session.stage = 'helium'; return { session, message: 'ヘリウムバルーンのご相談ですね😊 バルーンの大きさ・種類・個数で必要量が変わるため、商品パッケージのお写真か、サイズと個数をお送りください。持ち込みの場合も確認してご案内します。\n※在庫状況や対応可能な時間は日によって変わるため、希望日も一緒にお願いします。' }; }
 function deliveryReply(session) { session.stage = 'delivery'; return { session, message: '配達のご相談ありがとうございます😊 お届け地域・ご希望日・ご希望時間・ご予算を確認してご案内します。夏場は高温による破損を防ぐため、発送を控える場合があります。近隣への配達や店頭受け取りも含めて、いちばん良い方法をご提案しますね。' }; }
 function longevityReply(session) { session.stage = 'faq'; return { session, message: 'ご質問ありがとうございます😊 バルーンは種類や飾る環境によって異なります。直射日光・高温・尖った物を避けて室内に飾ると、より長く楽しんでいただけます。お写真を送っていただければ、その商品に合わせた目安と保管方法をご案内します🎈' }; }
 function orderReply(text, session) {
-  if (/^注文したい[。！!？?]*$/u.test(text.trim())) {
+  if (isOrderStartTrigger(text)) {
     session.fields = {};
   }
   session.stage = 'collecting';
@@ -807,7 +940,7 @@ function collectOrderDetail(text, session) {
   return { session, message: orderDetailsReceivedReply() };
 }
 function orderDetailsReceivedReply() {
-  return 'ご回答ありがとうございます☺︎\n\nご希望内容を確認しました。制作可否・在庫・納期・お届け方法を店長が確認し、改めてご案内いたします。\n\n価格やお届け日時は、この時点ではまだ確定していません。追加で確認が必要な場合はご連絡いたします。';
+  return 'ご回答ありがとうございます😊\n\nすべての項目を確認しました。\n制作できる内容・在庫・納期・お届け方法を確認し、改めてご案内いたします。\n\n価格やお届け日時は、この時点ではまだ確定していません。追加で確認が必要な場合はご連絡いたします。';
 }
 function basicOrderConfirmation(text, session) {
   const productType = session.fields.productType || detectProductType(text);
@@ -820,47 +953,58 @@ function basicOrderConfirmation(text, session) {
 }
 function intakePrompt(missing, productType, customerKind, hasKnownDetails) {
   const greeting = customerKind === 'returning' ? 'いつもありがとうございます☺︎ お久しぶりです。今回もお問い合わせありがとうございます。' : 'お問い合わせありがとうございます🎈';
-  const guidance = '作りたいイメージや参考にしたい画像がありましたら、まずはそのままお送りください。\n\n画像をもとに、色味・雰囲気・大きさなどを確認しながら、制作内容や対応方法を確認いたします。\n\n画像がない場合や、まだイメージが決まっていない場合も、分かる範囲でご希望をお聞かせください。\n\n下の項目をコピーして、分かるところだけご記入ください。\nまだ決まっていない項目や分からない項目は、「未定」とご記入いただいて大丈夫です。';
-  const rows = '【ご注文内容】📷\n\n・バルーンのタイプ：\n（ブーケ／置き型アレンジメント／ヘリウム〈浮く〉タイプ／未定）\n\n・ご予算：\n（例：15,000円くらい）\n\n・全体的なお色味と雰囲気：\n（例：ピンク系で可愛い雰囲気／青系で綺麗め／お任せ）\n\n・バルーンへのご希望の文字入れ：\n（なし／未定でも大丈夫です）\n\n・メッセージカードの有無：\n（ご希望の場合は50文字以内でメッセージをどうぞ）\n\n・お届けご希望日時：\n（例：2026年10月1日 14:00／店頭受取・配達・発送の別もご記入ください）\n\n・お名前：\n\n・ご連絡先：\n\n・その他ご質問等：';
-  const closing = '内容を確認し、在庫や対応可否を確認いたします。\n\n対応可能な場合は、当店の価格と納期を改めてご案内いたします。\n\n仕上がりのボリュームは、ご予算に合わせて調整いたします。\nご予算内でボリュームを優先するか、内容やデザインを優先するかは、店長と相談しながら決められます。\n\n画像やご希望内容について確認が必要な場合は、\n追加でお伺いすることがございます✨';
+  const guidance = 'ご希望内容をもとに、制作できる内容や納期を確認いたします。確認をスムーズに進めるため、お手数ですが、下の項目すべてにご回答をお願いいたします。\n\nこの時点ですべてを決めていただく必要はありません。分からない・まだ決まっていない項目は「未定」、ご希望がない項目は「なし」とご記入いただければ大丈夫です。\n\nすべての項目を確認できてから次のご案内へ進みますので、各項目に「ご希望内容」「未定」「なし」のいずれかをご記入ください。\n\nHPの商品番号が分かる場合は番号を、分からない場合はHPのスクリーンショットや参考画像を添付してください。';
+  const rows = '【ご注文内容】📷\n※すべての項目にご記入ください（未定・なしでも大丈夫です）\n\n・HPの商品番号 または参考画像：\n（例：バルーンアレンジ36番／画像添付済み／未定）\n\n・バルーンのタイプ：\n（ブーケ／置き型アレンジメント／ヘリウム〈浮く〉タイプ／未定）\n\n・ご予算：\n（例：15,000円くらい／未定）\n\n・全体的なお色味と雰囲気：\n（例：ピンク系で可愛い雰囲気／お任せ／未定）\n\n・バルーンへのご希望の文字入れ：\n（ご希望の文字／なし／未定）\n\n・メッセージカードの有無：\n（ご希望の場合は50文字以内の内容／なし／未定）\n\n・お届けご希望日時：\n（例：2026年10月1日 14:00 店頭受取／配達／発送／未定）\n\n・お名前：\n（未定の場合は「未定」）\n\n・ご連絡先：\n（未定の場合は「未定」）\n\n・その他ご質問等：\n（なし／未定でも大丈夫です）';
+  const closing = 'すべての項目を確認できましたら、制作内容・在庫・納期・受取方法について確認を進めます。\n\n対応可能な場合は、当店の価格と納期を改めてご案内いたします。\n\n仕上がりのボリュームは、ご予算に合わせて調整いたします。\nご予算内でボリュームを優先するか、内容やデザインを優先するかは、ご相談しながら決めていただけます。\n\n画像やご希望内容について確認が必要な場合は、追加でお伺いすることがございます✨';
   return greeting + '\n\n' + guidance + '\n\n' + rows + '\n\n' + closing;
 }
 function intakeRows(items) {
   const choices = {
+    'HPの商品番号 または参考画像': '（例：バルーンアレンジ36番／画像添付済み／未定）',
     'バルーンのタイプ': '（ブーケ／置き型アレンジメント／ヘリウム〈浮く〉タイプ／未定）',
-    'ご予算': '（例：5,000円くらい）',
-    '全体的なお色味と雰囲気': '（例：ピンク系で可愛い雰囲気／お任せ）',
-    'バルーンへのご希望の文字入れ': '（なし／未定でも大丈夫です）',
-    'メッセージカードの有無': '（ご希望の場合は50文字以内で内容をご記入ください）',
-    'お届けご希望日時': '（例：2026年10月1日 14:00／店頭受取・配達・発送の別もご記入ください）',
-    'お名前': '',
-    'ご連絡先': '',
+    'ご予算': '（例：5,000円くらい／未定）',
+    '全体的なお色味と雰囲気': '（例：ピンク系で可愛い雰囲気／お任せ／未定）',
+    'バルーンへのご希望の文字入れ': '（ご希望の文字／なし／未定）',
+    'メッセージカードの有無': '（50文字以内の内容／なし／未定）',
+    'お届けご希望日時': '（例：2026年10月1日 14:00 店頭受取／配達／発送／未定）',
+    'お名前': '（未定の場合は「未定」）',
+    'ご連絡先': '（未定の場合は「未定」）',
+    'その他ご質問等': '（なし／未定でも大丈夫です）',
   };
   return items.map((item) => `・${item}：\n${choices[item] || ''}`).join('\n\n');
 }
 function mergeIntakeAnswers(fields, text) {
-  fields.productType = fields.productType || detectProductType(text) || (hasLabeledAnswer(text, 'バルーンのタイプ|商品タイプ') ? 'other' : null);
+  fields.productReference = fields.productReference || extractProductReference(text);
+  fields.hasProductSource = fields.hasProductSource || Boolean(fields.productReference) || Boolean(fields.referenceImage) || hasLabeledAnswer(text, 'HPの商品番号\\s*または参考画像|参考画像|商品番号');
+  const detectedProductType = detectProductType(text);
+  fields.hasProductType = fields.hasProductType || Boolean(detectedProductType) || hasLabeledAnswer(text, 'バルーンのタイプ|商品タイプ');
+  fields.productType = fields.productType || detectedProductType || (fields.hasProductType ? 'other' : null);
   fields.hasPurpose = fields.hasPurpose || Boolean(fields.purpose) || hasLabeledAnswer(text, 'ご用途|用途');
   fields.hasDate = fields.hasDate || new RegExp(`${DATE_INPUT_PATTERN}|今日|明日|あした|今週|来週|今度`, 'u').test(text) || hasLabeledAnswer(text, 'お届けご希望日時|ご希望日|希望日');
   fields.hasUseDate = fields.hasUseDate || hasLabeledAnswer(text, 'プレゼント・使用予定日|使用予定日|利用日|使用日');
   fields.hasTime = fields.hasTime || /\d{1,2}:\d{2}|午前|午後|時頃?|まで/u.test(text) || hasLabeledAnswer(text, 'お届けご希望日時|ご希望時間|希望時間');
   fields.hasBudget = fields.hasBudget || /円/u.test(text) || hasLabeledAnswer(text, 'ご予算|予算');
-  fields.hasMethod = fields.hasMethod || /受取|受け取|来店|配達|配送|発送|郵送/u.test(text) || hasLabeledAnswer(text, '受取方法|受け取り方法|方法');
+  fields.hasMethod = fields.hasMethod || /受取|受け取|来店|配達|配送|発送|郵送/u.test(text) || hasLabeledAnswer(text, 'お届けご希望日時|受取方法|受け取り方法|方法');
   fields.hasColor = fields.hasColor || /ピンク|赤|青|黄|緑|紫|白|黒|金|銀|色味|カラー|おまかせ/u.test(text) || hasLabeledAnswer(text, '全体的なお色味と雰囲気|色味|雰囲気');
   fields.hasBalloonMessage = fields.hasBalloonMessage || hasLabeledAnswer(text, 'バルーンへのご希望の文字入れ|文字入れ|バルーン(?:の)?(?:文字|メッセージ)') || /(?:文字入れ|バルーン(?:の)?(?:文字|メッセージ))\s*(?:は)?\s*(?:なし|不要)/u.test(text);
   fields.hasCard = fields.hasCard || hasLabeledAnswer(text, 'メッセージカードの有無|メッセージカード|カード(?:の内容)?') || /(?:メッセージカード|カード)\s*(?:は)?\s*(?:なし|不要)/u.test(text);
   fields.hasName = fields.hasName || hasLabeledAnswer(text, 'お名前|氏名|名前');
   fields.hasContact = fields.hasContact || hasLabeledAnswer(text, 'ご連絡先|電話(?:番号)?|TEL') || /0\d{1,4}[\-ー－ ]?\d{1,4}[\-ー－ ]?\d{3,4}/u.test(text);
+  fields.hasOtherQuestions = fields.hasOtherQuestions || hasLabeledAnswer(text, 'その他ご質問等|その他|ご質問');
   if (fields.productType === 'venue_decoration' || fields.productType === 'balloon_stand') {
     fields.hasVenue = fields.hasVenue || hasLabeledAnswer(text, '会場名|設置先|場所');
     fields.hasInstallTime = fields.hasInstallTime || hasLabeledAnswer(text, '設置開始|設置時間|搬入時間') || /設置.*(?:\d{1,2}:\d{2}|午前|午後)/u.test(text);
   }
   if (fields.productType === 'floating_balloon') fields.hasEnvironment = fields.hasEnvironment || /室内|屋外|屋内/u.test(text) || hasLabeledAnswer(text, '設置環境|室内外');
 }
-function hasLabeledAnswer(text, label) { return new RegExp(`(?:${label})\\s*[：:]\\s*(?!\\s*(?:$|未定|未入力))[^\\n]{1,80}`, 'u').test(text); }
+function hasLabeledAnswer(text, label) {
+  const answer = text.match(new RegExp(`(?:${label})\\s*[：:]\\s*([^\\n]*)`, 'u'))?.[1]?.trim();
+  return Boolean(answer && !/^(?:未入力|空欄)$/u.test(answer));
+}
 function missingIntakeFields(fields) {
   return [
-    !fields.productType && 'バルーンのタイプ',
+    !fields.hasProductSource && !fields.referenceImage && 'HPの商品番号 または参考画像',
+    !fields.hasProductType && 'バルーンのタイプ',
     !fields.hasColor && '全体的なお色味と雰囲気',
     !fields.hasBalloonMessage && 'バルーンへのご希望の文字入れ',
     !fields.hasCard && 'メッセージカードの有無',
@@ -868,9 +1012,10 @@ function missingIntakeFields(fields) {
     !fields.hasBudget && 'ご予算',
     !fields.hasName && 'お名前',
     !fields.hasContact && 'ご連絡先',
+    !fields.hasOtherQuestions && 'その他ご質問等',
   ].filter(Boolean);
 }
-function missingIntakePrompt(missing, productType) { return 'ご回答ありがとうございます☺︎\n\n確認に必要な項目が一部不足しているため、以下の項目をご記入ください。全項目の確認ができましたら、次のご案内へ進みます。\n\n下の項目をコピーして、分かるところだけご記入のうえご返信ください。分からない項目は「未定」で大丈夫です。\n\n【ご注文内容】\n' + intakeRows(missing) + '\n\n内容を確認し、在庫や対応可否を確認いたします。\n対応可能な場合は、当店の価格と納期を改めてご案内いたします。'; }
+function missingIntakePrompt(missing, productType) { return 'ご回答ありがとうございます😊\n\nご希望内容を正確に確認するため、空欄になっている以下の項目にもご回答をお願いいたします。\n\nこの時点で決まっていない項目は「未定」、ご希望がない項目は「なし」で大丈夫です。\n\nお手数をおかけしますが、以下の項目をご記入いただけましたら、内容をまとめて確認いたします。\n\n【不足している項目】\n' + intakeRows(missing); }
 function intakeIntro(productType) { return ({ arrangement: '置き型アレンジをご希望ですね。', floating_balloon: '浮くタイプのバルーンをご希望ですね。', venue_decoration: '会場装飾のご相談ですね。', balloon_stand: 'バルーンスタンドのご相談ですね。', balloon_bouquet: 'バルーンブーケ・手渡し用ギフトのご相談ですね。', store_consultation: 'ご来店でのご相談ですね。' }[productType] || 'ご希望の内容を確認しながらご案内いたします。'); }
 function intakeFollowUp(productType) { return ({ arrangement: '\n色味・大きさ・飾る場所、文字入れやカードの有無も教えてください。', floating_balloon: '\n室内・屋外、飾り始める時刻、サイズ・個数、固定方法の希望も教えてください。ヘリウム在庫は確認してご案内します。', venue_decoration: '\n会場名、設置・撤去の希望時刻、装飾する範囲、会場写真や平面図、テーマ・色味も教えてください。', balloon_stand: '\n設置先、希望の高さ・幅、名札や文字、設置・撤去の希望も教えてください。', balloon_bouquet: '\n贈る相手、色味・大きさ、文字入れ・カード内容も教えてください。', store_consultation: '\nご相談内容、希望日時、人数、参考画像の有無、予算の目安も教えてください。' }[productType] || '\nご希望の色味・雰囲気、文字入れ・メッセージカードの有無も分かる範囲で教えてください。'); }
 function redactContactDetails(text) { return text.replace(/\b\d{2,4}[- ]?\d{2,4}[- ]?\d{3,4}\b/g, '[連絡先]').slice(0, 500); }
@@ -915,6 +1060,61 @@ async function replyCustomer(replyToken, message, env) {
   console.log('customer LINE reply result', response.status, await response.text());
 }
 
+function customerReplyTiming(profileName, randomValue = randomUnit()) {
+  const profile = CUSTOMER_REPLY_TIMINGS[profileName] || CUSTOMER_REPLY_TIMINGS.missing_details;
+  const boundedRandom = Math.max(0, Math.min(0.999999999, randomValue));
+  const delayRange = profile.maxDelayMs - profile.minDelayMs + 1;
+  return {
+    delayMs: profile.minDelayMs + Math.floor(boundedRandom * delayRange),
+    loadingSeconds: profile.loadingSeconds,
+  };
+}
+
+function randomUnit() {
+  if (globalThis.crypto?.getRandomValues) {
+    const values = new Uint32Array(1);
+    globalThis.crypto.getRandomValues(values);
+    return values[0] / 4294967296;
+  }
+  return Math.random();
+}
+
+async function startCustomerLoading(chatId, loadingSeconds, env) {
+  try {
+    const response = await fetch('https://api.line.me/v2/bot/chat/loading/start', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: 'Bearer ' + env.CUSTOMER_LINE_CHANNEL_ACCESS_TOKEN,
+      },
+      body: JSON.stringify({ chatId, loadingSeconds }),
+    });
+    console.log('customer LINE loading result', response.status, await response.text());
+    return response.ok;
+  } catch (error) {
+    console.error('customer LINE loading failed', error);
+    return false;
+  }
+}
+
+async function deliverCustomerMessagesAfterDelay(to, messages, profileName, env, onSent) {
+  const timing = customerReplyTiming(profileName);
+  console.log('customer reply scheduled', { profileName, delayMs: timing.delayMs, loadingSeconds: timing.loadingSeconds });
+  await startCustomerLoading(to, timing.loadingSeconds, env);
+  await new Promise((resolve) => setTimeout(resolve, timing.delayMs));
+  const sent = await pushCustomerMessages(to, messages, env);
+  if (sent && onSent) await onSent();
+  return sent;
+}
+
+async function continueCustomerDelivery(delivery, ctx) {
+  if (ctx?.waitUntil) {
+    ctx.waitUntil(delivery.catch((error) => console.error('delayed customer delivery failed', error)));
+    return;
+  }
+  await delivery;
+}
+
 async function pushCustomerMessage(to, message, env) {
   const response = await fetch('https://api.line.me/v2/bot/message/push', {
     method: 'POST',
@@ -943,13 +1143,17 @@ async function pushCustomerMessages(to, messages, env) {
   return response.ok;
 }
 
-async function notifyOwners(message, env) {
+async function notifyOwners(message, env, extraMessages = []) {
   const owners = (env.ADMIN_LINE_USER_IDS || '').split(',').map((id) => id.trim()).filter(Boolean);
+  const messages = [
+    { type: 'text', text: message.slice(0, 4900) },
+    ...extraMessages.filter((item) => item?.type === 'image' && /^https:\/\//u.test(item.originalContentUrl || '') && /^https:\/\//u.test(item.previewImageUrl || '')),
+  ].slice(0, 5);
   for (const to of owners) {
     const response = await fetch('https://api.line.me/v2/bot/message/push', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', Authorization: 'Bearer ' + env.LINE_CHANNEL_ACCESS_TOKEN },
-      body: JSON.stringify({ to, messages: [{ type: 'text', text: message }] }),
+      body: JSON.stringify({ to, messages }),
     });
     console.log('LINE owner notification result', response.status, await response.text());
   }
