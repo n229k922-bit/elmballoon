@@ -36,11 +36,12 @@ async function publicSchedule(request, env) {
       FROM business_schedule ORDER BY date ASC`).all();
   const exceptions = (rows.results || []).map((row) => {
     if (row.status === 'special_hours') {
-      return { date: row.date, status: row.status, start: row.open_time, end: row.close_time, label: row.note || '時間指定の休業' };
+      return { date: row.date, status: row.status, start: row.open_time, end: row.close_time, label: row.note || '営業時間変更' };
     }
     return { date: row.date, status: row.status, label: row.note || (row.status === 'closed' ? '臨時休業' : '営業予定') };
   });
-  const body = { timezone: 'Asia/Tokyo', exceptions, updated_at: rows.results?.[0]?.updated_at || null };
+  const updatedAt = (rows.results || []).reduce((latest, row) => !latest || row.updated_at > latest ? row.updated_at : latest, null);
+  const body = { timezone: 'Asia/Tokyo', exceptions, updated_at: updatedAt };
   const origin = request.headers.get('Origin') || '';
   const allowedOrigins = (env.ALLOWED_ORIGINS || 'https://n229k922-bit.github.io,https://elmballoon.com,https://www.elmballoon.com')
     .split(',').map((value) => value.trim()).filter(Boolean);
@@ -176,12 +177,14 @@ async function handleAdmin(event, env) {
     return reply(event.replyToken, '「週末」は土曜・日曜のどちらか、または両日かを確認したいです。例: 「今週末の土曜休み」「来週末の日曜休み」', env);
   }
 
+  const change = parseCommand(text);
+  if (change) {
+    await env.SECRETARY_KV.put(pendingKey, JSON.stringify(change), { expirationTtl: 600 });
+    return reply(event.replyToken, change.summary + '。よろしければ10分以内に「確定」と返信してください。', env);
+  }
   const route = routeManagerRequest(text);
   if (route) return reply(event.replyToken, route, env);
-  const change = parseCommand(text);
-  if (!change) return reply(event.replyToken, '例:「休業 2026-09-22」または「営業時間 2026-09-23 10:00-18:00」。内容を確認後に「確定」と返信してください。', env);
-  await env.SECRETARY_KV.put(pendingKey, JSON.stringify(change), { expirationTtl: 600 });
-  return reply(event.replyToken, change.summary + '。よろしければ10分以内に「確定」と返信してください。', env);
+  return reply(event.replyToken, '例:「休業 2026-09-22」または「営業時間 2026-09-23 10:00-18:00」。内容を確認後に「確定」と返信してください。', env);
 }
 
 async function customerLineWebhook(request, env, ctx) {

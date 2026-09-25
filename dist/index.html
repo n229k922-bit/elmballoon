@@ -66,6 +66,43 @@ var bizcalOptions = {"holiday_title":"\u5e97\u4f11\u65e5","sun":"on","sat":"on",
 
   gtag('config', 'UA-140812499-4');
   </script>
+  <style id="elm-business-calendar-style">
+    /* 元サイトの黄色を保ちながら、営業・休業を文字でも判別できるカレンダー */
+    #business-calendar { width:320px !important; padding:18px !important; }
+    #business-calendar > img { display:block; margin-bottom:10px; }
+    .elm-calendar { width:100%; box-sizing:border-box; color:#333; }
+    .elm-calendar__bar { display:grid; grid-template-columns:44px 1fr 44px; align-items:center; gap:6px; margin:0 0 8px; }
+    .elm-calendar__bar button { display:grid; place-items:center; min-width:44px; min-height:44px; padding:0; border:0; border-radius:50%; background:#fabe00; color:#fff; font-size:1.8rem; font-weight:bold; cursor:pointer; }
+    .elm-calendar__bar button:hover, .elm-calendar__bar button:focus-visible { background:#d99f00; outline:3px solid #ffe48a; }
+    .elm-calendar__title { color:#333; font-size:1.7rem; font-weight:bold; text-align:center; }
+    .elm-calendar__legend { display:flex; flex-wrap:wrap; gap:6px 10px; margin:0 0 8px; font-size:1.1rem; line-height:1.4; }
+    .elm-calendar__legend span { display:inline-flex; align-items:center; gap:4px; }
+    .elm-calendar__legend span::before { content:""; width:10px; height:10px; border-radius:2px; background:#c72e4b; }
+    .elm-calendar__legend .changed::before { background:#08749c; }
+    .elm-calendar__week, .elm-calendar__grid { display:grid; grid-template-columns:repeat(7,minmax(0,1fr)); }
+    .elm-calendar__week div { padding:5px 0; color:#333; font-size:1.1rem; font-weight:bold; text-align:center; }
+    .elm-calendar__week div:first-child { color:#d92d4b; }
+    .elm-calendar__week div:last-child { color:#2855bb; }
+    .elm-calendar__day { position:relative; display:flex; align-items:flex-start; justify-content:center; aspect-ratio:1 / 1.18; min-width:0; padding:4px 1px 15px; border:1px solid #eee; background:#fff; color:#333; font:inherit; font-size:1.1rem; cursor:pointer; }
+    .elm-calendar__day.is-empty { background:#fafafa; cursor:default; }
+    .elm-calendar__day.is-closed { border-color:#c72e4b; background:#fff0f3; }
+    .elm-calendar__day.has-special-hours { border-color:#08749c; background:#eaf8fd; }
+    .elm-calendar__day.is-today { box-shadow:inset 0 0 0 3px #fabe00; }
+    .elm-calendar__day:not(.is-empty):hover, .elm-calendar__day:not(.is-empty):focus-visible { z-index:1; outline:3px solid #fabe00; outline-offset:-2px; }
+    .elm-calendar__status { position:absolute; right:1px; bottom:1px; left:1px; overflow:hidden; padding:2px 0; border-radius:3px; background:#c72e4b; color:#fff; font-size:.78rem; font-weight:bold; line-height:1; text-align:center; white-space:nowrap; }
+    .has-special-hours .elm-calendar__status { background:#08749c; }
+    .elm-calendar__details { min-height:2.8em; margin-top:8px; padding:7px 8px; border-radius:6px; background:#fff8dd; color:#5e4b12; font-size:1.1rem; font-weight:bold; line-height:1.4; }
+    .calendar-sync-notice { display:none; margin:8px 0 0; color:#9b6100; font-size:1rem; font-weight:bold; line-height:1.4; }
+    .calendar-sync-notice.is-visible { display:block; }
+    @media screen and (max-width:800px) {
+      #business-calendar { width:calc(100% - 40px) !important; max-width:520px; }
+      .elm-calendar__title { font-size:1.8rem; }
+      .elm-calendar__week div, .elm-calendar__day { font-size:1.3rem; }
+      .elm-calendar__day { min-height:58px; padding-bottom:19px; }
+      .elm-calendar__status { padding:3px 0; font-size:1rem; }
+      .elm-calendar__legend, .elm-calendar__details { font-size:1.25rem; }
+    }
+  </style>
 </head>
 
 <body data-rsssl=1 id="main_body" data-tmpdir="https://elmballoon.com/wp/wp-content/themes/elmballoon3/">
@@ -211,9 +248,21 @@ var bizcalOptions = {"holiday_title":"\u5e97\u4f11\u65e5","sun":"on","sat":"on",
     </ul>
   </section>
 
-  <section class="calendar">
+  <section class="calendar" id="business-calendar">
     <img src="https://elmballoon.com/wp/wp-content/themes/elmballoon3/img/front/calendar.svg" alt="営業日カレンダー">
-    <section id="bizcalendar-3" class="widget widget_bizcalendar"><div id='biz_calendar'></div></section>  </section>
+    <div class="elm-calendar" aria-label="営業日カレンダー">
+      <div class="elm-calendar__bar">
+        <button type="button" id="calendar-prev" aria-label="前の月">‹</button>
+        <strong class="elm-calendar__title" id="calendar-title"></strong>
+        <button type="button" id="calendar-next" aria-label="次の月">›</button>
+      </div>
+      <p class="elm-calendar__legend"><span>店休日</span><span class="changed">営業時間変更</span></p>
+      <div class="elm-calendar__week" aria-hidden="true"><div>日</div><div>月</div><div>火</div><div>水</div><div>木</div><div>金</div><div>土</div></div>
+      <div class="elm-calendar__grid" id="elm-calendar-grid"></div>
+      <div class="elm-calendar__details" id="calendar-details" role="status" aria-live="polite">日付を押すと営業情報を確認できます。</div>
+      <p class="calendar-sync-notice" id="calendar-sync-notice" role="status"></p>
+    </div>
+  </section>
 
   <section class="top_banner">
     <a href="https://elmballoon.com/contact/">
@@ -1194,6 +1243,112 @@ https://www.facebook.com/elmballoon/⠀
     </nav>
 </div>
 <!-- SPメニュー -->
+
+<script>
+  /* LINE統括マネージャーで確定した営業日情報をWorker公開APIから反映する。 */
+  (function () {
+    var grid = document.getElementById('elm-calendar-grid');
+    var title = document.getElementById('calendar-title');
+    var details = document.getElementById('calendar-details');
+    if (!grid || !title || !details) return;
+    var state = new Date();
+    state = new Date(state.getFullYear(), state.getMonth(), 1);
+
+    function iso(year, month, day) {
+      return year + '-' + String(month + 1).padStart(2, '0') + '-' + String(day).padStart(2, '0');
+    }
+
+    function escapeHtml(value) {
+      return String(value).replace(/[&<>"']/g, function (character) {
+        return { '&':'&amp;', '<':'&lt;', '>':'&gt;', '"':'&quot;', "'":'&#39;' }[character];
+      });
+    }
+
+    function render(data) {
+      var holidays = {};
+      (data.holidays || []).forEach(function (item) { holidays[item.date] = item.name; });
+      var exceptions = data.exceptions || [];
+      var year = state.getFullYear();
+      var month = state.getMonth();
+      var firstDay = new Date(year, month, 1).getDay();
+      var days = new Date(year, month + 1, 0).getDate();
+      var now = new Date();
+      var today = iso(now.getFullYear(), now.getMonth(), now.getDate());
+      title.textContent = year + '年' + (month + 1) + '月';
+      grid.innerHTML = '';
+      details.textContent = '日付を押すと営業情報を確認できます。';
+
+      for (var blank = 0; blank < firstDay; blank++) {
+        grid.insertAdjacentHTML('beforeend', '<div class="elm-calendar__day is-empty" aria-hidden="true"></div>');
+      }
+
+      for (var day = 1; day <= days; day++) {
+        var date = iso(year, month, day);
+        var weekday = new Date(year, month, day).getDay();
+        var exception = exceptions.find(function (item) { return item.date === date; });
+        var regularClosed = (data.weekly_closed_days || [0, 6]).indexOf(weekday) !== -1 || !!holidays[date];
+        var explicitlyOpen = exception && exception.status === 'open';
+        var specialHours = exception && exception.status === 'special_hours';
+        var closed = !explicitlyOpen && !specialHours && ((exception && exception.status === 'closed') || regularClosed);
+        var statusText = closed ? '休業' : (specialHours ? '変更' : '');
+        var label;
+        if (closed) label = (exception && exception.label) || holidays[date] || '店休日';
+        else if (specialHours) label = '営業時間 ' + exception.start + '〜' + exception.end + (exception.label ? '（' + exception.label + '）' : '');
+        else label = (exception && exception.label) || '営業予定';
+        var classes = 'elm-calendar__day' + (closed ? ' is-closed' : '') + (specialHours ? ' has-special-hours' : '') + (date === today ? ' is-today' : '');
+        var status = statusText ? '<span class="elm-calendar__status">' + statusText + '</span>' : '';
+        var safeLabel = escapeHtml(label);
+        grid.insertAdjacentHTML('beforeend', '<button type="button" class="' + classes + '" data-date="' + date + '" data-label="' + safeLabel + '" aria-label="' + date + ' ' + safeLabel + '"><span>' + day + '</span>' + status + '</button>');
+      }
+
+      grid.querySelectorAll('button[data-date]').forEach(function (button) {
+        button.addEventListener('click', function () {
+          details.textContent = button.dataset.date + '：' + button.dataset.label;
+        });
+      });
+    }
+
+    function mergeRemote(base, remote) {
+      var remoteExceptions = remote && Array.isArray(remote.exceptions) ? remote.exceptions : [];
+      var remoteDates = {};
+      remoteExceptions.forEach(function (item) { remoteDates[item.date] = true; });
+      return Object.assign({}, base, {
+        exceptions: (base.exceptions || []).filter(function (item) { return !remoteDates[item.date]; }).concat(remoteExceptions)
+      });
+    }
+
+    Promise.all([
+      fetch('./data/calendar.json', { cache: 'no-store' }).then(function (response) {
+        if (!response.ok) throw new Error('fallback calendar');
+        return response.json();
+      }),
+      fetch('https://elm-balloon-admin-line-secretary.n229k922.workers.dev/api/business-schedule', {
+        cache: 'no-store', headers: { Accept: 'application/json' }
+      }).then(function (response) {
+        if (!response.ok) throw new Error('remote calendar');
+        return response.json();
+      }).catch(function () { return null; })
+    ]).then(function (values) {
+      var data = mergeRemote(values[0], values[1]);
+      var syncNotice = document.getElementById('calendar-sync-notice');
+      if (!values[1] && syncNotice) {
+        syncNotice.textContent = '最新情報を取得できないため、保存済みの営業日情報を表示しています。';
+        syncNotice.classList.add('is-visible');
+      }
+      function repaint() { render(data); }
+      document.getElementById('calendar-prev').addEventListener('click', function () {
+        state = new Date(state.getFullYear(), state.getMonth() - 1, 1); repaint();
+      });
+      document.getElementById('calendar-next').addEventListener('click', function () {
+        state = new Date(state.getFullYear(), state.getMonth() + 1, 1); repaint();
+      });
+      repaint();
+    }).catch(function () {
+      grid.innerHTML = '<p>営業日カレンダーを読み込めませんでした。</p>';
+      details.textContent = 'お手数ですがLINEまたは電話で営業日をご確認ください。';
+    });
+  }());
+</script>
 
 <!-- フッター -->
 <footer>Copyright&nbsp;©&nbsp;elm・balloon | 霧島市のバルーン専門店「エルムバルーン」&nbsp;All&nbsp;Rights&nbsp;Reserved.</footer>
