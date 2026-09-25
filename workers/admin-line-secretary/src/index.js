@@ -227,13 +227,26 @@ async function recordCustomerMessage(event, env) {
 
   const candidate = extractScheduleCandidate(text);
   const scheduleConflict = candidate ? await findBusinessScheduleConflict(candidate, env) : null;
-  await upsertOrderCard(threadId, text, candidate, now, env);
+  const details = extractOrderDetails(text, candidate);
+  const catalogProduct = details.productReference ? await findProductCatalogMatch(details.productReference, env) : null;
+  await upsertOrderCard(threadId, text, candidate, now, env, details);
 
   const customerNames = await getCustomerNames(threadId, env);
   const customerName = customerNames.confirmedName || customerNames.displayName;
   const customerLabel = formatCustomerLabel(customerName);
   if (confirmedName) {
     await notifyOwners(`統括マネージャーです。\n\n注文担当から、${customerLabel}のお名前確認が取れたと共有がありました。\n今後の注文・予定候補は、このお名前で管理します。`, env);
+  }
+
+  if (details.productReference) {
+    if (catalogProduct) {
+      await recordProductCatalogMatch(threadId, details.productReference, catalogProduct, now, env);
+      await notifyOwners(formatProductCatalogMatch(customerLabel, details.productReference, catalogProduct), env, [
+        { type: 'image', originalContentUrl: catalogProduct.image_url, previewImageUrl: catalogProduct.image_url },
+      ]);
+    } else {
+      await notifyOwners(`統括マネージャーです。\n\n【商品番号確認】\n${customerLabel}から「${details.productReference}」の指定がありましたが、現在の商品マスターでは一致する商品を確認できませんでした。\n\nHPの商品番号・商品ページURL、または参考画像を確認してからご案内してください。`, env);
+    }
   }
 
   const ownerRequest = await createOwnerDecisionRequest({
@@ -371,8 +384,8 @@ function hasCriticalReplyDifference(draft, replacement) {
   return JSON.stringify(tokens(draft)) !== JSON.stringify(tokens(replacement));
 }
 
-async function upsertOrderCard(threadId, text, candidate, now, env) {
-  const details = extractOrderDetails(text, candidate);
+async function upsertOrderCard(threadId, text, candidate, now, env, providedDetails = null) {
+  const details = providedDetails || extractOrderDetails(text, candidate);
   const cardId = `order-card:${threadId}`;
   await env.DB.prepare(`INSERT INTO order_cards
       (id, order_thread_id, status, purpose, recipient_profile, product_reference,
@@ -449,10 +462,47 @@ function extractLabeledText(text, labelPattern) {
 }
 
 function extractProductReference(text) {
-  const number = text.match(/(?:商品番号|品番|商品No\.?|No\.?)\s*(?:は|:|：)?\s*([A-Za-z0-9_-]{1,40})/iu);
-  if (number) return number[1];
+  const circled = '[⓪①②③④⑤⑥⑦⑧⑨⑩⑪⑫⑬⑭⑮⑯⑰⑱⑲⑳㉑㉒㉓㉔㉕㉖㉗㉘㉙㉚㉛㉜㉝㉞㉟㊱㊲㊳㊴㊵㊶㊷㊸㊹㊺㊻㊼㊽㊾㊿]';
+  const numberPattern = `(?:${circled}|[0-9０-９]{1,4})`;
+  const labelled = text.match(new RegExp(`(?:商品番号|品番|商品No\\.?|No\\.?)\\s*(?:は|の|:|：)?\\s*[#＃]?(${numberPattern})\\s*(?:番|号)?`, 'iu'));
+  if (labelled) return normalizeProductNumber(labelled[1]);
+  const productName = text.match(new RegExp(`(?:バルーン|商品)?(?:アレンジ(?:メント)?|ブーケ|スタンド|ヘリウム|フロート)\\s*(?:の|No\\.?|番号)?\\s*[#＃]?(${numberPattern})\\s*(?:番|号)?`, 'iu'));
+  if (productName) return normalizeProductNumber(productName[1]);
   const url = text.match(/https?:\/\/[^\s]+/u);
   return url ? url[0].slice(0, 300) : null;
+}
+
+function normalizeProductNumber(value) {
+  if (!value) return null;
+  const circled = '⓪①②③④⑤⑥⑦⑧⑨⑩⑪⑫⑬⑭⑮⑯⑰⑱⑲⑳㉑㉒㉓㉔㉕㉖㉗㉘㉙㉚㉛㉜㉝㉞㉟㊱㊲㊳㊴㊵㊶㊷㊸㊹㊺㊻㊼㊽㊾㊿';
+  const normalized = String(value).replace(/[０-９]/g, (digit) => String.fromCharCode(digit.charCodeAt(0) - 0xFEE0));
+  if (normalized.length === 1) {
+    const index = circled.indexOf(normalized);
+    if (index >= 0) return String(index);
+  }
+  return /^\d{1,4}$/u.test(normalized) ? String(Number(normalized)) : normalized;
+}
+
+async function findProductCatalogMatch(reference, env) {
+  if (!reference) return null;
+  if (/^https?:\/\//u.test(reference)) {
+    return env.DB.prepare(`SELECT id, product_number, name, category, product_url, image_url, image_alt
+        FROM product_catalog WHERE status = 'published' AND product_url = ? LIMIT 1`).bind(reference).first();
+  }
+  const number = normalizeProductNumber(reference);
+  if (!number) return null;
+  return env.DB.prepare(`SELECT id, product_number, name, category, product_url, image_url, image_alt
+      FROM product_catalog WHERE status = 'published' AND product_number = ? LIMIT 1`).bind(number).first();
+}
+
+async function recordProductCatalogMatch(threadId, reference, product, now, env) {
+  await env.DB.prepare(`INSERT INTO order_card_events
+      (order_card_id, event_type, actor, detail, occurred_at) VALUES (?, 'product.reference_matched', 'system', ?, ?)`)
+    .bind(`order-card:${threadId}`, JSON.stringify({ reference, productId: product.id, productNumber: product.product_number, name: product.name }), now).run();
+}
+
+function formatProductCatalogMatch(customerLabel, reference, product) {
+  return `統括マネージャーです。\n\n【HP商品番号を照合しました】\n${customerLabel}から指定された商品番号：${reference}\n\n・商品名：${product.name}\n・カテゴリー：${product.category || '未分類'}\n・商品番号：${product.product_number}\n・商品ページ：${product.product_url}\n\nHPに登録されている該当画像を添付します。\n価格・在庫・納期は店長確認後にご案内します。`;
 }
 
 function parseJapaneseNumber(value) {
@@ -820,14 +870,15 @@ function basicOrderConfirmation(text, session) {
 }
 function intakePrompt(missing, productType, customerKind, hasKnownDetails) {
   const greeting = customerKind === 'returning' ? 'いつもありがとうございます☺︎ お久しぶりです。今回もお問い合わせありがとうございます。' : 'お問い合わせありがとうございます🎈';
-  const guidance = '作りたいイメージや参考にしたい画像がありましたら、まずはそのままお送りください。\n\n画像をもとに、色味・雰囲気・大きさなどを確認しながら、制作内容や対応方法を確認いたします。\n\n画像がない場合や、まだイメージが決まっていない場合も、分かる範囲でご希望をお聞かせください。\n\n下の項目をコピーして、分かるところだけご記入ください。\nまだ決まっていない項目や分からない項目は、「未定」とご記入いただいて大丈夫です。';
-  const rows = '【ご注文内容】📷\n\n・バルーンのタイプ：\n（ブーケ／置き型アレンジメント／ヘリウム〈浮く〉タイプ／未定）\n\n・ご予算：\n（例：15,000円くらい）\n\n・全体的なお色味と雰囲気：\n（例：ピンク系で可愛い雰囲気／青系で綺麗め／お任せ）\n\n・バルーンへのご希望の文字入れ：\n（なし／未定でも大丈夫です）\n\n・メッセージカードの有無：\n（ご希望の場合は50文字以内でメッセージをどうぞ）\n\n・お届けご希望日時：\n（例：2026年10月1日 14:00／店頭受取・配達・発送の別もご記入ください）\n\n・お名前：\n\n・ご連絡先：\n\n・その他ご質問等：';
+  const guidance = '制作内容と対応可否を確認するため、下の項目をご記入ください。\n\nHPの商品番号が分かる場合は「バルーンアレンジ36番」のように、分からない場合はHPのスクリーンショットや参考画像をこのトークに添付してください。\n\n未定の項目は「未定」で大丈夫です。';
+  const rows = '【ご注文内容】📷\n\n・HPの商品番号 または参考画像：\n（例：バルーンアレンジ36番／スクリーンショットを添付）\n\n・バルーンのタイプ（分かる場合）：\n（ブーケ／置き型アレンジメント／ヘリウム〈浮く〉タイプ／未定）\n\n・ご予算：\n（例：15,000円くらい）\n\n・全体的なお色味と雰囲気：\n（例：ピンク系で可愛い雰囲気／青系で綺麗め／お任せ）\n\n・バルーンへのご希望の文字入れ：\n（なし／未定でも大丈夫です）\n\n・メッセージカードの有無：\n（ご希望の場合は50文字以内でメッセージをどうぞ）\n\n・お届けご希望日時：\n（例：2026年10月1日 14:00／店頭受取・配達・発送の別もご記入ください）\n\n・お名前：\n\n・ご連絡先：\n\n・その他ご質問等：';
   const closing = '内容を確認し、在庫や対応可否を確認いたします。\n\n対応可能な場合は、当店の価格と納期を改めてご案内いたします。\n\n仕上がりのボリュームは、ご予算に合わせて調整いたします。\nご予算内でボリュームを優先するか、内容やデザインを優先するかは、店長と相談しながら決められます。\n\n画像やご希望内容について確認が必要な場合は、\n追加でお伺いすることがございます✨';
   return greeting + '\n\n' + guidance + '\n\n' + rows + '\n\n' + closing;
 }
 function intakeRows(items) {
   const choices = {
-    'バルーンのタイプ': '（ブーケ／置き型アレンジメント／ヘリウム〈浮く〉タイプ／未定）',
+    'HPの商品番号 または参考画像': '（例：バルーンアレンジ36番／スクリーンショットを添付）',
+    'バルーンのタイプ（分かる場合）': '（ブーケ／置き型アレンジメント／ヘリウム〈浮く〉タイプ／未定）',
     'ご予算': '（例：5,000円くらい）',
     '全体的なお色味と雰囲気': '（例：ピンク系で可愛い雰囲気／お任せ）',
     'バルーンへのご希望の文字入れ': '（なし／未定でも大丈夫です）',
@@ -839,6 +890,7 @@ function intakeRows(items) {
   return items.map((item) => `・${item}：\n${choices[item] || ''}`).join('\n\n');
 }
 function mergeIntakeAnswers(fields, text) {
+  fields.productReference = fields.productReference || extractProductReference(text);
   fields.productType = fields.productType || detectProductType(text) || (hasLabeledAnswer(text, 'バルーンのタイプ|商品タイプ') ? 'other' : null);
   fields.hasPurpose = fields.hasPurpose || Boolean(fields.purpose) || hasLabeledAnswer(text, 'ご用途|用途');
   fields.hasDate = fields.hasDate || new RegExp(`${DATE_INPUT_PATTERN}|今日|明日|あした|今週|来週|今度`, 'u').test(text) || hasLabeledAnswer(text, 'お届けご希望日時|ご希望日|希望日');
@@ -860,7 +912,7 @@ function mergeIntakeAnswers(fields, text) {
 function hasLabeledAnswer(text, label) { return new RegExp(`(?:${label})\\s*[：:]\\s*(?!\\s*(?:$|未定|未入力))[^\\n]{1,80}`, 'u').test(text); }
 function missingIntakeFields(fields) {
   return [
-    !fields.productType && 'バルーンのタイプ',
+    !fields.productType && !fields.productReference && !fields.referenceImage && 'HPの商品番号 または参考画像',
     !fields.hasColor && '全体的なお色味と雰囲気',
     !fields.hasBalloonMessage && 'バルーンへのご希望の文字入れ',
     !fields.hasCard && 'メッセージカードの有無',
@@ -943,13 +995,17 @@ async function pushCustomerMessages(to, messages, env) {
   return response.ok;
 }
 
-async function notifyOwners(message, env) {
+async function notifyOwners(message, env, extraMessages = []) {
   const owners = (env.ADMIN_LINE_USER_IDS || '').split(',').map((id) => id.trim()).filter(Boolean);
+  const messages = [
+    { type: 'text', text: message.slice(0, 4900) },
+    ...extraMessages.filter((item) => item?.type === 'image' && /^https:\/\//u.test(item.originalContentUrl || '') && /^https:\/\//u.test(item.previewImageUrl || '')),
+  ].slice(0, 5);
   for (const to of owners) {
     const response = await fetch('https://api.line.me/v2/bot/message/push', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', Authorization: 'Bearer ' + env.LINE_CHANNEL_ACCESS_TOKEN },
-      body: JSON.stringify({ to, messages: [{ type: 'text', text: message }] }),
+      body: JSON.stringify({ to, messages }),
     });
     console.log('LINE owner notification result', response.status, await response.text());
   }
