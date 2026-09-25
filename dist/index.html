@@ -84,14 +84,101 @@ var bizcalOptions = {"holiday_title":"\u5e97\u4f11\u65e5","sun":"on","sat":"on",
     }
     .notice_area .text p { margin:.2rem 0; font-size:clamp(.78rem,1.4vw,.98rem); line-height:1.45; }
     #top_first_view .top_fv { position:relative; }
+    /* PCのファーストビューは、写真を主役にした元デザインの配置へ戻す */
     @media screen and (min-width:768px) {
-      #top_first_view #line-order { width:clamp(320px, 31vw, 560px) !important; max-width:560px; box-sizing:border-box; scale:.6; transform-origin:right center; }
-      #top_first_view #line-order.top_banner { padding:clamp(1rem, 2vw, 1.7rem) .75rem; background:transparent !important; border:0; box-shadow:none !important; }
-      #top_first_view #line-order.top_banner > .top_banner__link { padding:clamp(1rem, 2vw, 1.6rem); background:rgba(255,255,255,.91); box-shadow:0 10px 24px rgba(22,143,196,.14); backdrop-filter:blur(3px); }
-      #top_first_view #line-order.top_banner > .top_banner__link > h2 { margin-bottom:.8rem; padding:.55rem .7rem; font-size:clamp(1rem, 1.7vw, 1.35rem); }
-      #top_first_view #line-order .content_box { gap:1rem; }
-      #top_first_view #line-order .tel_num { font-size:clamp(1.65rem, 3.2vw, 2.5rem); }
-      #top_first_view #line-order .line_QR img { width:110px; }
+      #top_first_view #business-calendar {
+        width:clamp(250px, 18vw, 340px) !important;
+        height:auto;
+        left:clamp(22px, 2.4vw, 48px);
+        bottom:clamp(22px, 2.4vw, 48px);
+        padding:clamp(14px, 1.25vw, 22px);
+        border:0;
+        border-radius:6px;
+        background:#fff;
+        box-shadow:0 8px 22px rgba(72,43,15,.18);
+      }
+      #top_first_view #business-calendar > img { display:block; width:100%; margin:0 0 .65rem; }
+      #top_first_view #business-calendar .elm-calendar {
+        width:100%;
+        aspect-ratio:auto;
+        padding:0;
+        border:0;
+        border-radius:0;
+        box-shadow:none;
+      }
+      #top_first_view #business-calendar .elm-calendar__bar { margin-bottom:.35rem; }
+      #top_first_view #business-calendar .elm-calendar__bar button {
+        overflow:hidden;
+        width:2rem;
+        height:2rem;
+        padding:0;
+        border-radius:50%;
+        background:transparent;
+        color:#252525;
+        font-size:0;
+      }
+      #top_first_view #business-calendar #calendar-prev::before { content:"‹"; font-size:1.65rem; }
+      #top_first_view #business-calendar #calendar-next::before { content:"›"; font-size:1.65rem; }
+      #top_first_view #business-calendar .elm-calendar__title { color:#111; font-size:clamp(.95rem, 1.15vw, 1.25rem); }
+      #top_first_view #business-calendar .elm-calendar__legend { justify-content:center; margin:.35rem 0 .45rem; font-size:.68rem; }
+      #top_first_view #business-calendar .elm-calendar__legend span { padding:.18rem .35rem; border:0; border-radius:0; background:transparent; color:#b17e00; }
+      #top_first_view #business-calendar .elm-calendar__legend span::before { width:.65rem; height:.65rem; flex-basis:.65rem; border:0; border-radius:0; background:#fabe00; }
+      #top_first_view #business-calendar .elm-calendar__legend .partial { color:#08749c; }
+      #top_first_view #business-calendar .elm-calendar__legend .partial::before { background:#08749c; }
+      #top_first_view #business-calendar .elm-calendar__week div { padding:.18rem 0; color:#222; font-size:.72rem; }
+      #top_first_view #business-calendar .elm-calendar__week div:first-child { color:#f04a55; }
+      #top_first_view #business-calendar .elm-calendar__week div:last-child { color:#3559e0; }
+      #top_first_view #business-calendar .elm-calendar__day { padding:.05rem; border:2px solid #fff; background:#fff; font-size:.72rem; text-align:center; }
+      #top_first_view #business-calendar .elm-calendar__day.is-empty { background:#fff; }
+      #top_first_view #business-calendar .elm-calendar__day.is-closed { background:#fabe00; }
+      #top_first_view #business-calendar .elm-calendar__day.has-partial { background:#08749c; }
+      #top_first_view #business-calendar .elm-calendar__date { width:100%; height:100%; color:#111; }
+      #top_first_view #business-calendar .elm-calendar__day.is-closed .elm-calendar__date,
+      #top_first_view #business-calendar .elm-calendar__day.has-partial .elm-calendar__date { color:#fff; }
+      #top_first_view #business-calendar .elm-calendar__day::after { display:none !important; }
+      #top_first_view #business-calendar .elm-calendar__details { margin-top:.35rem; padding:.35rem .45rem; font-size:.7rem; }
+
+      #top_first_view #line-order {
+        right:clamp(22px, 2.4vw, 48px);
+        bottom:clamp(22px, 2.4vw, 48px);
+        width:clamp(430px, 29vw, 570px) !important;
+        max-width:570px;
+        padding:5px;
+        border:0;
+        border-radius:6px;
+        background:#fabe00 !important;
+        box-shadow:0 8px 22px rgba(72,43,15,.2) !important;
+      }
+      #top_first_view #line-order.top_banner > .top_banner__link {
+        display:block;
+        margin:0;
+        padding:clamp(14px, 1.2vw, 22px);
+        border:2px solid #fff;
+        border-radius:3px;
+        background:transparent;
+        box-shadow:none;
+        backdrop-filter:none;
+      }
+      #top_first_view #line-order.top_banner > .top_banner__link > h2 {
+        width:100%;
+        margin:0 0 .7rem;
+        padding:.62rem .8rem;
+        border-radius:999px;
+        background:#fff;
+        color:#f2ae00 !important;
+        font-size:clamp(1rem, 1.35vw, 1.35rem);
+      }
+      #top_first_view #line-order .content_box { justify-content:space-between; gap:1rem; }
+      #top_first_view #line-order .text_box { flex:1 1 auto; }
+      #top_first_view #line-order .text_box p,
+      #top_first_view #line-order .text_box strong { color:#fff !important; line-height:1.55; }
+      #top_first_view #line-order .tel_num { margin:0; color:#fff !important; font-size:clamp(2rem, 2.8vw, 3rem); line-height:1.15; }
+      #top_first_view #line-order .tel_num::before,
+      #top_first_view #line-order .tel_num::after { color:#fff !important; }
+      #top_first_view #line-order .line_QR { padding:.35rem; border:0; border-radius:0; }
+      #top_first_view #line-order .line_QR img { width:clamp(76px, 6vw, 108px); max-width:none; }
+      #top_first_view #line-order .line_QR__caption,
+      #top_first_view #line-order .order-actions { display:none; }
     }
 
     .timed-notice { display:none; padding:.75rem 1rem; background:#087eae; color:#fff; font-weight:700; text-align:center; }
