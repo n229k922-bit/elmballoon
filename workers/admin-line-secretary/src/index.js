@@ -1,9 +1,14 @@
 const encoder = new TextEncoder();
 const CUSTOMER_SESSION_TTL = 60 * 60 * 24 * 14;
 const DATE_INPUT_PATTERN = '(?:令和\\s*\\d{1,2}年?\\s*\\d{1,2}[月/-]\\s*\\d{1,2}日?|R\\s*\\d{1,2}[年/月/-]\\s*\\d{1,2}[月/-]\\s*\\d{1,2}日?|\\d{4}年?\\s*\\d{1,2}[月/-]\\s*\\d{1,2}日?|\\d{1,2}月\\s*\\d{1,2}日?|\\d{4}[/-]\\d{1,2}[/-]\\d{1,2})';
+const CUSTOMER_REPLY_TIMINGS = {
+  initial_intake: { minDelayMs: 3000, maxDelayMs: 5000, loadingSeconds: 5 },
+  missing_details: { minDelayMs: 4000, maxDelayMs: 7000, loadingSeconds: 10 },
+  details_confirmation: { minDelayMs: 7000, maxDelayMs: 11000, loadingSeconds: 15 },
+};
 
 export default {
-  async fetch(request, env) {
+  async fetch(request, env, ctx) {
     const url = new URL(request.url);
     if (request.method === 'GET' && url.pathname === '/oauth/google/start') return googleOAuthStart(env);
     if (request.method === 'GET' && url.pathname === '/oauth/google/callback') return googleOAuthCallback(url, env);
@@ -17,7 +22,7 @@ export default {
       return lineWebhook(request, env);
     }
     if (request.method === 'POST' && url.pathname === '/webhook/customer-line') {
-      return customerLineWebhook(request, env);
+      return customerLineWebhook(request, env, ctx);
     }
     return new Response('Not found', { status: 404 });
   },
@@ -178,7 +183,7 @@ async function handleAdmin(event, env) {
   return reply(event.replyToken, change.summary + '。よろしければ10分以内に「確定」と返信してください。', env);
 }
 
-async function customerLineWebhook(request, env) {
+async function customerLineWebhook(request, env, ctx) {
   console.log('customer webhook received');
   if (!env.CUSTOMER_LINE_CHANNEL_SECRET || !env.CUSTOMER_LINE_CHANNEL_ACCESS_TOKEN) {
     console.log('customer channel credentials missing');
@@ -197,7 +202,7 @@ async function customerLineWebhook(request, env) {
     console.log('customer webhook event', { type: event.type, messageType: event.message?.type || null });
     if (event.type !== 'message' || !['text', 'image'].includes(event.message?.type)) continue;
     if (event.message.type === 'text') await recordCustomerMessage(event, env);
-    await queueCustomerReplyReview(event, env);
+    await queueCustomerReplyReview(event, env, ctx);
   }
   return new Response('OK');
 }
@@ -289,7 +294,7 @@ async function findBusinessScheduleConflict(candidate, env) {
   return null;
 }
 
-async function queueCustomerReplyReview(event, env) {
+async function queueCustomerReplyReview(event, env, ctx) {
   const customerId = event.source?.userId;
   if (!customerId) return;
   const sourceEventId = event.webhookEventId || event.message?.id;
@@ -306,11 +311,16 @@ async function queueCustomerReplyReview(event, env) {
   // 初回の注文相談だけは自動で基本ヒアリングを返し、統括への通知は行わない。
   // お客様の回答が届いた次の段階で、内容を確認待ちとして統括へ回す。
   if (result.session.stage === 'collecting' && missingIntakeFields(result.session.fields).length > 0) {
-    const sent = await pushCustomerMessages(customerId, splitCustomerReply(result.message), env);
-    if (sent) {
-      await env.DB.prepare(`INSERT INTO order_messages (order_thread_id, direction, message_text, occurred_at) VALUES (?, 'assistant_outbound', ?, ?)`)
-        .bind('customer:' + customerId, result.message.slice(0, 4900), new Date().toISOString()).run();
-    }
+    const timingProfile = wasCollecting ? 'missing_details' : 'initial_intake';
+    const delivery = deliverCustomerMessagesAfterDelay(
+      customerId,
+      splitCustomerReply(result.message),
+      timingProfile,
+      env,
+      async () => env.DB.prepare(`INSERT INTO order_messages (order_thread_id, direction, message_text, occurred_at) VALUES (?, 'assistant_outbound', ?, ?)`)
+        .bind('customer:' + customerId, result.message.slice(0, 4900), new Date().toISOString()).run(),
+    );
+    await continueCustomerDelivery(delivery, ctx);
     return;
   }
 
@@ -318,13 +328,19 @@ async function queueCustomerReplyReview(event, env) {
   // この確認段階では統括・店長へは通知せず、追加情報の回答後に引き継ぐ。
   if (result.session.stage === 'review' && wasCollecting) {
     const confirmation = basicOrderConfirmation(event.message?.text?.trim() || '', result.session);
-    const sent = await pushCustomerMessage(customerId, confirmation, env);
-    if (sent) {
-      await env.DB.prepare(`INSERT INTO order_messages (order_thread_id, direction, message_text, occurred_at) VALUES (?, 'assistant_outbound', ?, ?)`)
-        .bind('customer:' + customerId, confirmation.slice(0, 4900), new Date().toISOString()).run();
-      const names = await getCustomerNames('customer:' + customerId, env);
-      await notifyOwners(`統括マネージャーです。\n\n【基本情報の確認完了】\n${formatCustomerLabel(names.confirmedName || names.displayName)}のお客様へ基本情報を復唱しました。\n\n${confirmation}\n\nこの後、対応可能か確認し、確認後に商品タイプに合わせた追加ヒアリングへ進みます。`, env);
-    }
+    const delivery = deliverCustomerMessagesAfterDelay(
+      customerId,
+      [confirmation],
+      'details_confirmation',
+      env,
+      async () => {
+        await env.DB.prepare(`INSERT INTO order_messages (order_thread_id, direction, message_text, occurred_at) VALUES (?, 'assistant_outbound', ?, ?)`)
+          .bind('customer:' + customerId, confirmation.slice(0, 4900), new Date().toISOString()).run();
+        const names = await getCustomerNames('customer:' + customerId, env);
+        await notifyOwners(`統括マネージャーです。\n\n【基本情報の確認完了】\n${formatCustomerLabel(names.confirmedName || names.displayName)}のお客様へ基本情報を復唱しました。\n\n${confirmation}\n\nこの後、対応可能か確認し、確認後に商品タイプに合わせた追加ヒアリングへ進みます。`, env);
+      },
+    );
+    await continueCustomerDelivery(delivery, ctx);
     return;
   }
 
@@ -982,6 +998,61 @@ async function replyCustomer(replyToken, message, env) {
     body: JSON.stringify({ replyToken, messages: [{ type: 'text', text: message.slice(0, 4900) }] }),
   });
   console.log('customer LINE reply result', response.status, await response.text());
+}
+
+function customerReplyTiming(profileName, randomValue = randomUnit()) {
+  const profile = CUSTOMER_REPLY_TIMINGS[profileName] || CUSTOMER_REPLY_TIMINGS.missing_details;
+  const boundedRandom = Math.max(0, Math.min(0.999999999, randomValue));
+  const delayRange = profile.maxDelayMs - profile.minDelayMs + 1;
+  return {
+    delayMs: profile.minDelayMs + Math.floor(boundedRandom * delayRange),
+    loadingSeconds: profile.loadingSeconds,
+  };
+}
+
+function randomUnit() {
+  if (globalThis.crypto?.getRandomValues) {
+    const values = new Uint32Array(1);
+    globalThis.crypto.getRandomValues(values);
+    return values[0] / 4294967296;
+  }
+  return Math.random();
+}
+
+async function startCustomerLoading(chatId, loadingSeconds, env) {
+  try {
+    const response = await fetch('https://api.line.me/v2/bot/chat/loading/start', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: 'Bearer ' + env.CUSTOMER_LINE_CHANNEL_ACCESS_TOKEN,
+      },
+      body: JSON.stringify({ chatId, loadingSeconds }),
+    });
+    console.log('customer LINE loading result', response.status, await response.text());
+    return response.ok;
+  } catch (error) {
+    console.error('customer LINE loading failed', error);
+    return false;
+  }
+}
+
+async function deliverCustomerMessagesAfterDelay(to, messages, profileName, env, onSent) {
+  const timing = customerReplyTiming(profileName);
+  console.log('customer reply scheduled', { profileName, delayMs: timing.delayMs, loadingSeconds: timing.loadingSeconds });
+  await startCustomerLoading(to, timing.loadingSeconds, env);
+  await new Promise((resolve) => setTimeout(resolve, timing.delayMs));
+  const sent = await pushCustomerMessages(to, messages, env);
+  if (sent && onSent) await onSent();
+  return sent;
+}
+
+async function continueCustomerDelivery(delivery, ctx) {
+  if (ctx?.waitUntil) {
+    ctx.waitUntil(delivery.catch((error) => console.error('delayed customer delivery failed', error)));
+    return;
+  }
+  await delivery;
 }
 
 async function pushCustomerMessage(to, message, env) {
