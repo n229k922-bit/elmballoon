@@ -350,8 +350,11 @@ function splitCustomerReply(message) {
   const marker = '【ご注文内容】';
   const index = message.indexOf(marker);
   if (index <= 0) return [message];
-  const closingMarker = '\n\n内容を確認し';
-  const closingIndex = message.indexOf(closingMarker, index);
+  const closingMarkers = ['\n\n内容を確認し', '\n\nすべての項目を確認できましたら'];
+  const closingIndex = closingMarkers
+    .map((closingMarker) => message.indexOf(closingMarker, index))
+    .filter((markerIndex) => markerIndex >= 0)
+    .sort((left, right) => left - right)[0] ?? -1;
   if (closingIndex < 0) return [message.slice(0, index).trim(), message.slice(index).trim()];
   return [message.slice(0, index).trim(), message.slice(index, closingIndex).trim(), message.slice(closingIndex).trim()];
 }
@@ -874,49 +877,58 @@ function basicOrderConfirmation(text, session) {
 }
 function intakePrompt(missing, productType, customerKind, hasKnownDetails) {
   const greeting = customerKind === 'returning' ? 'いつもありがとうございます☺︎ お久しぶりです。今回もお問い合わせありがとうございます。' : 'お問い合わせありがとうございます🎈';
-  const guidance = '制作内容と対応可否を確認するため、下の項目をご記入ください。\n\nHPの商品番号が分かる場合は「バルーンアレンジ36番」のように、分からない場合はHPのスクリーンショットや参考画像をこのトークに添付してください。\n\n未定の項目は「未定」で大丈夫です。';
-  const rows = '【ご注文内容】📷\n\n・HPの商品番号 または参考画像：\n（例：バルーンアレンジ36番／スクリーンショットを添付）\n\n・バルーンのタイプ（分かる場合）：\n（ブーケ／置き型アレンジメント／ヘリウム〈浮く〉タイプ／未定）\n\n・ご予算：\n（例：15,000円くらい）\n\n・全体的なお色味と雰囲気：\n（例：ピンク系で可愛い雰囲気／青系で綺麗め／お任せ）\n\n・バルーンへのご希望の文字入れ：\n（なし／未定でも大丈夫です）\n\n・メッセージカードの有無：\n（ご希望の場合は50文字以内でメッセージをどうぞ）\n\n・お届けご希望日時：\n（例：2026年10月1日 14:00／店頭受取・配達・発送の別もご記入ください）\n\n・お名前：\n\n・ご連絡先：\n\n・その他ご質問等：';
-  const closing = '内容を確認し、在庫や対応可否を確認いたします。\n\n対応可能な場合は、当店の価格と納期を改めてご案内いたします。\n\n仕上がりのボリュームは、ご予算に合わせて調整いたします。\nご予算内でボリュームを優先するか、内容やデザインを優先するかは、店長と相談しながら決められます。\n\n画像やご希望内容について確認が必要な場合は、\n追加でお伺いすることがございます✨';
+  const guidance = '店長がご注文をお受けできるか確認するため、下の項目すべてにご回答ください。\n\n分からない・まだ決まっていない項目は「未定」、希望がない項目は「なし」とご記入ください。空欄がある場合は、店長確認へ進む前に不足項目をもう一度お伺いします。\n\nHPの商品番号が分かる場合は番号を、分からない場合はHPのスクリーンショットや参考画像を添付してください。';
+  const rows = '【ご注文内容】📷\n※すべての項目にご記入ください（未定・なしでも大丈夫です）\n\n・HPの商品番号 または参考画像：\n（例：バルーンアレンジ36番／画像添付済み／未定）\n\n・バルーンのタイプ：\n（ブーケ／置き型アレンジメント／ヘリウム〈浮く〉タイプ／未定）\n\n・ご予算：\n（例：15,000円くらい／未定）\n\n・全体的なお色味と雰囲気：\n（例：ピンク系で可愛い雰囲気／お任せ／未定）\n\n・バルーンへのご希望の文字入れ：\n（ご希望の文字／なし／未定）\n\n・メッセージカードの有無：\n（ご希望の場合は50文字以内の内容／なし／未定）\n\n・お届けご希望日時：\n（例：2026年10月1日 14:00 店頭受取／配達／発送／未定）\n\n・お名前：\n（未定の場合は「未定」）\n\n・ご連絡先：\n（未定の場合は「未定」）\n\n・その他ご質問等：\n（なし／未定でも大丈夫です）';
+  const closing = 'すべての項目を確認できましたら、店長へ対応可否の確認を進めます。\n\n対応可能な場合は、当店の価格と納期を改めてご案内いたします。\n\n仕上がりのボリュームは、ご予算に合わせて調整いたします。\nご予算内でボリュームを優先するか、内容やデザインを優先するかは、店長と相談しながら決められます。\n\n画像やご希望内容について確認が必要な場合は、追加でお伺いすることがございます✨';
   return greeting + '\n\n' + guidance + '\n\n' + rows + '\n\n' + closing;
 }
 function intakeRows(items) {
   const choices = {
-    'HPの商品番号 または参考画像': '（例：バルーンアレンジ36番／スクリーンショットを添付）',
-    'バルーンのタイプ（分かる場合）': '（ブーケ／置き型アレンジメント／ヘリウム〈浮く〉タイプ／未定）',
-    'ご予算': '（例：5,000円くらい）',
-    '全体的なお色味と雰囲気': '（例：ピンク系で可愛い雰囲気／お任せ）',
-    'バルーンへのご希望の文字入れ': '（なし／未定でも大丈夫です）',
-    'メッセージカードの有無': '（ご希望の場合は50文字以内で内容をご記入ください）',
-    'お届けご希望日時': '（例：2026年10月1日 14:00／店頭受取・配達・発送の別もご記入ください）',
-    'お名前': '',
-    'ご連絡先': '',
+    'HPの商品番号 または参考画像': '（例：バルーンアレンジ36番／画像添付済み／未定）',
+    'バルーンのタイプ': '（ブーケ／置き型アレンジメント／ヘリウム〈浮く〉タイプ／未定）',
+    'ご予算': '（例：5,000円くらい／未定）',
+    '全体的なお色味と雰囲気': '（例：ピンク系で可愛い雰囲気／お任せ／未定）',
+    'バルーンへのご希望の文字入れ': '（ご希望の文字／なし／未定）',
+    'メッセージカードの有無': '（50文字以内の内容／なし／未定）',
+    'お届けご希望日時': '（例：2026年10月1日 14:00 店頭受取／配達／発送／未定）',
+    'お名前': '（未定の場合は「未定」）',
+    'ご連絡先': '（未定の場合は「未定」）',
+    'その他ご質問等': '（なし／未定でも大丈夫です）',
   };
   return items.map((item) => `・${item}：\n${choices[item] || ''}`).join('\n\n');
 }
 function mergeIntakeAnswers(fields, text) {
   fields.productReference = fields.productReference || extractProductReference(text);
-  fields.productType = fields.productType || detectProductType(text) || (hasLabeledAnswer(text, 'バルーンのタイプ|商品タイプ') ? 'other' : null);
+  fields.hasProductSource = fields.hasProductSource || Boolean(fields.productReference) || Boolean(fields.referenceImage) || hasLabeledAnswer(text, 'HPの商品番号\\s*または参考画像|参考画像|商品番号');
+  const detectedProductType = detectProductType(text);
+  fields.hasProductType = fields.hasProductType || Boolean(detectedProductType) || hasLabeledAnswer(text, 'バルーンのタイプ|商品タイプ');
+  fields.productType = fields.productType || detectedProductType || (fields.hasProductType ? 'other' : null);
   fields.hasPurpose = fields.hasPurpose || Boolean(fields.purpose) || hasLabeledAnswer(text, 'ご用途|用途');
   fields.hasDate = fields.hasDate || new RegExp(`${DATE_INPUT_PATTERN}|今日|明日|あした|今週|来週|今度`, 'u').test(text) || hasLabeledAnswer(text, 'お届けご希望日時|ご希望日|希望日');
   fields.hasUseDate = fields.hasUseDate || hasLabeledAnswer(text, 'プレゼント・使用予定日|使用予定日|利用日|使用日');
   fields.hasTime = fields.hasTime || /\d{1,2}:\d{2}|午前|午後|時頃?|まで/u.test(text) || hasLabeledAnswer(text, 'お届けご希望日時|ご希望時間|希望時間');
   fields.hasBudget = fields.hasBudget || /円/u.test(text) || hasLabeledAnswer(text, 'ご予算|予算');
-  fields.hasMethod = fields.hasMethod || /受取|受け取|来店|配達|配送|発送|郵送/u.test(text) || hasLabeledAnswer(text, '受取方法|受け取り方法|方法');
+  fields.hasMethod = fields.hasMethod || /受取|受け取|来店|配達|配送|発送|郵送/u.test(text) || hasLabeledAnswer(text, 'お届けご希望日時|受取方法|受け取り方法|方法');
   fields.hasColor = fields.hasColor || /ピンク|赤|青|黄|緑|紫|白|黒|金|銀|色味|カラー|おまかせ/u.test(text) || hasLabeledAnswer(text, '全体的なお色味と雰囲気|色味|雰囲気');
   fields.hasBalloonMessage = fields.hasBalloonMessage || hasLabeledAnswer(text, 'バルーンへのご希望の文字入れ|文字入れ|バルーン(?:の)?(?:文字|メッセージ)') || /(?:文字入れ|バルーン(?:の)?(?:文字|メッセージ))\s*(?:は)?\s*(?:なし|不要)/u.test(text);
   fields.hasCard = fields.hasCard || hasLabeledAnswer(text, 'メッセージカードの有無|メッセージカード|カード(?:の内容)?') || /(?:メッセージカード|カード)\s*(?:は)?\s*(?:なし|不要)/u.test(text);
   fields.hasName = fields.hasName || hasLabeledAnswer(text, 'お名前|氏名|名前');
   fields.hasContact = fields.hasContact || hasLabeledAnswer(text, 'ご連絡先|電話(?:番号)?|TEL') || /0\d{1,4}[\-ー－ ]?\d{1,4}[\-ー－ ]?\d{3,4}/u.test(text);
+  fields.hasOtherQuestions = fields.hasOtherQuestions || hasLabeledAnswer(text, 'その他ご質問等|その他|ご質問');
   if (fields.productType === 'venue_decoration' || fields.productType === 'balloon_stand') {
     fields.hasVenue = fields.hasVenue || hasLabeledAnswer(text, '会場名|設置先|場所');
     fields.hasInstallTime = fields.hasInstallTime || hasLabeledAnswer(text, '設置開始|設置時間|搬入時間') || /設置.*(?:\d{1,2}:\d{2}|午前|午後)/u.test(text);
   }
   if (fields.productType === 'floating_balloon') fields.hasEnvironment = fields.hasEnvironment || /室内|屋外|屋内/u.test(text) || hasLabeledAnswer(text, '設置環境|室内外');
 }
-function hasLabeledAnswer(text, label) { return new RegExp(`(?:${label})\\s*[：:]\\s*(?!\\s*(?:$|未定|未入力))[^\\n]{1,80}`, 'u').test(text); }
+function hasLabeledAnswer(text, label) {
+  const answer = text.match(new RegExp(`(?:${label})\\s*[：:]\\s*([^\\n]*)`, 'u'))?.[1]?.trim();
+  return Boolean(answer && !/^(?:未入力|空欄)$/u.test(answer));
+}
 function missingIntakeFields(fields) {
   return [
-    !fields.productType && !fields.productReference && !fields.referenceImage && 'HPの商品番号 または参考画像',
+    !fields.hasProductSource && !fields.referenceImage && 'HPの商品番号 または参考画像',
+    !fields.hasProductType && 'バルーンのタイプ',
     !fields.hasColor && '全体的なお色味と雰囲気',
     !fields.hasBalloonMessage && 'バルーンへのご希望の文字入れ',
     !fields.hasCard && 'メッセージカードの有無',
@@ -924,9 +936,10 @@ function missingIntakeFields(fields) {
     !fields.hasBudget && 'ご予算',
     !fields.hasName && 'お名前',
     !fields.hasContact && 'ご連絡先',
+    !fields.hasOtherQuestions && 'その他ご質問等',
   ].filter(Boolean);
 }
-function missingIntakePrompt(missing, productType) { return 'ご回答ありがとうございます☺︎\n\n確認に必要な項目が一部不足しているため、以下の項目をご記入ください。全項目の確認ができましたら、次のご案内へ進みます。\n\n下の項目をコピーして、分かるところだけご記入のうえご返信ください。分からない項目は「未定」で大丈夫です。\n\n【ご注文内容】\n' + intakeRows(missing) + '\n\n内容を確認し、在庫や対応可否を確認いたします。\n対応可能な場合は、当店の価格と納期を改めてご案内いたします。'; }
+function missingIntakePrompt(missing, productType) { return 'ご回答ありがとうございます😊\n\n店長へ確認を進めるため、空欄になっている以下の項目にもご回答をお願いいたします。\n\n分からない・まだ決まっていない場合は「未定」、希望がない場合は「なし」とご記入ください。すべての項目が埋まりましたら、次の確認へ進みます。\n\n【不足している項目】\n' + intakeRows(missing) + '\n\nご回答後、内容をまとめて確認いたします。'; }
 function intakeIntro(productType) { return ({ arrangement: '置き型アレンジをご希望ですね。', floating_balloon: '浮くタイプのバルーンをご希望ですね。', venue_decoration: '会場装飾のご相談ですね。', balloon_stand: 'バルーンスタンドのご相談ですね。', balloon_bouquet: 'バルーンブーケ・手渡し用ギフトのご相談ですね。', store_consultation: 'ご来店でのご相談ですね。' }[productType] || 'ご希望の内容を確認しながらご案内いたします。'); }
 function intakeFollowUp(productType) { return ({ arrangement: '\n色味・大きさ・飾る場所、文字入れやカードの有無も教えてください。', floating_balloon: '\n室内・屋外、飾り始める時刻、サイズ・個数、固定方法の希望も教えてください。ヘリウム在庫は確認してご案内します。', venue_decoration: '\n会場名、設置・撤去の希望時刻、装飾する範囲、会場写真や平面図、テーマ・色味も教えてください。', balloon_stand: '\n設置先、希望の高さ・幅、名札や文字、設置・撤去の希望も教えてください。', balloon_bouquet: '\n贈る相手、色味・大きさ、文字入れ・カード内容も教えてください。', store_consultation: '\nご相談内容、希望日時、人数、参考画像の有無、予算の目安も教えてください。' }[productType] || '\nご希望の色味・雰囲気、文字入れ・メッセージカードの有無も分かる範囲で教えてください。'); }
 function redactContactDetails(text) { return text.replace(/\b\d{2,4}[- ]?\d{2,4}[- ]?\d{3,4}\b/g, '[連絡先]').slice(0, 500); }
