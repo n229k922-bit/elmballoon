@@ -1292,7 +1292,8 @@ https://www.facebook.com/elmballoon/⠀
         var explicitlyOpen = exception && exception.status === 'open';
         var specialHours = exception && exception.status === 'special_hours';
         var closed = !explicitlyOpen && !specialHours && ((exception && exception.status === 'closed') || regularClosed);
-        var statusText = closed ? '休業' : (specialHours ? '変更' : '');
+        var isHoliday = !!holidays[date];
+        var statusText = closed ? (isHoliday ? '祝休' : '休業') : (specialHours ? '変更' : '');
         var label;
         if (closed) label = (exception && exception.label) || holidays[date] || '店休日';
         else if (specialHours) label = '営業時間 ' + exception.start + '〜' + exception.end + (exception.label ? '（' + exception.label + '）' : '');
