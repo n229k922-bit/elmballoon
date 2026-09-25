@@ -1,0 +1,132 @@
+# LINE画像からの商品登録 仕様案
+
+## 目的
+
+統括マネージャーのLINE公式アカウントへ商品画像を送り、続けて商品名・価格・カテゴリーなどを入力するだけで、HPの商品一覧へ安全に登録できるようにする。
+
+GitHub Pagesは静的配信のため、LINE画像の受信・保存・登録確認はCloudflare Workerで行う。HPはWorkerの公開APIから商品データを読み込む。
+
+## 現在の不足箇所
+
+- `workers/admin-line-secretary/src/index.js` は管理者LINEで画像メッセージを受け付けていない（現在は文字メッセージのみ）。
+- 顧客LINE側には画像を「参考画像」として扱う処理はあるが、LINE Content APIから画像を取得して保存する処理はない。
+- D1に商品マスターと画像ファイルのメタデータを保存するテーブルがない。
+- R2などの画像保管先が `wrangler.toml` に未登録。
+- `dist/items/index.html` は静的な商品一覧のため、公開商品APIとの接続が必要。
+
+## 登録フロー
+
+1. 許可済みの統括マネージャーLINE userIdから画像を送る。
+2. WorkerがLINE署名を検証し、LINE Content APIから画像を取得する。
+3. 画像をCloudflare R2へ保存し、D1に一時登録（`draft`）する。
+4. WorkerがLINEで「商品名・カテゴリー・価格・説明・掲載可否」を順番に質問する。
+5. 画像と入力内容を復唱する。
+6. 店長が「登録」と返信した場合だけ、D1の状態を`published`へ変更する。
+7. HPの商品APIが`published`だけを返し、商品一覧へ表示する。
+
+画像だけで商品情報を推測して公開することはしない。価格・在庫・納期・掲載可否は必ず人の確認を受ける。
+
+## 変更対象
+
+### 1. LINE Webhook
+
+`workers/admin-line-secretary/src/index.js`
+
+- `handleAdmin()`で`image`メッセージを受け付ける。
+- `event.message.id`を使ってLINE Content APIから画像を取得する。
+- `ADMIN_LINE_USER_IDS`で認可したユーザー以外は登録処理を開始しない。
+- `product-draft:<userId>`をKVに保存し、入力途中の状態を10分程度保持する。
+- 登録・公開・取消の各操作を確認トークン付きにする。
+- 受信画像、入力値、登録結果を`audit_log`へ記録する。
+
+### 2. 画像保存
+
+`workers/admin-line-secretary/wrangler.toml`
+
+- Cloudflare R2 binding `PRODUCT_IMAGES` を追加する。
+- バケットは公開書き込みにせず、Worker経由で読み取り・保存する。
+- ファイル名はLINEのmessageIdをそのまま公開URLに使わず、ランダムIDを使用する。
+- MIMEタイプ、容量、画像の幅・高さを検査する。
+- 上限超過・不正形式・保存失敗時は公開データを変更しない。
+
+### 3. D1商品マスター
+
+新しいmigration（例: `0010_product_catalog.sql`）を追加する。
+
+必要な項目:
+
+- `id`
+- `status`（`draft` / `published` / `archived`）
+- `name`
+- `category`
+- `price_yen`
+- `description`
+- `image_key`
+- `image_alt`
+- `sort_order`
+- `created_at`, `updated_at`, `created_by`
+- `published_at`, `archived_at`
+
+価格や掲載状態を変更した場合も、変更前後を監査ログに残す。
+
+### 4. 商品公開API
+
+Workerに次の読み取り専用APIを追加する。
+
+- `GET /api/products?status=published`
+- `GET /api/products/:id/image`
+
+公開APIは商品名、カテゴリー、価格、説明、画像URL、altテキストだけを返す。LINE userIdや内部メモは返さない。
+
+### 5. HP表示
+
+`dist/items/index.html` とトップページの商品一覧を、公開APIから取得する方式へ変更する。
+
+- API取得中はローディング表示
+- API障害時は現在の静的商品一覧をフォールバック表示
+- 画像に`loading="lazy"`と商品名の`alt`を設定
+- カテゴリー・価格で絞り込めるようにする
+- 商品が非公開になった場合は次回読み込みで表示しない
+
+## 管理者LINEの入力例
+
+画像送信後:
+
+```
+商品名：誕生日バルーンセット
+カテゴリー：バースデー
+価格：5500
+説明：お誕生日のお祝いにおすすめ
+掲載：する
+```
+
+Worker:
+
+```
+次の商品を登録します。
+商品名：誕生日バルーンセット
+カテゴリー：バースデー
+価格：5,500円
+画像：受信済み
+掲載：する
+
+問題なければ「登録」と返信してください。
+```
+
+## 段階的な実装順
+
+1. D1商品テーブルとR2保存を追加する。
+2. 管理者LINEで画像を受信し、下書きだけ作成する。
+3. LINE上の復唱・登録確認・取消を実装する。
+4. 公開APIとHPの商品一覧を接続する。
+5. 店長の実機LINEでテストし、画像・価格・掲載状態を確認する。
+6. 既存の静的商品データを移行して本番運用に切り替える。
+
+## 必須の安全条件
+
+- LINE署名検証と管理者userId認証を必須にする。
+- 「登録」確認なしに公開しない。
+- GitHubへLINEシークレット、R2キー、画像の非公開URLを保存しない。
+- 画像容量・拡張子・Content-Typeを検査する。
+- 削除は物理削除ではなく`archived`にして復旧可能にする。
+- すべての登録・公開・取消を監査ログへ残す。

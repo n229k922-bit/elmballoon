@@ -25,6 +25,24 @@ export default {
 
 const GOOGLE_REDIRECT_URI = 'https://elm-balloon-admin-line-secretary.n229k922.workers.dev/oauth/google/callback';
 
+async function publicSchedule(request, env) {
+  const rows = await env.DB.prepare(`SELECT date, status, open_time, close_time, note, updated_at
+      FROM business_schedule ORDER BY date ASC`).all();
+  const exceptions = (rows.results || []).map((row) => {
+    if (row.status === 'special_hours') {
+      return { date: row.date, status: row.status, start: row.open_time, end: row.close_time, label: row.note || '時間指定の休業' };
+    }
+    return { date: row.date, status: row.status, label: row.note || (row.status === 'closed' ? '臨時休業' : '営業予定') };
+  });
+  const body = { timezone: 'Asia/Tokyo', exceptions, updated_at: rows.results?.[0]?.updated_at || null };
+  const origin = request.headers.get('Origin') || '';
+  const allowedOrigins = (env.ALLOWED_ORIGINS || 'https://n229k922-bit.github.io,https://elmballoon.com,https://www.elmballoon.com')
+    .split(',').map((value) => value.trim()).filter(Boolean);
+  const headers = { 'Cache-Control': 'no-store' };
+  if (allowedOrigins.includes(origin)) headers['Access-Control-Allow-Origin'] = origin;
+  return json(body, 200, headers);
+}
+
 function googleOAuthStart(env) {
   if (!env.GOOGLE_CLIENT_ID) return new Response('Google OAuth client is not configured', { status: 503 });
   const auth = new URL('https://accounts.google.com/o/oauth2/v2/auth');
@@ -83,8 +101,8 @@ function formatCalendarReport(date, startTime, endTime, busy) {
   return `【カレンダー確認結果】\n\n対象日時：${formatJapanDate(date)} ${startTime}〜${endTime}\n\n【既存予定】\n${lines}`;
 }
 
-function json(value, status = 200) {
-  return new Response(JSON.stringify(value), { status, headers: { 'Content-Type': 'application/json; charset=utf-8' } });
+function json(value, status = 200, extraHeaders = {}) {
+  return new Response(JSON.stringify(value), { status, headers: { 'Content-Type': 'application/json; charset=utf-8', ...extraHeaders } });
 }
 
 async function lineWebhook(request, env) {
@@ -208,6 +226,7 @@ async function recordCustomerMessage(event, env) {
     .bind(event.webhookEventId || event.message.id, threadId, text, now).run();
 
   const candidate = extractScheduleCandidate(text);
+  const scheduleConflict = candidate ? await findBusinessScheduleConflict(candidate, env) : null;
   await upsertOrderCard(threadId, text, candidate, now, env);
 
   const customerNames = await getCustomerNames(threadId, env);
@@ -236,8 +255,25 @@ async function recordCustomerMessage(event, env) {
   await env.DB.prepare(`INSERT OR IGNORE INTO schedule_candidates
       (id, order_thread_id, event_type, event_date, event_time, status, source_summary, created_at)
       VALUES (?, ?, ?, ?, ?, 'needs_owner_review', ?, ?)`)
-    .bind(candidateId, threadId, candidate.type, candidate.date, candidate.time, text, now).run();
+    .bind(candidateId, threadId, candidate.type, candidate.date, candidate.time,
+      scheduleConflict ? `【営業日注意】${scheduleConflict}\n${text}` : text, now).run();
+  if (scheduleConflict) {
+    await notifyOwners(`統括マネージャーです。\n\n【営業日との競合を検知】\n${customerLabel}の${formatScheduleDate(candidate.date, candidate.time)}の${candidate.typeLabel}希望について、${scheduleConflict}\n\n注文候補は自動確定せず、店長確認待ちで記録しました。`, env);
+  }
   console.log('schedule candidate created', { type: candidate.type, date: candidate.date });
+}
+
+async function findBusinessScheduleConflict(candidate, env) {
+  const row = await env.DB.prepare(`SELECT status, open_time, close_time, note
+      FROM business_schedule WHERE date = ?`).bind(candidate.date).first();
+  if (!row) return null;
+  if (row.status === 'closed') return row.note || 'この日は店休日です。';
+  if (row.status === 'special_hours' && candidate.time && row.open_time && row.close_time
+      && (candidate.time < row.open_time || candidate.time >= row.close_time)) {
+    return `${row.open_time}〜${row.close_time}のみ営業です（希望時刻は営業時間外）。`;
+  }
+  if (row.status === 'special_hours' && !candidate.time) return `${row.open_time}〜${row.close_time}のみ営業です（希望時刻の確認が必要）。`;
+  return null;
 }
 
 async function queueCustomerReplyReview(event, env) {
@@ -697,9 +733,10 @@ async function applyChange(change, userId, env) {
     ON CONFLICT(date) DO UPDATE SET status = excluded.status, open_time = excluded.open_time,
       close_time = excluded.close_time, updated_at = excluded.updated_at, updated_by = excluded.updated_by`)
     .bind(change.date, change.status, change.openTime, change.closeTime, userId).run();
-  await env.DB.prepare(`INSERT INTO audit_log (actor_line_user_id, action, business_date, detail)
-    VALUES (?, 'schedule.update', ?, ?)`)
-    .bind(userId, change.date, JSON.stringify({ before: before || null, after: change })).run();
+  await env.DB.prepare(`INSERT INTO audit_log
+      (timestamp, actor_line_user_id, action, before_json, after_json, result, error_code)
+    VALUES (datetime('now'), ?, 'schedule.update', ?, ?, 'success', NULL)`)
+    .bind(userId, JSON.stringify(before || null), JSON.stringify({ ...change, date: change.date })).run();
 }
 
 async function getCustomerKind(customerId, text, env) {
@@ -770,7 +807,7 @@ function collectOrderDetail(text, session) {
   return { session, message: orderDetailsReceivedReply() };
 }
 function orderDetailsReceivedReply() {
-  return 'お問い合わせありがとうございます☺︎\n\nご希望の内容をもとに、制作内容や対応方法を確認するため、まずは分かる範囲で以下の内容を教えてください。\n\n【ご注文内容】\n・商品タイプ：\n・ご用途：\n・プレゼント・使用予定日：\n・ご予算：\n・受取希望日：\n・受取希望時間：\n・受取方法（店頭受取／配達／来店相談／発送）：\n\n上の項目をコピーして、分かるところだけご記入いただければ大丈夫です。\nまだ決まっていない項目は「未定」とご記入ください。\n\n内容を確認し、対応可能か確認を進めます。\n対応可能な場合は、商品タイプに合わせて必要な内容を追加でお伺いします。\n\n価格・在庫・納期については、確認後に改めてご案内いたします☺︎';
+  return 'ご回答ありがとうございます☺︎\n\nご希望内容を確認しました。制作可否・在庫・納期・お届け方法を店長が確認し、改めてご案内いたします。\n\n価格やお届け日時は、この時点ではまだ確定していません。追加で確認が必要な場合はご連絡いたします。';
 }
 function basicOrderConfirmation(text, session) {
   const productType = session.fields.productType || detectProductType(text);
@@ -784,31 +821,36 @@ function basicOrderConfirmation(text, session) {
 function intakePrompt(missing, productType, customerKind, hasKnownDetails) {
   const greeting = customerKind === 'returning' ? 'いつもありがとうございます☺︎ お久しぶりです。今回もお問い合わせありがとうございます。' : 'お問い合わせありがとうございます🎈';
   const guidance = '作りたいイメージや参考にしたい画像がありましたら、まずはそのままお送りください。\n\n画像をもとに、色味・雰囲気・大きさなどを確認しながら、制作内容や対応方法を確認いたします。\n\n画像がない場合や、まだイメージが決まっていない場合も、分かる範囲でご希望をお聞かせください。\n\n下の項目をコピーして、分かるところだけご記入ください。\nまだ決まっていない項目や分からない項目は、「未定」とご記入いただいて大丈夫です。';
-  const rows = '【ご注文内容】📷\n\n・参考画像：\n（このトークに画像を添付してください）\n\n・ご希望の色味・雰囲気：\n（例：ピンク系／明るい感じ／落ち着いた雰囲気）\n\n・ご予算：\n（例：15,000円くらい）\n\n・プレゼント・使用予定日：\n（いつプレゼントするか、いつ使うか）\n\n・受取希望日：\n\n・受取希望時間：\n\n・受取方法：\n（店頭受取／配達／発送／未定）';
+  const rows = '【ご注文内容】📷\n\n・バルーンのタイプ：\n（ブーケ／置き型アレンジメント／ヘリウム〈浮く〉タイプ／未定）\n\n・ご予算：\n（例：15,000円くらい）\n\n・全体的なお色味と雰囲気：\n（例：ピンク系で可愛い雰囲気／青系で綺麗め／お任せ）\n\n・バルーンへのご希望の文字入れ：\n（なし／未定でも大丈夫です）\n\n・メッセージカードの有無：\n（ご希望の場合は50文字以内でメッセージをどうぞ）\n\n・お届けご希望日時：\n（例：2026年10月1日 14:00／店頭受取・配達・発送の別もご記入ください）\n\n・お名前：\n\n・ご連絡先：\n\n・その他ご質問等：';
   const closing = '内容を確認し、在庫や対応可否を確認いたします。\n\n対応可能な場合は、当店の価格と納期を改めてご案内いたします。\n\n仕上がりのボリュームは、ご予算に合わせて調整いたします。\nご予算内でボリュームを優先するか、内容やデザインを優先するかは、店長と相談しながら決められます。\n\n画像やご希望内容について確認が必要な場合は、\n追加でお伺いすることがございます✨';
   return greeting + '\n\n' + guidance + '\n\n' + rows + '\n\n' + closing;
 }
 function intakeRows(items) {
   const choices = {
-    '商品タイプ': '（バルーンブーケ／アレンジ／浮くタイプ／会場装飾／バルーンスタンド／来店相談／未定）',
+    'バルーンのタイプ': '（ブーケ／置き型アレンジメント／ヘリウム〈浮く〉タイプ／未定）',
     'ご予算': '（例：5,000円くらい）',
-    'ご用途': '（例：誕生日／開店祝い／記念日）',
-    'プレゼント・使用予定日': '（例：10月1日／年を付けても可）',
-    'ご希望日': '（例：10月1日／2026年10月1日など）',
-    'ご希望時間': '（例：14時頃）',
-    '受取方法': '（店頭受取／配達／来店相談／発送）',
+    '全体的なお色味と雰囲気': '（例：ピンク系で可愛い雰囲気／お任せ）',
+    'バルーンへのご希望の文字入れ': '（なし／未定でも大丈夫です）',
+    'メッセージカードの有無': '（ご希望の場合は50文字以内で内容をご記入ください）',
+    'お届けご希望日時': '（例：2026年10月1日 14:00／店頭受取・配達・発送の別もご記入ください）',
+    'お名前': '',
+    'ご連絡先': '',
   };
   return items.map((item) => `・${item}：\n${choices[item] || ''}`).join('\n\n');
 }
 function mergeIntakeAnswers(fields, text) {
-  fields.productType = fields.productType || detectProductType(text) || (hasLabeledAnswer(text, '商品タイプ') ? 'other' : null);
+  fields.productType = fields.productType || detectProductType(text) || (hasLabeledAnswer(text, 'バルーンのタイプ|商品タイプ') ? 'other' : null);
   fields.hasPurpose = fields.hasPurpose || Boolean(fields.purpose) || hasLabeledAnswer(text, 'ご用途|用途');
-  fields.hasDate = fields.hasDate || new RegExp(`${DATE_INPUT_PATTERN}|今日|明日|あした|今週|来週|今度`, 'u').test(text) || hasLabeledAnswer(text, 'ご希望日|希望日');
+  fields.hasDate = fields.hasDate || new RegExp(`${DATE_INPUT_PATTERN}|今日|明日|あした|今週|来週|今度`, 'u').test(text) || hasLabeledAnswer(text, 'お届けご希望日時|ご希望日|希望日');
   fields.hasUseDate = fields.hasUseDate || hasLabeledAnswer(text, 'プレゼント・使用予定日|使用予定日|利用日|使用日');
-  fields.hasTime = fields.hasTime || /\d{1,2}:\d{2}|午前|午後|時頃?|まで/u.test(text) || hasLabeledAnswer(text, 'ご希望時間|希望時間');
+  fields.hasTime = fields.hasTime || /\d{1,2}:\d{2}|午前|午後|時頃?|まで/u.test(text) || hasLabeledAnswer(text, 'お届けご希望日時|ご希望時間|希望時間');
   fields.hasBudget = fields.hasBudget || /円/u.test(text) || hasLabeledAnswer(text, 'ご予算|予算');
   fields.hasMethod = fields.hasMethod || /受取|受け取|来店|配達|配送|発送|郵送/u.test(text) || hasLabeledAnswer(text, '受取方法|受け取り方法|方法');
-  fields.hasColor = fields.hasColor || /ピンク|赤|青|黄|緑|紫|白|黒|金|銀|色味|カラー|おまかせ/u.test(text) || hasLabeledAnswer(text, '色味|雰囲気');
+  fields.hasColor = fields.hasColor || /ピンク|赤|青|黄|緑|紫|白|黒|金|銀|色味|カラー|おまかせ/u.test(text) || hasLabeledAnswer(text, '全体的なお色味と雰囲気|色味|雰囲気');
+  fields.hasBalloonMessage = fields.hasBalloonMessage || hasLabeledAnswer(text, 'バルーンへのご希望の文字入れ|文字入れ|バルーン(?:の)?(?:文字|メッセージ)') || /(?:文字入れ|バルーン(?:の)?(?:文字|メッセージ))\s*(?:は)?\s*(?:なし|不要)/u.test(text);
+  fields.hasCard = fields.hasCard || hasLabeledAnswer(text, 'メッセージカードの有無|メッセージカード|カード(?:の内容)?') || /(?:メッセージカード|カード)\s*(?:は)?\s*(?:なし|不要)/u.test(text);
+  fields.hasName = fields.hasName || hasLabeledAnswer(text, 'お名前|氏名|名前');
+  fields.hasContact = fields.hasContact || hasLabeledAnswer(text, 'ご連絡先|電話(?:番号)?|TEL') || /0\d{1,4}[\-ー－ ]?\d{1,4}[\-ー－ ]?\d{3,4}/u.test(text);
   if (fields.productType === 'venue_decoration' || fields.productType === 'balloon_stand') {
     fields.hasVenue = fields.hasVenue || hasLabeledAnswer(text, '会場名|設置先|場所');
     fields.hasInstallTime = fields.hasInstallTime || hasLabeledAnswer(text, '設置開始|設置時間|搬入時間') || /設置.*(?:\d{1,2}:\d{2}|午前|午後)/u.test(text);
@@ -818,12 +860,14 @@ function mergeIntakeAnswers(fields, text) {
 function hasLabeledAnswer(text, label) { return new RegExp(`(?:${label})\\s*[：:]\\s*(?!\\s*(?:$|未定|未入力))[^\\n]{1,80}`, 'u').test(text); }
 function missingIntakeFields(fields) {
   return [
-    !fields.productType && '商品タイプ',
-    !fields.hasUseDate && 'プレゼント・使用予定日',
-    !fields.hasDate && 'ご希望日',
-    !fields.hasTime && 'ご希望時間',
-    !fields.hasMethod && '受取方法',
+    !fields.productType && 'バルーンのタイプ',
+    !fields.hasColor && '全体的なお色味と雰囲気',
+    !fields.hasBalloonMessage && 'バルーンへのご希望の文字入れ',
+    !fields.hasCard && 'メッセージカードの有無',
+    (!fields.hasDate || !fields.hasTime || !fields.hasMethod) && 'お届けご希望日時',
     !fields.hasBudget && 'ご予算',
+    !fields.hasName && 'お名前',
+    !fields.hasContact && 'ご連絡先',
   ].filter(Boolean);
 }
 function missingIntakePrompt(missing, productType) { return 'ご回答ありがとうございます☺︎\n\n確認に必要な項目が一部不足しているため、以下の項目をご記入ください。全項目の確認ができましたら、次のご案内へ進みます。\n\n下の項目をコピーして、分かるところだけご記入のうえご返信ください。分からない項目は「未定」で大丈夫です。\n\n【ご注文内容】\n' + intakeRows(missing) + '\n\n内容を確認し、在庫や対応可否を確認いたします。\n対応可能な場合は、当店の価格と納期を改めてご案内いたします。'; }

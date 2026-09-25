@@ -82,9 +82,19 @@ var bizcalOptions = {"holiday_title":"\u5e97\u4f11\u65e5","sun":"on","sat":"on",
       background: linear-gradient(90deg, #dff5ff, #f9fdff 48%, #dff5ff);
       border-bottom: 1px solid var(--sky-line);
     }
+    .notice_area .text p { margin:.2rem 0; font-size:clamp(.78rem,1.4vw,.98rem); line-height:1.45; }
+    #top_first_view .top_fv { position:relative; }
+    #top_first_view .top_fv > .hero-message { top:1rem !important; bottom:auto !important; left:30% !important; right:auto !important; transform:translateX(-50%) !important; }
+    .hero-message { display:block !important; visibility:visible !important; opacity:1 !important; position:absolute !important; z-index:20; top:1rem; bottom:auto; left:50%; transform:translateX(-50%); width:min(88%, 30rem); max-width:30rem; padding:.8rem 1.1rem; border-radius:1rem; background:rgba(255,255,255,.92); box-shadow:0 8px 24px rgba(30,105,135,.2); color:#174c65; text-align:center; }
+    .hero-message strong { display:block; font-size:clamp(1.25rem,3.4vw,2.15rem); line-height:1.25; }
+    .hero-message span { display:block; margin-top:.35rem; font-size:clamp(.85rem,1.7vw,1.05rem); line-height:1.5; }
+    .hero-message__link { display:inline-flex; align-items:center; gap:.35rem; margin-top:.7rem; padding:.5rem .85rem; border-radius:999px; background:#168fc4; color:#fff !important; font-size:.9rem; font-weight:800; text-decoration:none; }
+    .hero-message__link:focus-visible, .hero-message__link:hover { background:#087eae; }
 
     .timed-notice { display:none; padding:.75rem 1rem; background:#087eae; color:#fff; font-weight:700; text-align:center; }
     .timed-notice.is-active { display:block; }
+    .calendar-sync-notice { display:none; padding:.6rem 1rem; background:#fff4d6; border-bottom:1px solid #edc66a; color:#74520a; font-size:.86rem; font-weight:700; text-align:center; }
+    .calendar-sync-notice.is-visible { display:block; }
 
     /* 自前の営業日カレンダー（WordPressプラグインには依存しません） */
     .elm-calendar { width:min(100%, 680px); aspect-ratio:1 / 1; box-sizing:border-box; margin:0 auto; padding:1.1rem; background:#fff; border:2px solid var(--sky-line); border-radius:18px; box-shadow:0 8px 22px rgba(22,143,196,.10); }
@@ -92,24 +102,28 @@ var bizcalOptions = {"holiday_title":"\u5e97\u4f11\u65e5","sun":"on","sat":"on",
     .elm-calendar__bar button { border:0; border-radius:999px; background:var(--sky-deep); color:#fff; padding:.55rem .85rem; font-weight:700; cursor:pointer; }
     .elm-calendar__bar button:hover { background:#087eae; }
     .elm-calendar__title { color:#176b8f; font-size:1.25rem; font-weight:800; }
-    .elm-calendar__legend { display:flex; flex-wrap:wrap; gap:.45rem 1rem; margin:0 0 .55rem; font-size:.82rem; color:#4d6370; }
-    .elm-calendar__legend span::before { content:""; display:inline-block; width:.75rem; height:.75rem; margin-right:.3rem; border-radius:50%; background:#ffe9ee; border:1px solid #f4a3b5; }
-    .elm-calendar__legend .partial::before { background:#dff5ff; border-color:#54bee9; }
+    .elm-calendar__legend { display:flex; flex-wrap:wrap; gap:.4rem; margin:0 0 .7rem; font-size:.82rem; color:#4d6370; }
+    .elm-calendar__legend span { display:inline-flex; align-items:center; gap:.38rem; padding:.28rem .62rem; border:1px solid #e8a5b2; border-radius:999px; background:#fff1f4; color:#8f263b; font-weight:700; }
+    .elm-calendar__legend span::before { content:""; display:inline-block; flex:0 0 .72rem; width:.72rem; height:.72rem; border-radius:50%; background:#c52f4a; border:1px solid #a71f39; }
+    .elm-calendar__legend .partial { border-color:#79bad2; background:#eaf7fc; color:#075b7e; }
+    .elm-calendar__legend .partial::before { background:#08749c; border-color:#075b7e; }
     .elm-calendar__week, .elm-calendar__grid { display:grid; grid-template-columns:repeat(7, minmax(0, 1fr)); }
     .elm-calendar__week div { padding:.35rem 0; text-align:center; font-size:.8rem; font-weight:800; color:#176b8f; }
     .elm-calendar__week div:first-child { color:#e86982; }
     .elm-calendar__day { aspect-ratio:1 / 1; min-height:0; padding:.28rem; border:1px solid #d9edf5; background:#fff; color:#263b46; font:inherit; font-size:.82rem; text-align:left; cursor:pointer; position:relative; }
     .elm-calendar__day:not(.is-empty):hover, .elm-calendar__day:not(.is-empty):focus-visible { outline:3px solid #54bee9; outline-offset:-3px; z-index:1; }
     .elm-calendar__day.is-empty { background:#f8fcfe; }
-    .elm-calendar__day.is-closed { background:#fff5f7; }
+    .elm-calendar__day.is-closed { background:#fff0f3; border-color:#eaa1af; }
+    .elm-calendar__day.has-partial { background:#effaff; border-color:#80c1d8; }
     .elm-calendar__date { display:flex; align-items:center; justify-content:center; width:1.8rem; height:1.8rem; border-radius:50%; font-weight:800; color:#263b46; }
     .elm-calendar__day:nth-child(7n+1) .elm-calendar__date { color:#d95470; }
-    .elm-calendar__day.is-closed::after { content:"休"; position:absolute; right:.25rem; bottom:.22rem; display:grid; place-items:center; width:1.3rem; height:1.3rem; border-radius:50%; background:#e9576f; color:#fff; font-size:.65rem; font-weight:800; }
-    .elm-calendar__day.has-partial::after { content:"時"; position:absolute; right:.25rem; bottom:.22rem; display:grid; place-items:center; width:1.3rem; height:1.3rem; border-radius:50%; background:#168fc4; color:#fff; font-size:.65rem; font-weight:800; }
+    #business-calendar .elm-calendar__day.is-closed::after { content:"休業"; position:absolute; left:50%; right:auto; bottom:.2rem; transform:translateX(-50%); display:grid; place-items:center; min-width:2.65rem; height:1.3rem; padding:0 .28rem; border:1px solid #fff; border-radius:999px; background:#bd2945; box-shadow:0 1px 3px rgba(111,25,45,.22); color:#fff; font-size:.64rem; line-height:1; font-weight:800; }
+    #business-calendar .elm-calendar__day.has-partial::after { content:"時間"; position:absolute; left:50%; right:auto; bottom:.2rem; transform:translateX(-50%); display:grid; place-items:center; min-width:2.65rem; height:1.3rem; padding:0 .28rem; border:1px solid #fff; border-radius:999px; background:#08749c; box-shadow:0 1px 3px rgba(7,91,126,.2); color:#fff; font-size:.64rem; line-height:1; font-weight:800; }
     .elm-calendar__day.is-today .elm-calendar__date { background:#ffcc5d; color:#493506; box-shadow:0 0 0 3px #fff2c9; }
     .elm-calendar__details { display:none; margin-top:.65rem; padding:.5rem .7rem; border-radius:10px; background:#effaff; color:#176b8f; font-size:.88rem; font-weight:700; line-height:1.5; }
     .elm-calendar__details.is-visible { display:block; }
-    @media (max-width:600px) { .elm-calendar { padding:.65rem; border-radius:12px; } .elm-calendar__title { font-size:1rem; } .elm-calendar__bar button { padding:.45rem .55rem; font-size:.78rem; } .elm-calendar__day { padding:.12rem; font-size:.72rem; } .elm-calendar__date { width:1.55rem; height:1.55rem; } .elm-calendar__day.is-closed::after, .elm-calendar__day.has-partial::after { width:1.1rem; height:1.1rem; right:.12rem; bottom:.12rem; font-size:.56rem; } .elm-calendar__details { font-size:.78rem; } }
+    .elm-calendar__details strong { color:#8f263b; }
+    @media (max-width:600px) { .elm-calendar { padding:.65rem; border-radius:12px; } .elm-calendar__title { font-size:1rem; } .elm-calendar__bar button { padding:.45rem .55rem; font-size:.78rem; } .elm-calendar__legend { gap:.3rem; font-size:.72rem; } .elm-calendar__legend span { padding:.25rem .48rem; } .elm-calendar__day { padding:.12rem; font-size:.72rem; } .elm-calendar__date { width:1.55rem; height:1.55rem; } #business-calendar .elm-calendar__day.is-closed::after { content:"休"; min-width:1.3rem; height:1.1rem; padding:0 .18rem; bottom:.1rem; font-size:.58rem; } #business-calendar .elm-calendar__day.has-partial::after { content:"時"; min-width:1.3rem; height:1.1rem; padding:0 .18rem; bottom:.1rem; font-size:.58rem; } .elm-calendar__details { font-size:.78rem; } }
 
     .notice_area a,
     .notice_area span[style*="0000ff"] {
@@ -195,11 +209,12 @@ var bizcalOptions = {"holiday_title":"\u5e97\u4f11\u65e5","sun":"on","sat":"on",
       color: #ffffff;
     }
 
-    .order-cta { display:flex; align-items:center; justify-content:center; gap:.7rem; width:min(92%,620px); margin:1.75rem auto 2.3rem; padding:.9rem 1.1rem; border-radius:999px; background:linear-gradient(100deg,#129bd0,#63cbed); box-shadow:0 10px 22px rgba(20,145,194,.28); color:#fff !important; text-align:center; text-decoration:none; transition:transform .2s ease,box-shadow .2s ease; animation:elm-order-pulse 2.6s ease-in-out infinite; }
-    .order-cta:hover,.order-cta:focus-visible { color:#fff !important; transform:translateY(-3px); box-shadow:0 14px 28px rgba(20,145,194,.36); }
-    .order-cta__small { display:none; }
-    .order-cta__main { font-size:1.05rem; font-weight:700; letter-spacing:.04em; }
-    .order-cta__arrow { display:inline-grid; place-items:center; width:1.7rem; height:1.7rem; border-radius:50%; background:rgba(255,255,255,.22); font-size:1.2rem; animation:elm-arrow-down 1.1s ease-in-out infinite; }
+    .order-cta { position:fixed; z-index:30; right:82px; bottom:max(14px,env(safe-area-inset-bottom)); display:inline-flex; align-items:center; justify-content:center; width:auto; max-width:calc(100% - 100px); min-height:48px; margin:0; padding:.62rem 1.05rem; border:1.5px solid rgba(255,255,255,.94); border-radius:999px; background:rgba(22,143,196,.94); box-shadow:0 4px 14px rgba(20,105,145,.2); color:#fff !important; cursor:pointer; text-align:center; text-decoration:none; transition:transform .18s ease,box-shadow .18s ease,opacity .18s ease,visibility .18s ease; }
+    body { padding-bottom:76px; }
+    .order-cta:hover,.order-cta:focus-visible { color:#fff !important; transform:translateY(-2px); box-shadow:0 7px 18px rgba(20,105,145,.28); }
+    .order-cta.is-pressed { transform:scale(.96); box-shadow:0 2px 8px rgba(20,105,145,.18); }
+    .order-cta.is-target-visible { opacity:0; visibility:hidden; pointer-events:none; transform:translateY(8px); }
+    .order-cta__main { display:block; font-size:1rem; font-weight:700; letter-spacing:.025em; line-height:1.2; white-space:nowrap; }
 
     .best-sellers { padding:4rem 1.25rem; background:linear-gradient(145deg,#effaff,#fff 48%,#e8f8ff); }
     .best-sellers__inner { max-width:1120px; margin:0 auto; }
@@ -219,16 +234,16 @@ var bizcalOptions = {"holiday_title":"\u5e97\u4f11\u65e5","sun":"on","sat":"on",
     .best-sellers__card img { display:block; aspect-ratio:1/1; width:100%; object-fit:cover; }
     .best-sellers__card > span:last-child { display:block; padding:.8rem .45rem; }
     .best-sellers__rank { position:absolute; z-index:1; top:.55rem; left:.55rem; display:grid; place-items:center; width:2rem; height:2rem; border-radius:50%; background:#1399cd; box-shadow:0 3px 9px rgba(10,113,157,.25); color:#fff; font-size:1rem; font-weight:800; }
-    @keyframes elm-arrow-down { 50% { transform:translateY(3px); } }
-    @keyframes elm-order-pulse { 50% { box-shadow:0 10px 30px rgba(20,145,194,.46); } }
+    @media (prefers-reduced-motion: reduce) { .order-cta { transition:none; } }
 
     @media screen and (max-width: 767px) {
+      body { padding-bottom:76px; }
       .notice_area {
         padding-left: 12px;
         padding-right: 12px;
       }
-      .order-cta { flex-wrap:wrap; gap:.25rem .6rem; padding:.85rem .75rem; }
-      .order-cta__small { display:block; width:100%; font-size:.74rem; font-weight:700; opacity:.92; }
+      .order-cta { right:72px; bottom:max(12px,env(safe-area-inset-bottom)); min-height:44px; max-width:calc(100% - 88px); padding:.58rem .85rem; }
+      .order-cta__main { font-size:clamp(.82rem,3.8vw,.98rem); }
       .best-sellers { padding:3rem 1rem; }
       .best-sellers__group { padding:1rem; }
       .best-sellers__heading { align-items:flex-start; flex-direction:column; gap:.35rem; }
@@ -237,6 +252,90 @@ var bizcalOptions = {"holiday_title":"\u5e97\u4f11\u65e5","sun":"on","sat":"on",
       .best-sellers__card { font-size:.75rem; }
       .best-sellers__card > span:last-child { min-height:3.4rem; padding:.55rem .25rem; }
       .best-sellers__rank { top:.35rem; left:.35rem; width:1.7rem; height:1.7rem; font-size:.86rem; }
+    }
+
+    /* 予約案内：写真の上でも電話番号・営業時間を確実に読めるようにする */
+    #line-order.top_banner {
+      padding: clamp(2rem, 5vw, 4rem) 1rem;
+      background: linear-gradient(135deg, #dff5ff, #f8fdff 52%, #c8edfb) !important;
+    }
+    #line-order.top_banner > .top_banner__link {
+      display: block;
+      max-width: 760px;
+      margin: 0 auto;
+      padding: clamp(1.4rem, 4vw, 2.5rem);
+      background: rgba(255, 255, 255, .96);
+      border: 3px solid #168fc4;
+      border-radius: 22px;
+      box-shadow: 0 12px 30px rgba(22, 143, 196, .22);
+    }
+    #line-order.top_banner > .top_banner__link > h2 {
+      margin: 0 0 1.25rem;
+      padding: .7rem 1rem;
+      border-radius: 999px;
+      background: #168fc4;
+      color: #fff !important;
+      font-size: clamp(1.25rem, 3vw, 1.8rem);
+      line-height: 1.4;
+      text-align: center;
+      text-shadow: none;
+    }
+    #line-order.top_banner .content_box {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: clamp(1rem, 4vw, 2.5rem);
+      margin: 0;
+      padding: 0;
+      background: transparent;
+      box-shadow: none;
+    }
+    #line-order.top_banner .text_box p,
+    #line-order.top_banner .text_box strong {
+      color: #163d52 !important;
+      font-weight: 700;
+      line-height: 1.8;
+      text-shadow: none;
+    }
+    #line-order.top_banner .tel_num {
+      display: inline-block;
+      margin-bottom: .3rem;
+      color: #075d88 !important;
+      font-size: clamp(2rem, 6vw, 3.4rem);
+      letter-spacing: .04em;
+    }
+    #line-order.top_banner .tel_num::before,
+    #line-order.top_banner .tel_num::after {
+      color: #075d88 !important;
+      text-shadow: none !important;
+    }
+    #line-order.top_banner .line_QR {
+      display: block !important;
+      flex: 0 0 auto;
+      padding: .5rem;
+      background: #fff;
+      border: 1px solid #c6e6f1;
+      border-radius: 12px;
+    }
+    #line-order.top_banner .line_QR img { display: block; width: 148px; max-width: 28vw; height: auto; }
+    .order-actions { display:flex; flex-wrap:wrap; gap:.65rem; margin-top:.75rem; }
+    .order-actions a { display:inline-flex; align-items:center; justify-content:center; min-height:44px; padding:.55rem .9rem; border-radius:999px; font-weight:800; text-decoration:none; }
+    .order-actions__tel { background:#e9f7fd; border:1px solid #8acfe8; color:#075d88 !important; }
+    .order-actions__line { background:#06c755; border:1px solid #04a947; color:#fff !important; }
+    .order-actions a:focus-visible, .order-actions a:hover { transform:translateY(-1px); box-shadow:0 4px 10px rgba(22,143,196,.18); }
+    .line_QR__caption { margin:.35rem 0 0; color:#176b8f; font-size:.75rem; font-weight:700; text-align:center; }
+    .item_category .btn_anime a:focus-visible { outline:3px solid #168fc4; outline-offset:4px; }
+    .item_category .text_box .text { font-size:clamp(.82rem,1.5vw,1rem); line-height:1.55; }
+    .item_category > .content_box > .btn a { min-height:48px; display:inline-flex; align-items:center; justify-content:center; padding:.7rem 1.25rem; }
+    @media (max-width: 600px) {
+      #line-order.top_banner > .top_banner__link { border-radius: 16px; }
+      #line-order.top_banner .content_box { flex-direction: column; text-align: center; }
+      #line-order.top_banner .line_QR img { width: 138px; max-width: 42vw; }
+      #top_first_view .top_fv > .hero-message { top:auto !important; bottom:1rem !important; left:1rem !important; right:1rem !important; width:auto; max-width:none; transform:none !important; padding:.8rem 1rem; }
+      .hero-message strong { font-size:1.25rem; }
+      .hero-message span { font-size:.82rem; }
+      .order-actions { justify-content:center; }
+      .order-actions a { flex:1 1 8.5rem; }
     }
   </style>
 </head>
@@ -261,6 +360,7 @@ var bizcalOptions = {"holiday_title":"\u5e97\u4f11\u65e5","sun":"on","sat":"on",
       </div>
           </div>
     <div id="timed-notice" class="timed-notice" role="status"></div>
+    <div id="calendar-sync-notice" class="calendar-sync-notice" role="status"></div>
 
     <!-- ヘッダー -->
     <header>
@@ -383,6 +483,11 @@ var bizcalOptions = {"holiday_title":"\u5e97\u4f11\u65e5","sun":"on","sat":"on",
         style="background-image: url(https://elmballoon.com/wp/wp-content/themes/elmballoon3/img/front/top_fv4.jpg); background-size: cover; background-position: center;">
       </li>
     </ul>
+    <div class="hero-message">
+      <strong>大切な日を彩るバルーンギフト</strong>
+      <span>霧島市のバルーン専門店 elm・balloon</span>
+      <a class="hero-message__link" href="#line-order">ご注文・ご相談はこちら&nbsp;→</a>
+    </div>
   </section>
 
   <section class="calendar" id="business-calendar">
@@ -397,12 +502,12 @@ var bizcalOptions = {"holiday_title":"\u5e97\u4f11\u65e5","sun":"on","sat":"on",
   </section>
 
   <section class="top_banner" id="line-order">
-    <a href="https://elmballoon.com/contact/">
+    <div class="top_banner__link">
       <h2>ご予約・お問い合わせはこちら</h2>
       <div class="content_box">
         <div class="text_box">
           <p>
-            <strong class="tel_num"></strong>
+            <a class="tel_num" href="tel:09086200905" aria-label="電話で注文・相談する"></a>
             <br>【営業時間】10:00~16:00
             <br>【店休日】日曜・祝日（土曜は予約のみ）
           </p>
@@ -412,26 +517,25 @@ var bizcalOptions = {"holiday_title":"\u5e97\u4f11\u65e5","sun":"on","sat":"on",
               style="display: none;"></div>
             <script src="https://www.line-website.com/social-plugins/js/thirdparty/loader.min.js" async="async"
               defer="defer"></script>
+            <div class="order-actions" aria-label="注文方法">
+              <a class="order-actions__tel" href="tel:09086200905">電話で注文・相談</a>
+              <a class="order-actions__line" href="https://lin.ee/JouXL3T" target="_blank" rel="noopener">LINEで相談する</a>
+            </div>
           </div>
         </div>
         <div class="line_QR">
-          <img src="https://elmballoon.com/wp/wp-content/themes/elmballoon3/img/LINE@QR.png" alt="">
+          <img src="https://elmballoon.com/wp/wp-content/themes/elmballoon3/img/LINE@QR.png" alt="elm・balloon公式LINEの友だち追加用QRコード" loading="lazy">
+          <p class="line_QR__caption">スマホで読み取ってLINE相談</p>
         </div>
       </div>
 
-    </a>
+    </div>
   </section>
 </article>
 <!-- top_firstview -->
 
 <!-- フロントページ -->
 <arricle id="front_page">
-
-  <a class="order-cta" href="#line-order" aria-label="LINEで相談・注文する">
-    <span class="order-cta__small">はじめてでも安心</span>
-    <span class="order-cta__main">ご注文・ご相談はこちら</span>
-    <span class="order-cta__arrow" aria-hidden="true">↓</span>
-  </a>
 
   <!-- お知らせ -->
   <section class="top_news">
@@ -1443,7 +1547,7 @@ https://www.facebook.com/elmballoon/⠀
 <!-- フッター -->
 
 <script>
-  /* 自前データだけを読む営業日カレンダー。会話による更新では data/calendar.json を変更します。 */
+  /* Workerの公開APIを優先し、停止時は同梱データへ安全にフォールバックする営業日カレンダー。 */
   (function () {
     var grid = document.getElementById('elm-calendar-grid');
     var title = document.getElementById('calendar-title');
@@ -1470,13 +1574,27 @@ https://www.facebook.com/elmballoon/⠀
         var exception = exceptions.find(function (item) { return item.date === date; });
         var regular = (data.weekly_closed_days || [0,6]).indexOf(week) !== -1 || !!holidays[date];
         var partial = exception && exception.start && exception.end;
-        var label = partial ? (exception.start + '〜' + exception.end + ' ' + (exception.label || '臨時休業')) : (exception ? (exception.label || '臨時休業') : (regular ? (holidays[date] || '店休日') : '営業予定'));
-        var classes = 'elm-calendar__day' + (partial ? ' has-partial' : ((regular || exception) ? ' is-closed' : '')) + (date === today ? ' is-today' : '');
+        var explicitlyOpen = exception && exception.status === 'open';
+        var explicitlyClosed = exception && exception.status === 'closed';
+        var closed = !explicitlyOpen && (explicitlyClosed || regular);
+        var label = partial ? (exception.start + '〜' + exception.end + ' ' + (exception.label || '時間指定の休業')) : (exception ? (exception.label || (explicitlyOpen ? '営業予定' : '臨時休業')) : (regular ? (holidays[date] || '店休日') : '営業予定'));
+        var classes = 'elm-calendar__day' + (partial ? ' has-partial' : (closed ? ' is-closed' : '')) + (date === today ? ' is-today' : '');
         grid.insertAdjacentHTML('beforeend', '<button type="button" class="' + classes + '" data-date="' + date + '" data-label="' + label + '" aria-label="' + date + ' ' + label + '"><span class="elm-calendar__date">' + day + '</span></button>');
       }
       grid.querySelectorAll('button[data-date]').forEach(function (button) { button.addEventListener('click', function () { details.textContent = button.dataset.date + '：' + button.dataset.label; details.classList.add('is-visible'); }); });
     }
-    fetch('./data/calendar.json').then(function (response) { if (!response.ok) throw new Error('calendar'); return response.json(); }).then(function (data) {
+    function mergeRemote(base, remote) {
+      var remoteExceptions = remote && Array.isArray(remote.exceptions) ? remote.exceptions : [];
+      var dates = {}; remoteExceptions.forEach(function (item) { dates[item.date] = true; });
+      return Object.assign({}, base, { exceptions: (base.exceptions || []).filter(function (item) { return !dates[item.date]; }).concat(remoteExceptions) });
+    }
+    Promise.all([
+      fetch('./data/calendar.json').then(function (response) { if (!response.ok) throw new Error('fallback calendar'); return response.json(); }),
+      fetch('https://elm-balloon-admin-line-secretary.n229k922.workers.dev/api/business-schedule', { headers: { Accept: 'application/json' } }).then(function (response) { if (!response.ok) throw new Error('remote calendar'); return response.json(); }).catch(function () { return null; })
+    ]).then(function (values) {
+      var data = mergeRemote(values[0], values[1]);
+      var syncNotice = document.getElementById('calendar-sync-notice');
+      if (!values[1] && syncNotice) { syncNotice.textContent = '営業日情報を最新取得できないため、保存済みの情報を表示しています。'; syncNotice.classList.add('is-visible'); }
       function repaint() { render(data); }
       document.getElementById('calendar-prev').addEventListener('click', function () { state = new Date(state.getFullYear(), state.getMonth() - 1, 1); repaint(); });
       document.getElementById('calendar-next').addEventListener('click', function () { state = new Date(state.getFullYear(), state.getMonth() + 1, 1); repaint(); });
@@ -1506,6 +1624,61 @@ var cf7msm_posted_data = [];
 var sb_instagram_js_options = {"font_method":"svg","resized_url":"https:\/\/elmballoon.com\/wp\/wp-content\/uploads\/sb-instagram-feed-images\/","placeholder":"https:\/\/elmballoon.com\/wp\/wp-content\/plugins\/instagram-feed\/img\/placeholder.png","ajax_url":"https:\/\/elmballoon.com\/wp\/wp-admin\/admin-ajax.php"};
 </script>
 <script src='https://elmballoon.com/wp/wp-content/plugins/instagram-feed/js/sbi-scripts.min.js?ver=6.1.5' id='sbi_scripts-js'></script>
+<script>
+  (function () {
+    /* 初期表示に不要な商品・SNS画像は遅延読み込みにして、スマホの表示を軽くする */
+    document.querySelectorAll('img:not([loading])').forEach(function (image) {
+      if (!image.closest('header') && !image.closest('#top_first_view')) image.loading = 'lazy';
+    });
+  }());
+</script>
+<a class="order-cta" href="#line-order" aria-label="ご注文・ご相談はこちら。押すと予約・お問い合わせ欄へ移動します。">
+  <span class="order-cta__main">ご注文・ご相談はこちら</span>
+</a>
+<script>
+  (function () {
+    var orderCta = document.querySelector('.order-cta');
+    var orderTarget = document.getElementById('line-order');
+    var topPanel = document.getElementById('top_first_view') || document.querySelector('.top_first_view');
+    var calendarPanel = document.getElementById('business-calendar');
+    if (!orderCta || !orderTarget) return;
+
+    function updateOrderCta() {
+      var targetBounds = orderTarget.getBoundingClientRect();
+      var panelBounds = topPanel && topPanel.getBoundingClientRect();
+      var calendarBounds = calendarPanel && calendarPanel.getBoundingClientRect();
+      var topPanelVisible = panelBounds && panelBounds.bottom > 0 && panelBounds.top < window.innerHeight;
+      var calendarVisible = calendarBounds && calendarBounds.bottom > 0 && calendarBounds.top < window.innerHeight;
+      var orderSectionVisible = targetBounds.bottom > 0 && targetBounds.top < window.innerHeight;
+      var targetVisible = topPanelVisible || calendarVisible || orderSectionVisible;
+      orderCta.classList.toggle('is-target-visible', targetVisible);
+      orderCta.setAttribute('aria-hidden', String(targetVisible));
+    }
+
+    var updatePending = false;
+    function scheduleOrderCtaUpdate() {
+      if (updatePending) return;
+      updatePending = true;
+      window.requestAnimationFrame(function () {
+        updatePending = false;
+        updateOrderCta();
+      });
+    }
+
+    orderCta.addEventListener('click', function (event) {
+      event.preventDefault();
+      orderCta.classList.add('is-pressed');
+      window.setTimeout(function () { orderCta.classList.remove('is-pressed'); }, 220);
+      orderTarget.scrollIntoView({
+        behavior: window.matchMedia('(prefers-reduced-motion: reduce)').matches ? 'auto' : 'smooth',
+        block: 'center'
+      });
+    });
+    window.addEventListener('scroll', scheduleOrderCtaUpdate, { passive: true });
+    window.addEventListener('resize', scheduleOrderCtaUpdate);
+    updateOrderCta();
+  }());
+</script>
 </body>
 
 </html>
