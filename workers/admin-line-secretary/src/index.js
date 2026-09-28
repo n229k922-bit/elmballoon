@@ -542,6 +542,19 @@ async function queueCustomerReplyReview(event, env, ctx) {
   // この確認段階では統括・店長へは通知せず、追加情報の回答後に引き継ぐ。
   if (result.session.stage === 'review' && wasCollecting) {
     const confirmation = basicOrderConfirmation(event.message?.text?.trim() || '', result.session);
+    const names = await getCustomerNames('customer:' + customerId, env);
+    const customerLabel = formatCustomerLabel(names.confirmedName || names.displayName);
+    const candidate = event.message?.type === 'text' ? extractScheduleCandidate(event.message?.text || '') : null;
+    const ownerRequest = await createOwnerDecisionRequest({
+      threadId: 'customer:' + customerId,
+      sourceEventId,
+      text: event.message?.text || '',
+      candidate,
+      customerLabel,
+      now: new Date().toISOString(),
+      env,
+    });
+    if (ownerRequest) await notifyOwners(formatOwnerDecisionRequest(ownerRequest), env);
     const delivery = deliverCustomerMessagesAfterDelay(
       customerId,
       [confirmation],
@@ -550,19 +563,6 @@ async function queueCustomerReplyReview(event, env, ctx) {
       async () => {
         await env.DB.prepare(`INSERT INTO order_messages (order_thread_id, direction, message_text, occurred_at) VALUES (?, 'assistant_outbound', ?, ?)`)
           .bind('customer:' + customerId, confirmation.slice(0, 4900), new Date().toISOString()).run();
-        const names = await getCustomerNames('customer:' + customerId, env);
-        const customerLabel = formatCustomerLabel(names.confirmedName || names.displayName);
-        const candidate = event.message?.type === 'text' ? extractScheduleCandidate(event.message?.text || '') : null;
-        const ownerRequest = await createOwnerDecisionRequest({
-          threadId: 'customer:' + customerId,
-          sourceEventId,
-          text: event.message?.text || '',
-          candidate,
-          customerLabel,
-          now: new Date().toISOString(),
-          env,
-        });
-        if (ownerRequest) await notifyOwners(formatOwnerDecisionRequest(ownerRequest), env);
       },
     );
     await continueCustomerDelivery(delivery, ctx);
