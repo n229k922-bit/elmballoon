@@ -1,11 +1,13 @@
 const encoder = new TextEncoder();
 const CUSTOMER_SESSION_TTL = 60 * 60 * 24 * 14;
+const CUSTOMER_MESSAGE_BUNDLE_WAIT_MS = 12_000;
 const DATE_INPUT_PATTERN = '(?:令和\\s*\\d{1,2}年?\\s*\\d{1,2}[月/-]\\s*\\d{1,2}日?|R\\s*\\d{1,2}[年/月/-]\\s*\\d{1,2}[月/-]\\s*\\d{1,2}日?|\\d{4}年?\\s*\\d{1,2}[月/-]\\s*\\d{1,2}日?|\\d{1,2}月\\s*\\d{1,2}日?|\\d{4}[/-]\\d{1,2}[/-]\\d{1,2})';
 const CUSTOMER_REPLY_TIMINGS = {
   initial_intake: { minDelayMs: 3000, maxDelayMs: 5000, loadingSeconds: 5 },
   missing_details: { minDelayMs: 4000, maxDelayMs: 7000, loadingSeconds: 10 },
   faq_answer: { minDelayMs: 5000, maxDelayMs: 9000, loadingSeconds: 10 },
   details_confirmation: { minDelayMs: 7000, maxDelayMs: 11000, loadingSeconds: 15 },
+  bundled_reply: { minDelayMs: 1500, maxDelayMs: 3000, loadingSeconds: 5 },
 };
 const ORDER_FEASIBILITY_FIELDS = [
   { key: 'product_source', label: 'HPの商品番号 または参考画像' },
@@ -235,9 +237,98 @@ async function customerLineWebhook(request, env, ctx) {
     console.log('customer webhook event', { type: event.type, messageType: event.message?.type || null });
     if (event.type !== 'message' || !['text', 'image'].includes(event.message?.type)) continue;
     await recordCustomerMessage(event, env);
-    await queueCustomerReplyReview(event, env, ctx);
+    if (shouldBypassCustomerMessageBundle(event)) {
+      if (event.message?.type === 'text' && isOrderStartTrigger((event.message.text || '').trim())) {
+        await env.DB.prepare(`DELETE FROM customer_reply_bundles WHERE customer_line_user_id = ?`)
+          .bind(event.source?.userId).run();
+      }
+      await queueCustomerReplyReview(event, env, ctx);
+    } else {
+      await scheduleCustomerMessageBundle(event, env, ctx);
+    }
   }
   return new Response('OK');
+}
+
+function shouldBypassCustomerMessageBundle(event) {
+  if (event.message?.type !== 'text') return false;
+  const text = (event.message.text || '').trim();
+  if (isOrderStartTrigger(text)) return true;
+  return /返品|交換|返金|不良|壊れ|破損|割れ|破裂|爆発|燃え|引火|けが|怪我|誤飲|ヘリウム.{0,12}(?:吸|安全)|至急|緊急/u.test(text);
+}
+
+async function scheduleCustomerMessageBundle(event, env, ctx) {
+  const customerId = event.source?.userId;
+  const sourceEventId = event.webhookEventId || event.message?.id;
+  if (!customerId || !sourceEventId) return;
+  const now = event.__recordedAt || new Date().toISOString();
+  const staleBefore = new Date(Date.parse(now) - 60_000).toISOString();
+  const generation = globalThis.crypto?.randomUUID?.()
+    || `${Date.now()}-${Math.floor(randomUnit() * 1_000_000)}`;
+  await env.DB.batch([
+    env.DB.prepare(`DELETE FROM customer_reply_bundles
+        WHERE customer_line_user_id = ? AND updated_at < ?`).bind(customerId, staleBefore),
+    env.DB.prepare(`INSERT INTO customer_reply_bundles
+        (customer_line_user_id, generation, window_started_at, last_received_at,
+         latest_source_event_id, has_image, updated_at)
+        VALUES (?, ?, ?, ?, ?, ?, ?)
+        ON CONFLICT(customer_line_user_id) DO UPDATE SET
+          generation = excluded.generation,
+          last_received_at = excluded.last_received_at,
+          latest_source_event_id = excluded.latest_source_event_id,
+          has_image = MAX(customer_reply_bundles.has_image, excluded.has_image),
+          updated_at = excluded.updated_at`)
+      .bind(customerId, generation, now, now, sourceEventId,
+        event.message?.type === 'image' ? 1 : 0, now),
+  ]);
+  const loading = startCustomerLoading(customerId, 15, env);
+  if (ctx?.waitUntil) ctx.waitUntil(loading.catch((error) => console.error('bundle loading failed', error)));
+  else await loading;
+
+  const processing = processCustomerMessageBundleAfterWait(customerId, generation, env);
+  await continueCustomerDelivery(processing, ctx);
+}
+
+async function processCustomerMessageBundleAfterWait(customerId, generation, env, waitMs = CUSTOMER_MESSAGE_BUNDLE_WAIT_MS) {
+  await new Promise((resolve) => setTimeout(resolve, waitMs));
+  const bundle = await env.DB.prepare(`SELECT * FROM customer_reply_bundles
+      WHERE customer_line_user_id = ?`).bind(customerId).first();
+  if (!bundle || bundle.generation !== generation) {
+    console.log('customer bundle superseded', { customerId, generation });
+    return false;
+  }
+  const deleted = await env.DB.prepare(`DELETE FROM customer_reply_bundles
+      WHERE customer_line_user_id = ? AND generation = ?`).bind(customerId, generation).run();
+  if (!deleted.meta.changes) return false;
+  const messages = await env.DB.prepare(`SELECT webhook_event_id, message_text, occurred_at
+      FROM order_messages
+      WHERE order_thread_id = ? AND direction = 'customer_inbound'
+        AND occurred_at >= ? AND occurred_at <= ?
+      ORDER BY occurred_at ASC, id ASC`)
+    .bind('customer:' + customerId, bundle.window_started_at, bundle.last_received_at).all();
+  const bundledEvent = createBundledCustomerEvent(customerId, bundle, messages.results || []);
+  if (!bundledEvent) return false;
+  await queueCustomerReplyReview(bundledEvent, env, null);
+  return true;
+}
+
+function createBundledCustomerEvent(customerId, bundle, rows) {
+  const textParts = rows
+    .map((row) => (row.message_text || '').trim())
+    .filter((text) => text && text !== '[参考画像]' && !isOrderStartTrigger(text));
+  const hasImage = Number(bundle.has_image) === 1 || rows.some((row) => row.message_text === '[参考画像]');
+  if (!textParts.length && !hasImage) return null;
+  return {
+    type: 'message',
+    source: { userId: customerId },
+    webhookEventId: bundle.latest_source_event_id,
+    message: textParts.length
+      ? { id: bundle.latest_source_event_id, type: 'text', text: textParts.join('\n') }
+      : { id: bundle.latest_source_event_id, type: 'image' },
+    __bundled: true,
+    __bundleHasImage: hasImage,
+    __bundleMessageCount: rows.length,
+  };
 }
 
 async function recordCustomerMessage(event, env) {
@@ -246,6 +337,7 @@ async function recordCustomerMessage(event, env) {
   const isImage = event.message?.type === 'image';
   const text = isImage ? '[参考画像]' : (event.message?.text || '').trim();
   const now = new Date().toISOString();
+  event.__recordedAt = now;
   const threadId = 'customer:' + customerId;
   const displayName = await fetchCustomerDisplayName(customerId, env);
   const confirmedName = isImage ? null : extractConfirmedCustomerName(text);
@@ -347,6 +439,7 @@ async function queueCustomerReplyReview(event, env, ctx) {
   const session = (await env.SECRETARY_KV.get(key, 'json')) || { stage: 'new', fields: {} };
   const wasCollecting = session.stage === 'collecting';
   if (!session.customerKind) session.customerKind = await getCustomerKind(customerId, event.message?.text || '', env);
+  if (event.__bundleHasImage && event.message?.type !== 'image') receiveReferenceImage(session);
   const result = event.message?.type === 'image'
     ? receiveReferenceImage(session)
     : buildCustomerReply(event.message?.text?.trim() || '', session);
@@ -357,7 +450,7 @@ async function queueCustomerReplyReview(event, env, ctx) {
     const delivery = deliverCustomerMessagesAfterDelay(
       customerId,
       [result.message],
-      'faq_answer',
+      event.__bundled ? 'bundled_reply' : 'faq_answer',
       env,
       async () => {
         await env.DB.prepare(`INSERT INTO order_messages (order_thread_id, direction, message_text, occurred_at) VALUES (?, 'assistant_outbound', ?, ?)`)
@@ -377,7 +470,7 @@ async function queueCustomerReplyReview(event, env, ctx) {
   // お客様の回答が届いた次の段階で、内容を確認待ちとして統括へ回す。
   const missingFields = missingIntakeFields(result.session.fields);
   if (result.session.stage === 'collecting' && missingFields.length > 0) {
-    const timingProfile = wasCollecting ? 'missing_details' : 'initial_intake';
+    const timingProfile = event.__bundled ? 'bundled_reply' : (wasCollecting ? 'missing_details' : 'initial_intake');
     const questionsShown = wasCollecting ? missingFields.slice(0, 3) : missingFields;
     const delivery = deliverCustomerMessagesAfterDelay(
       customerId,
@@ -402,7 +495,7 @@ async function queueCustomerReplyReview(event, env, ctx) {
     const delivery = deliverCustomerMessagesAfterDelay(
       customerId,
       [confirmation],
-      'details_confirmation',
+      event.__bundled ? 'bundled_reply' : 'details_confirmation',
       env,
       async () => {
         await env.DB.prepare(`INSERT INTO order_messages (order_thread_id, direction, message_text, occurred_at) VALUES (?, 'assistant_outbound', ?, ?)`)
@@ -440,7 +533,10 @@ async function queueCustomerReplyReview(event, env, ctx) {
 
   const names = await getCustomerNames(threadId, env);
   const customerLabel = formatCustomerLabel(names.confirmedName || names.displayName);
-  const incoming = event.message?.type === 'image' ? '参考画像が届きました。' : redactContactDetails(event.message?.text || '').slice(0, 500);
+  const incomingText = event.message?.type === 'image' ? '' : redactContactDetails(event.message?.text || '').slice(0, 450);
+  const incoming = event.__bundleHasImage
+    ? `参考画像あり${incomingText ? `\n${incomingText}` : ''}`
+    : (incomingText || '参考画像が届きました。');
   await notifyOwners(`統括マネージャーです。\n\n【お客様への返信確認】\n${customerLabel}からの連絡：\n「${incoming}」\n\n【送信案】\n${result.message.slice(0, 2500)}\n\n内容を確認してから送信します。\n・このまま送る：送信 ${reviewId}\n・文章を修正して送る：送信 ${reviewId} 修正した文章\n・保留する：保留 ${reviewId} 理由`, env);
 }
 

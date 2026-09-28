@@ -9,7 +9,9 @@ const source = fs.readFileSync(sourcePath, 'utf8')
     orderReply, collectOrderDetail, missingIntakeFields, splitCustomerReply,
     extractOrderRecordUpdates, orderFieldStatus, basicOrderConfirmation,
     summarizeOwnerReviewFromRecord, extractScheduleCandidate,
-    parseFlexibleCustomerDate, parseFlexibleCustomerTime, formatOrderRecordCard
+    parseFlexibleCustomerDate, parseFlexibleCustomerTime, formatOrderRecordCard,
+    shouldBypassCustomerMessageBundle, createBundledCustomerEvent,
+    processCustomerMessageBundleAfterWait
   };`;
 
 const context = vm.createContext({
@@ -42,6 +44,9 @@ const {
   parseFlexibleCustomerDate,
   parseFlexibleCustomerTime,
   formatOrderRecordCard,
+  shouldBypassCustomerMessageBundle,
+  createBundledCustomerEvent,
+  processCustomerMessageBundleAfterWait,
 } = context.__orderTests;
 
 const session = { stage: 'new', fields: {}, customerKind: 'new' };
@@ -129,4 +134,36 @@ assert.match(card, /制作可否の判断待ち/);
 assert.match(card, /【確認済み】/);
 assert.match(card, /内容変更 1件/);
 
-console.log('order record workflow tests: 35 assertions passed');
+assert.equal(shouldBypassCustomerMessageBundle({ message: { type: 'text', text: '注文担当を呼び出します' } }), true);
+assert.equal(shouldBypassCustomerMessageBundle({ message: { type: 'text', text: '届いた商品が破損しています' } }), true);
+assert.equal(shouldBypassCustomerMessageBundle({ message: { type: 'text', text: '予算は15,000円です' } }), false);
+assert.equal(shouldBypassCustomerMessageBundle({ message: { type: 'image' } }), false);
+
+const bundledEvent = createBundledCustomerEvent('U-test', {
+  latest_source_event_id: 'event-3',
+  has_image: 1,
+}, [
+  { message_text: '注文担当を呼び出します' },
+  { message_text: '予算は15,000円です' },
+  { message_text: '[参考画像]' },
+  { message_text: 'ブルー系でお願いします' },
+]);
+assert.equal(bundledEvent.__bundled, true);
+assert.equal(bundledEvent.__bundleHasImage, true);
+assert.equal(bundledEvent.__bundleMessageCount, 4);
+assert.equal(bundledEvent.message.type, 'text');
+assert.equal(bundledEvent.message.text, '予算は15,000円です\nブルー系でお願いします');
+
+const supersededEnv = {
+  DB: {
+    prepare() {
+      return {
+        bind() { return this; },
+        async first() { return { generation: 'newer-generation' }; },
+      };
+    },
+  },
+};
+assert.equal(await processCustomerMessageBundleAfterWait('U-test', 'old-generation', supersededEnv, 0), false);
+
+console.log('order record workflow tests: 45 assertions passed');
