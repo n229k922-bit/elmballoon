@@ -7,6 +7,27 @@ const CUSTOMER_REPLY_TIMINGS = {
   faq_answer: { minDelayMs: 5000, maxDelayMs: 9000, loadingSeconds: 10 },
   details_confirmation: { minDelayMs: 7000, maxDelayMs: 11000, loadingSeconds: 15 },
 };
+const ORDER_FEASIBILITY_FIELDS = [
+  { key: 'product_source', label: 'HPの商品番号 または参考画像' },
+  { key: 'product_type', label: 'バルーンのタイプ' },
+  { key: 'budget', label: 'ご予算' },
+  { key: 'color_vibe', label: '全体的なお色味と雰囲気' },
+  { key: 'use_date', label: 'プレゼント・使用予定日' },
+  { key: 'receive_date', label: '受取希望日' },
+  { key: 'receive_time', label: '受取希望時間' },
+  { key: 'fulfillment_method', label: '受取方法' },
+];
+const ORDER_FIELD_LABELS = Object.fromEntries([
+  ...ORDER_FEASIBILITY_FIELDS.map((field) => [field.key, field.label]),
+  ['balloon_message', 'バルーンへの文字入れ'],
+  ['card_message', 'メッセージカード'],
+  ['customer_name', 'お名前'],
+  ['phone', 'ご連絡先'],
+  ['delivery_address', 'お届け先'],
+  ['payment_method', '支払方法'],
+  ['receipt', '領収書'],
+  ['sns_permission', 'HP・SNS掲載'],
+]);
 
 export default {
   async fetch(request, env, ctx) {
@@ -151,6 +172,17 @@ async function handleAdmin(event, env) {
       .bind(holdReply[2]?.trim().slice(0, 500) || '店長確認待ち', holdReply[1]).run();
     return reply(event.replyToken, result.meta.changes ? '返信を保留として記録しました。' : '確認待ちの返信案が見つからないか、すでに処理済みです。', env);
   }
+  const approveOrderChange = text.match(/^変更OK(?:\s+(change:[^\s]+))?$/u);
+  if (approveOrderChange) {
+    return reviewLatestOrderFieldChange(event.replyToken, userId, approveOrderChange[1] || null, true, env);
+  }
+  const rejectOrderChange = text.match(/^変更しない(?:\s+(change:[^\s]+))?$/u);
+  if (rejectOrderChange) {
+    return reviewLatestOrderFieldChange(event.replyToken, userId, rejectOrderChange[1] || null, false, env);
+  }
+  if (/^(?:カルテ|最新カルテ)$/u.test(text)) {
+    return replyLatestOrderRecord(event.replyToken, env);
+  }
   const ownerDecision = text.match(/^店長確認\s+(decision:[^\s]+)\s+(.+)$/u);
   if (ownerDecision) {
     const result = await env.DB.prepare(`UPDATE owner_decision_requests
@@ -202,7 +234,7 @@ async function customerLineWebhook(request, env, ctx) {
   for (const event of payload.events || []) {
     console.log('customer webhook event', { type: event.type, messageType: event.message?.type || null });
     if (event.type !== 'message' || !['text', 'image'].includes(event.message?.type)) continue;
-    if (event.message.type === 'text') await recordCustomerMessage(event, env);
+    await recordCustomerMessage(event, env);
     await queueCustomerReplyReview(event, env, ctx);
   }
   return new Response('OK');
@@ -210,11 +242,13 @@ async function customerLineWebhook(request, env, ctx) {
 
 async function recordCustomerMessage(event, env) {
   const customerId = event.source?.userId;
-  const text = event.message.text.trim();
+  if (!customerId) return;
+  const isImage = event.message?.type === 'image';
+  const text = isImage ? '[参考画像]' : (event.message?.text || '').trim();
   const now = new Date().toISOString();
   const threadId = 'customer:' + customerId;
   const displayName = await fetchCustomerDisplayName(customerId, env);
-  const confirmedName = extractConfirmedCustomerName(text);
+  const confirmedName = isImage ? null : extractConfirmedCustomerName(text);
   await env.DB.prepare(`INSERT INTO customer_profiles (customer_line_user_id, first_seen_at, last_seen_at)
       VALUES (?, ?, ?) ON CONFLICT(customer_line_user_id) DO UPDATE SET last_seen_at = excluded.last_seen_at`)
     .bind(customerId, now, now).run();
@@ -231,9 +265,29 @@ async function recordCustomerMessage(event, env) {
       VALUES (?, ?, 'customer_inbound', ?, ?)`)
     .bind(event.webhookEventId || event.message.id, threadId, text, now).run();
 
-  const candidate = extractScheduleCandidate(text);
+  const currentSession = await env.SECRETARY_KV.get('customer-session:' + customerId, 'json');
+  const orderSessionActive = ['collecting', 'review', 'awaiting_contact', 'confirmed']
+    .includes(currentSession?.stage);
+  const orderRecordResult = await syncCustomerOrderRecord({
+    customerId,
+    threadId,
+    event,
+    text,
+    now,
+    env,
+    allowCreate: (!isImage && isOrderStartTrigger(text)) || orderSessionActive,
+  });
+  if (orderRecordResult?.pendingChanges.length) {
+    const customerNames = await getCustomerNames(threadId, env);
+    await notifyOwners(formatPendingOrderChanges(
+      formatCustomerLabel(customerNames.confirmedName || customerNames.displayName),
+      orderRecordResult.pendingChanges,
+    ), env);
+  }
+
+  const candidate = isImage ? null : extractScheduleCandidate(text);
   const scheduleConflict = candidate ? await findBusinessScheduleConflict(candidate, env) : null;
-  const details = extractOrderDetails(text, candidate);
+  const details = isImage ? extractOrderDetails('', null) : extractOrderDetails(text, candidate);
   const catalogProduct = details.productReference ? await findProductCatalogMatch(details.productReference, env) : null;
   await upsertOrderCard(threadId, text, candidate, now, env, details);
 
@@ -254,17 +308,6 @@ async function recordCustomerMessage(event, env) {
       await notifyOwners(`統括マネージャーです。\n\n【商品番号確認】\n${customerLabel}から「${details.productReference}」の指定がありましたが、現在の商品マスターでは一致する商品を確認できませんでした。\n\nHPの商品番号・商品ページURL、または参考画像を確認してからご案内してください。`, env);
     }
   }
-
-  const ownerRequest = await createOwnerDecisionRequest({
-    threadId,
-    sourceEventId: event.webhookEventId || event.message.id,
-    text,
-    candidate,
-    customerLabel,
-    now,
-    env,
-  });
-  if (ownerRequest) await notifyOwners(formatOwnerDecisionRequest(ownerRequest), env);
 
   if (!candidate) {
     console.log('customer message recorded without schedule candidate');
@@ -332,15 +375,21 @@ async function queueCustomerReplyReview(event, env, ctx) {
 
   // 初回の注文相談だけは自動で基本ヒアリングを返し、統括への通知は行わない。
   // お客様の回答が届いた次の段階で、内容を確認待ちとして統括へ回す。
-  if (result.session.stage === 'collecting' && missingIntakeFields(result.session.fields).length > 0) {
+  const missingFields = missingIntakeFields(result.session.fields);
+  if (result.session.stage === 'collecting' && missingFields.length > 0) {
     const timingProfile = wasCollecting ? 'missing_details' : 'initial_intake';
+    const questionsShown = wasCollecting ? missingFields.slice(0, 3) : missingFields;
     const delivery = deliverCustomerMessagesAfterDelay(
       customerId,
       splitCustomerReply(result.message),
       timingProfile,
       env,
-      async () => env.DB.prepare(`INSERT INTO order_messages (order_thread_id, direction, message_text, occurred_at) VALUES (?, 'assistant_outbound', ?, ?)`)
-        .bind('customer:' + customerId, result.message.slice(0, 4900), new Date().toISOString()).run(),
+      async () => {
+        const sentAt = new Date().toISOString();
+        await env.DB.prepare(`INSERT INTO order_messages (order_thread_id, direction, message_text, occurred_at) VALUES (?, 'assistant_outbound', ?, ?)`)
+          .bind('customer:' + customerId, result.message.slice(0, 4900), sentAt).run();
+        await recordOrderQuestions(customerId, questionsShown, result.message, sentAt, env);
+      },
     );
     await continueCustomerDelivery(delivery, ctx);
     return;
@@ -359,7 +408,18 @@ async function queueCustomerReplyReview(event, env, ctx) {
         await env.DB.prepare(`INSERT INTO order_messages (order_thread_id, direction, message_text, occurred_at) VALUES (?, 'assistant_outbound', ?, ?)`)
           .bind('customer:' + customerId, confirmation.slice(0, 4900), new Date().toISOString()).run();
         const names = await getCustomerNames('customer:' + customerId, env);
-        await notifyOwners(`統括マネージャーです。\n\n【基本情報の確認完了】\n${formatCustomerLabel(names.confirmedName || names.displayName)}のお客様へ基本情報を復唱しました。\n\n${confirmation}\n\nこの後、対応可能か確認し、確認後に商品タイプに合わせた追加ヒアリングへ進みます。`, env);
+        const customerLabel = formatCustomerLabel(names.confirmedName || names.displayName);
+        const candidate = event.message?.type === 'text' ? extractScheduleCandidate(event.message?.text || '') : null;
+        const ownerRequest = await createOwnerDecisionRequest({
+          threadId: 'customer:' + customerId,
+          sourceEventId,
+          text: event.message?.text || '',
+          candidate,
+          customerLabel,
+          now: new Date().toISOString(),
+          env,
+        });
+        if (ownerRequest) await notifyOwners(formatOwnerDecisionRequest(ownerRequest), env);
       },
     );
     await continueCustomerDelivery(delivery, ctx);
@@ -388,7 +448,7 @@ function splitCustomerReply(message) {
   const marker = '【ご注文内容】';
   const index = message.indexOf(marker);
   if (index <= 0) return [message];
-  const closingMarkers = ['\n\n内容を確認し', '\n\nすべての項目を確認できましたら'];
+  const closingMarkers = ['\n\n内容を確認し', '\n\nすべての項目を確認できましたら', '\n\n基本項目を確認できましたら'];
   const closingIndex = closingMarkers
     .map((closingMarker) => message.indexOf(closingMarker, index))
     .filter((markerIndex) => markerIndex >= 0)
@@ -423,6 +483,303 @@ async function prepareCustomerReplySend(replyToken, userId, reviewId, replacemen
 function hasCriticalReplyDifference(draft, replacement) {
   const tokens = (value) => value.match(/\d{4}[/-]\d{1,2}[/-]\d{1,2}|\d{1,2}月\d{1,2}日|\d{1,2}:\d{2}|[0-9０-９][0-9０-９,，]*円|受取|受け取り|配達|来店|発送/g) || [];
   return JSON.stringify(tokens(draft)) !== JSON.stringify(tokens(replacement));
+}
+
+async function syncCustomerOrderRecord({ customerId, threadId, event, text, now, env, allowCreate = false }) {
+  const sourceMessageId = event.webhookEventId || event.message?.id || `message:${Date.now()}`;
+  const orderRecord = await getOrCreateActiveOrderRecord(customerId, threadId, sourceMessageId, now, env, allowCreate);
+  if (!orderRecord) return null;
+  const candidate = event.message?.type === 'text' ? extractScheduleCandidate(text) : null;
+  const updates = extractOrderRecordUpdates(text, event.message?.type === 'image', candidate);
+  const pendingChanges = [];
+
+  for (const update of updates) {
+    const existing = await env.DB.prepare(`SELECT value_text, status, locked
+        FROM order_record_fields WHERE order_record_id = ? AND field_key = ?`)
+      .bind(orderRecord.id, update.key).first();
+    if (!existing) {
+      await env.DB.prepare(`INSERT INTO order_record_fields
+          (order_record_id, field_key, phase, value_text, status, source_message_id,
+           source_direction, source_occurred_at, confidence, updated_at)
+          VALUES (?, ?, ?, ?, ?, ?, 'customer_inbound', ?, ?, ?)`)
+        .bind(orderRecord.id, update.key, update.phase, update.value, update.status,
+          sourceMessageId, now, update.confidence, now).run();
+      continue;
+    }
+    if (normalizeChartValue(existing.value_text) === normalizeChartValue(update.value)) {
+      await env.DB.prepare(`UPDATE order_record_fields
+          SET source_message_id = ?, source_occurred_at = ?, confidence = MAX(COALESCE(confidence, 0), ?), updated_at = ?
+          WHERE order_record_id = ? AND field_key = ?`)
+        .bind(sourceMessageId, now, update.confidence, now, orderRecord.id, update.key).run();
+      continue;
+    }
+    if (Number(existing.locked) === 1 || existing.status === 'confirmed') {
+      const changeId = `change:${orderRecord.id}:${update.key}:${sourceMessageId}`;
+      const inserted = await env.DB.prepare(`INSERT OR IGNORE INTO order_field_changes
+          (id, order_record_id, field_key, old_value, new_value, requested_status,
+           status, source_message_id, source_occurred_at, created_at)
+          VALUES (?, ?, ?, ?, ?, ?, 'pending_owner', ?, ?, ?)`)
+        .bind(changeId, orderRecord.id, update.key, existing.value_text, update.value,
+          update.status, sourceMessageId, now, now).run();
+      if (inserted.meta.changes) pendingChanges.push({
+        id: changeId,
+        fieldKey: update.key,
+        oldValue: existing.value_text,
+        newValue: update.value,
+      });
+      continue;
+    }
+    await env.DB.prepare(`UPDATE order_record_fields
+        SET value_text = ?, status = ?, source_message_id = ?, source_direction = 'customer_inbound',
+            source_occurred_at = ?, confidence = ?, updated_at = ?
+        WHERE order_record_id = ? AND field_key = ?`)
+      .bind(update.value, update.status, sourceMessageId, now, update.confidence, now,
+        orderRecord.id, update.key).run();
+  }
+
+  await env.DB.prepare(`UPDATE customer_order_records SET updated_at = ? WHERE id = ?`)
+    .bind(now, orderRecord.id).run();
+  for (const update of updates) {
+    await env.DB.prepare(`UPDATE order_question_history SET answered_at = ?
+        WHERE id = (SELECT id FROM order_question_history
+          WHERE order_record_id = ? AND field_key = ? AND answered_at IS NULL
+          ORDER BY asked_at DESC LIMIT 1)`)
+      .bind(now, orderRecord.id, update.key).run();
+  }
+  await syncCustomerProfileFromOrderUpdates(customerId, updates, now, env);
+  return { orderRecord, pendingChanges };
+}
+
+async function getOrCreateActiveOrderRecord(customerId, threadId, sourceMessageId, now, env, allowCreate) {
+  const active = await env.DB.prepare(`SELECT * FROM customer_order_records
+      WHERE customer_line_user_id = ? AND is_active = 1 ORDER BY created_at DESC LIMIT 1`)
+    .bind(customerId).first();
+  if (active) return active;
+  if (!allowCreate) return null;
+  const countRow = await env.DB.prepare(`SELECT COUNT(*) AS total FROM customer_order_records
+      WHERE customer_line_user_id = ?`).bind(customerId).first();
+  const sequenceNumber = Number(countRow?.total || 0) + 1;
+  const safeSourceId = String(sourceMessageId).replace(/[^A-Za-z0-9_-]/g, '').slice(-60) || String(Date.now());
+  const id = `order:${customerId}:${safeSourceId}`;
+  await env.DB.prepare(`INSERT INTO customer_order_records
+      (id, customer_line_user_id, source_thread_id, sequence_number, status, is_active, created_at, updated_at)
+      VALUES (?, ?, ?, ?, 'feasibility_intake', 1, ?, ?)`)
+    .bind(id, customerId, threadId, sequenceNumber, now, now).run();
+  return { id, customer_line_user_id: customerId, source_thread_id: threadId, sequence_number: sequenceNumber, status: 'feasibility_intake', is_active: 1 };
+}
+
+function extractOrderRecordUpdates(text, isImage, candidate) {
+  const updates = [];
+  const add = (key, value, confidence = 1, phase = 'feasibility') => {
+    const normalized = value?.trim();
+    if (!normalized) return;
+    updates.push({ key, value: normalized.slice(0, 1000), status: orderFieldStatus(normalized, key), confidence, phase });
+  };
+
+  if (isImage) add('product_source', '参考画像あり', 1);
+  const productReference = extractProductReference(text);
+  const productSource = labeledAnswer(text, 'HPの商品番号\\s*または参考画像|参考画像|商品番号|品番');
+  if (productReference) add('product_source', productReference, 1);
+  else if (productSource) add('product_source', productSource, 1);
+
+  const productType = detectProductType(text);
+  const productTypeAnswer = labeledAnswer(text, 'バルーンのタイプ|商品タイプ');
+  if (productType) add('product_type', productTypeLabel(productType), 0.95);
+  else if (productTypeAnswer) add('product_type', productTypeAnswer, 1);
+
+  const budgetAnswer = labeledAnswer(text, 'ご予算|予算');
+  const budgetMatch = text.match(/(?:予算|ご予算)?\s*([0-9０-９][0-9０-９,，]*)\s*円/u);
+  if (budgetAnswer) add('budget', budgetAnswer, 1);
+  else if (budgetMatch) add('budget', `${parseJapaneseNumber(budgetMatch[1]).toLocaleString('ja-JP')}円`, 0.9);
+
+  const color = labeledAnswer(text, '全体的なお色味と雰囲気|色味・雰囲気|色味|雰囲気');
+  if (color) add('color_vibe', color, 1);
+
+  const useDate = labeledAnswer(text, 'プレゼント・使用予定日|使用予定日|プレゼント予定日|利用日|使用日');
+  if (useDate) add('use_date', useDate, 1);
+
+  const receiveDate = labeledAnswer(text, '受取希望日|受け取り希望日|お届け希望日|ご希望日');
+  if (receiveDate) add('receive_date', receiveDate, 1);
+  else if (candidate?.date) add('receive_date', candidate.date, 0.85);
+
+  const receiveTime = labeledAnswer(text, '受取希望時間|受け取り希望時間|お届け希望時間|ご希望時間|希望時間');
+  if (receiveTime) add('receive_time', receiveTime, 1);
+  else if (candidate?.time) add('receive_time', candidate.time, 0.85);
+
+  const method = labeledAnswer(text, '受取方法|受け取り方法|お届け方法|方法');
+  if (method) add('fulfillment_method', method, 1);
+  else if (/店頭受取|店頭で受取|店頭で受け取/u.test(text)) add('fulfillment_method', '店頭受取', 0.95);
+  else if (/配達|配送/u.test(text)) add('fulfillment_method', '配達', 0.95);
+  else if (/発送|郵送/u.test(text)) add('fulfillment_method', '発送', 0.95);
+
+  addLaterOrderField(updates, text, 'balloon_message', 'バルーンへのご希望の文字入れ|文字入れ', 'product_detail');
+  addLaterOrderField(updates, text, 'card_message', 'メッセージカードの有無|メッセージカード|カードの内容', 'product_detail');
+  addLaterOrderField(updates, text, 'customer_name', 'お名前|氏名|名前', 'customer_confirmation');
+  addLaterOrderField(updates, text, 'phone', 'ご連絡先|電話番号|電話|TEL', 'customer_confirmation');
+  addLaterOrderField(updates, text, 'delivery_address', 'お届け先|配送先|発送先|住所', 'fulfillment');
+  addLaterOrderField(updates, text, 'payment_method', '支払方法|お支払い方法', 'payment');
+  addLaterOrderField(updates, text, 'receipt', '領収書', 'payment');
+  addLaterOrderField(updates, text, 'sns_permission', 'HP・SNS掲載|SNS掲載|掲載可否', 'completion');
+  return updates;
+}
+
+function addLaterOrderField(updates, text, key, pattern, phase) {
+  const value = labeledAnswer(text, pattern);
+  if (!value) return;
+  updates.push({ key, value: value.slice(0, 1000), status: orderFieldStatus(value, key), confidence: 1, phase });
+}
+
+function labeledAnswer(text, label) {
+  return text.match(new RegExp(`(?:${label})\\s*(?:→|[：:])\\s*([^\\n]*)`, 'u'))?.[1]?.trim() || null;
+}
+
+function orderFieldStatus(value, key) {
+  if (/^(?:未定|まだ決まっていない|決まっていません|わからない|分からない)$/u.test(value)) return 'undecided';
+  if (/^(?:なし|不要|該当なし)$/u.test(value) && !ORDER_FEASIBILITY_FIELDS.some((field) => field.key === key)) return 'not_applicable';
+  return 'answered';
+}
+
+function normalizeChartValue(value) {
+  return String(value || '').normalize('NFKC').replace(/\s+/g, '').toLowerCase();
+}
+
+function productTypeLabel(type) {
+  return ({
+    arrangement: '置き型アレンジメント',
+    floating_balloon: 'ヘリウム（浮く）タイプ',
+    venue_decoration: '会場装飾',
+    balloon_stand: 'バルーンスタンド',
+    balloon_bouquet: 'ブーケ',
+    store_consultation: '来店相談',
+    other: 'その他',
+  })[type] || type;
+}
+
+async function syncCustomerProfileFromOrderUpdates(customerId, updates, now, env) {
+  const values = Object.fromEntries(updates.map((update) => [update.key, update.value]));
+  if (!values.customer_name && !values.phone && !values.delivery_address) return;
+  await env.DB.prepare(`UPDATE customer_profiles SET
+      confirmed_name = COALESCE(?, confirmed_name),
+      phone = COALESCE(?, phone),
+      address = COALESCE(?, address),
+      last_seen_at = ?
+      WHERE customer_line_user_id = ?`)
+    .bind(values.customer_name || null, values.phone || null, values.delivery_address || null, now, customerId).run();
+}
+
+function formatPendingOrderChanges(customerLabel, changes) {
+  const lines = changes.map((change) => [
+    `・${ORDER_FIELD_LABELS[change.fieldKey] || change.fieldKey}`,
+    `  変更前：${change.oldValue || '未入力'}`,
+    `  変更後：${change.newValue || '未入力'}`,
+    `  識別番号：${change.id}`,
+  ].join('\n')).join('\n\n');
+  return `統括マネージャーです。\n\n【注文カルテの変更確認】\n${customerLabel}から、確定済み内容の変更と思われる連絡がありました。\n\n${lines}\n\n反映する場合：変更OK\n元の内容を残す場合：変更しない`;
+}
+
+async function reviewLatestOrderFieldChange(replyToken, userId, requestedId, approve, env) {
+  const change = requestedId
+    ? await env.DB.prepare(`SELECT * FROM order_field_changes WHERE id = ? AND status = 'pending_owner'`).bind(requestedId).first()
+    : await env.DB.prepare(`SELECT * FROM order_field_changes WHERE status = 'pending_owner' ORDER BY created_at DESC LIMIT 1`).first();
+  if (!change) return reply(replyToken, '確認待ちの注文内容変更はありません。', env);
+  const now = new Date().toISOString();
+  if (!approve) {
+    await env.DB.prepare(`UPDATE order_field_changes SET status = 'rejected', reviewed_at = ?, reviewed_by = ? WHERE id = ?`)
+      .bind(now, userId, change.id).run();
+    return reply(replyToken, `「${ORDER_FIELD_LABELS[change.field_key] || change.field_key}」は変更せず、元の内容を残しました。`, env);
+  }
+  await env.DB.batch([
+    env.DB.prepare(`UPDATE order_record_fields SET value_text = ?, status = 'confirmed',
+        source_message_id = ?, source_direction = 'customer_inbound', source_occurred_at = ?,
+        confidence = 1, locked = 1, updated_at = ?, confirmed_at = ?, confirmed_by = ?
+        WHERE order_record_id = ? AND field_key = ?`)
+      .bind(change.new_value, change.source_message_id, change.source_occurred_at,
+        now, now, userId, change.order_record_id, change.field_key),
+    env.DB.prepare(`UPDATE order_field_changes SET status = 'approved', reviewed_at = ?, reviewed_by = ? WHERE id = ?`)
+      .bind(now, userId, change.id),
+  ]);
+  return reply(replyToken, `「${ORDER_FIELD_LABELS[change.field_key] || change.field_key}」を新しい内容へ更新しました。`, env);
+}
+
+async function recordOrderQuestions(customerId, labels, questionText, askedAt, env) {
+  const orderRecord = await env.DB.prepare(`SELECT id FROM customer_order_records
+      WHERE customer_line_user_id = ? AND is_active = 1 ORDER BY created_at DESC LIMIT 1`)
+    .bind(customerId).first();
+  if (!orderRecord) return;
+  for (const label of labels) {
+    const field = ORDER_FEASIBILITY_FIELDS.find((item) => item.label === label);
+    if (!field) continue;
+    await env.DB.batch([
+      env.DB.prepare(`INSERT INTO order_question_history
+          (order_record_id, field_key, question_text, asked_at)
+          VALUES (?, ?, ?, ?)`)
+        .bind(orderRecord.id, field.key, questionText.slice(0, 1500), askedAt),
+      env.DB.prepare(`INSERT INTO order_record_fields
+          (order_record_id, field_key, phase, status, question_count, updated_at)
+          VALUES (?, ?, 'feasibility', 'asked', 1, ?)
+          ON CONFLICT(order_record_id, field_key) DO UPDATE SET
+            question_count = order_record_fields.question_count + 1,
+            status = CASE WHEN order_record_fields.status = 'unasked' THEN 'asked' ELSE order_record_fields.status END,
+            updated_at = excluded.updated_at`)
+        .bind(orderRecord.id, field.key, askedAt),
+    ]);
+  }
+}
+
+async function replyLatestOrderRecord(replyToken, env) {
+  const orderRecord = await env.DB.prepare(`SELECT r.*, t.customer_display_name, t.customer_confirmed_name
+      FROM customer_order_records r
+      JOIN customer_order_threads t ON t.id = r.source_thread_id
+      WHERE r.is_active = 1
+      ORDER BY r.updated_at DESC LIMIT 1`).first();
+  if (!orderRecord) return reply(replyToken, '進行中の注文カルテはありません。', env);
+  const fields = await loadOrderRecordFields(orderRecord.id, env);
+  const pendingRow = await env.DB.prepare(`SELECT COUNT(*) AS total FROM order_field_changes
+      WHERE order_record_id = ? AND status = 'pending_owner'`).bind(orderRecord.id).first();
+  const message = formatOrderRecordCard(
+    formatCustomerLabel(orderRecord.customer_confirmed_name || orderRecord.customer_display_name),
+    orderRecord,
+    fields,
+    Number(pendingRow?.total || 0),
+  );
+  return reply(replyToken, message, env);
+}
+
+function formatOrderRecordCard(customerLabel, orderRecord, fields, pendingChangeCount = 0) {
+  const statusLabels = {
+    feasibility_intake: '制作可否の基本情報を聞き取り中',
+    feasibility_review: '制作可否の判断待ち',
+    detail_intake: '商品別の詳細を聞き取り中',
+    awaiting_customer_confirmation: 'お客様の最終確認待ち',
+    confirmed: '注文確定',
+    production: '制作中',
+    ready: 'お渡し準備完了',
+    fulfilled: 'お渡し・納品完了',
+    closed: '完了',
+    cancelled: 'キャンセル',
+  };
+  const confirmed = [], undecided = [], missing = [];
+  for (const { key, label } of ORDER_FEASIBILITY_FIELDS) {
+    const field = fields?.[key];
+    if (!field || ['unasked', 'asked'].includes(field.status)) missing.push(`・${label}`);
+    else if (field.status === 'undecided') undecided.push(`・${label}：未定`);
+    else confirmed.push(`・${label}：${field.value_text}`);
+  }
+  const laterFields = Object.entries(fields || {})
+    .filter(([key, field]) => !ORDER_FEASIBILITY_FIELDS.some((item) => item.key === key)
+      && ['answered', 'confirmed', 'not_applicable'].includes(field.status))
+    .map(([key, field]) => `・${ORDER_FIELD_LABELS[key] || key}：${field.value_text || '対象外'}`);
+  const sections = [
+    `【注文カルテ No.${orderRecord.sequence_number}】`,
+    `お客様：${customerLabel}`,
+    `現在：${statusLabels[orderRecord.status] || orderRecord.status}`,
+  ];
+  if (confirmed.length) sections.push(`【確認済み】\n${confirmed.join('\n')}`);
+  if (undecided.length) sections.push(`【未定】\n${undecided.join('\n')}`);
+  if (laterFields.length) sections.push(`【追加確認済み】\n${laterFields.join('\n')}`);
+  if (missing.length) sections.push(`【まだ確認できていない項目】\n${missing.join('\n')}`);
+  if (pendingChangeCount) sections.push(`【店長の確認待ち】\n・内容変更 ${pendingChangeCount}件`);
+  return sections.join('\n\n');
 }
 
 async function upsertOrderCard(threadId, text, candidate, now, env, providedDetails = null) {
@@ -570,18 +927,77 @@ function summarizeOrderDetails(details) {
 
 async function createOwnerDecisionRequest({ threadId, sourceEventId, text, candidate, customerLabel, now, env }) {
   const card = await env.DB.prepare(`SELECT * FROM order_cards WHERE order_thread_id = ?`).bind(threadId).first();
-  if (!orderCardReadyForOwnerReview(card)) return null;
+  const orderRecord = await env.DB.prepare(`SELECT * FROM customer_order_records
+      WHERE source_thread_id = ? AND is_active = 1 ORDER BY created_at DESC LIMIT 1`).bind(threadId).first();
+  const recordFields = orderRecord ? await loadOrderRecordFields(orderRecord.id, env) : null;
+  if (orderRecord && !orderRecordReadyForFeasibilityReview(recordFields)) return null;
+  if (!orderRecord && !orderCardReadyForOwnerReview(card)) return null;
   const existing = await env.DB.prepare(`SELECT id FROM owner_decision_requests
       WHERE order_card_id = ? AND status != 'cancelled' AND customer_summary LIKE '%聞き取り内容%' LIMIT 1`).bind(`order-card:${threadId}`).first();
   if (existing) return null;
-  const requestTypes = detectOwnerDecisionTypesFromCard(card);
+  const requestTypes = orderRecord ? detectOwnerDecisionTypesFromRecord(recordFields) : detectOwnerDecisionTypesFromCard(card);
   const requestId = `decision:${sourceEventId}`;
-  const customerSummary = summarizeOwnerReviewFromCard(customerLabel, card);
+  const customerSummary = orderRecord
+    ? summarizeOwnerReviewFromRecord(customerLabel, orderRecord, recordFields)
+    : summarizeOwnerReviewFromCard(customerLabel, card);
   const result = await env.DB.prepare(`INSERT OR IGNORE INTO owner_decision_requests
       (id, source_event_id, order_thread_id, order_card_id, request_types, status, customer_summary, created_at)
       VALUES (?, ?, ?, ?, ?, 'needs_owner_review', ?, ?)`)
     .bind(requestId, sourceEventId, threadId, `order-card:${threadId}`, JSON.stringify(requestTypes), customerSummary, now).run();
+  if (result.meta.changes && orderRecord) {
+    await env.DB.batch([
+      env.DB.prepare(`UPDATE customer_order_records SET status = 'feasibility_review', updated_at = ? WHERE id = ?`)
+        .bind(now, orderRecord.id),
+      env.DB.prepare(`UPDATE order_record_fields SET locked = 1, updated_at = ?
+          WHERE order_record_id = ? AND phase = 'feasibility'`)
+        .bind(now, orderRecord.id),
+    ]);
+  }
   return result.meta.changes ? { id: requestId, requestTypes, customerSummary } : null;
+}
+
+async function loadOrderRecordFields(orderRecordId, env) {
+  const rows = await env.DB.prepare(`SELECT * FROM order_record_fields WHERE order_record_id = ?`)
+    .bind(orderRecordId).all();
+  return Object.fromEntries((rows.results || []).map((row) => [row.field_key, row]));
+}
+
+function orderRecordReadyForFeasibilityReview(fields) {
+  return ORDER_FEASIBILITY_FIELDS.every(({ key }) => {
+    const status = fields?.[key]?.status;
+    return ['answered', 'undecided', 'not_applicable', 'confirmed'].includes(status);
+  });
+}
+
+function detectOwnerDecisionTypesFromRecord(fields) {
+  const types = ['schedule', 'quote_and_production'];
+  const method = fields?.fulfillment_method?.value_text || '';
+  if (/配達/u.test(method)) types.push('delivery');
+  if (/発送/u.test(method) || /ヘリウム|浮く/u.test(fields?.product_type?.value_text || '')) types.push('store_policy');
+  return [...new Set(types)];
+}
+
+function summarizeOwnerReviewFromRecord(customerLabel, orderRecord, fields) {
+  const value = (key) => fields?.[key]?.value_text || '未入力';
+  const undecided = ORDER_FEASIBILITY_FIELDS
+    .filter(({ key }) => fields?.[key]?.status === 'undecided')
+    .map(({ label }) => `・${label}`);
+  const lines = [
+    `${customerLabel}からの聞き取り内容（注文カルテ No.${orderRecord.sequence_number}）`,
+    '',
+    '【制作可否の確認項目】',
+    `・商品番号・参考画像：${value('product_source')}`,
+    `・バルーンタイプ：${value('product_type')}`,
+    `・ご予算：${value('budget')}`,
+    `・色味・雰囲気：${value('color_vibe')}`,
+    `・プレゼント・使用予定日：${value('use_date')}`,
+    `・受取希望日：${value('receive_date')}`,
+    `・受取希望時間：${value('receive_time')}`,
+    `・受取方法：${value('fulfillment_method')}`,
+  ];
+  if (undecided.length) lines.push('', '【未定として回答された項目】', ...undecided);
+  lines.push('', '【現在の段階】', '制作可否・在庫・納期・受取方法の判断待ち');
+  return lines.join('\n');
 }
 
 function orderCardReadyForOwnerReview(card) {
@@ -638,6 +1054,8 @@ async function replyCustomerConversation(event, env) {
 
 function receiveReferenceImage(session) {
   session.fields.referenceImage = true;
+  session.fields.hasProductSource = true;
+  session.fields.productSourceValue = '参考画像あり';
   session.stage = 'collecting';
   return {
     session,
@@ -679,26 +1097,58 @@ function formatCustomerLabel(name) {
 }
 
 function extractScheduleCandidate(text) {
-  const type = /配達|お届け/u.test(text) ? 'delivery' : /受取|受け取り|引取/u.test(text) ? 'pickup' : /来店/u.test(text) ? 'visit' : null;
+  const methodAnswer = labeledAnswer(text, '受取方法|受け取り方法|お届け方法|方法') || '';
+  const typeText = methodAnswer || text;
+  const type = /配達|配送/u.test(typeText) ? 'delivery'
+    : /発送|郵送/u.test(typeText) ? null
+      : /店頭受取|受取|受け取り|引取/u.test(typeText) ? 'pickup'
+        : /来店/u.test(typeText) ? 'visit' : null;
   if (!type) return null;
-  let dateMatch = text.match(/(\d{4})[-/](\d{1,2})[-/](\d{1,2})/u);
-  let dateExpression = null;
-  if (!dateMatch) {
-    const japaneseDate = text.match(/(\d{1,2})月(\d{1,2})日/u);
-    if (japaneseDate) dateMatch = [null, japanDate(0).slice(0, 4), japaneseDate[1], japaneseDate[2]];
-  }
-  let date;
-  if (dateMatch) {
-    date = `${dateMatch[1]}-${String(dateMatch[2]).padStart(2, '0')}-${String(dateMatch[3]).padStart(2, '0')}`;
-  } else {
-    const relative = extractRelativeCustomerDate(text);
+  const dateAnswer = labeledAnswer(text, '受取希望日|受け取り希望日|お届け希望日|ご希望日|希望日');
+  const dateSource = dateAnswer || text;
+  const parsedDate = parseFlexibleCustomerDate(dateSource);
+  let date = parsedDate?.date;
+  let dateExpression = parsedDate?.expression || null;
+  if (!date) {
+    const relative = extractRelativeCustomerDate(dateSource);
     if (!relative) return null;
     date = relative.date;
     dateExpression = relative.expression;
   }
-  const timeMatch = text.match(/(\d{1,2}):(\d{2})/u);
+  const timeAnswer = labeledAnswer(text, '受取希望時間|受け取り希望時間|お届け希望時間|ご希望時間|希望時間');
+  const time = parseFlexibleCustomerTime(timeAnswer || text);
   const typeLabel = { pickup: '受取', delivery: '配達', visit: '来店' }[type];
-  return { type, typeLabel, date, time: timeMatch ? `${timeMatch[1].padStart(2, '0')}:${timeMatch[2]}` : null, dateExpression };
+  return { type, typeLabel, date, time, dateExpression };
+}
+
+function parseFlexibleCustomerDate(value) {
+  const normalized = String(value || '').normalize('NFKC').replace(/\s+/g, '');
+  let match = normalized.match(/(?:令和|R)(\d{1,2})(?:年|[/-])(\d{1,2})(?:月|[/-])(\d{1,2})日?/iu);
+  if (match) return { date: formatIsoDate(2018 + Number(match[1]), match[2], match[3]), expression: match[0] };
+  match = normalized.match(/(\d{4})(?:年|[/-])(\d{1,2})(?:月|[/-])(\d{1,2})日?/u);
+  if (match) return { date: formatIsoDate(match[1], match[2], match[3]), expression: match[0] };
+  match = normalized.match(/(\d{1,2})(?:月|[/-])(\d{1,2})日?/u);
+  if (match) return { date: formatIsoDate(japanDate(0).slice(0, 4), match[1], match[2]), expression: match[0] };
+  return null;
+}
+
+function parseFlexibleCustomerTime(value) {
+  const normalized = String(value || '').normalize('NFKC');
+  let match = normalized.match(/(午前|午後)?\s*(\d{1,2})\s*[:：]\s*(\d{2})/u);
+  if (!match) match = normalized.match(/(午前|午後)?\s*(\d{1,2})\s*時(?:\s*(\d{1,2})\s*分)?/u);
+  if (!match) return null;
+  let hour = Number(match[2]);
+  const minute = Number(match[3] || 0);
+  if (match[1] === '午後' && hour < 12) hour += 12;
+  if (match[1] === '午前' && hour === 12) hour = 0;
+  if (hour > 23 || minute > 59) return null;
+  return `${String(hour).padStart(2, '0')}:${String(minute).padStart(2, '0')}`;
+}
+
+function formatIsoDate(year, month, day) {
+  const numericYear = Number(year), numericMonth = Number(month), numericDay = Number(day);
+  if (numericYear < 2000 || numericMonth < 1 || numericMonth > 12 || numericDay < 1 || numericDay > 31) return null;
+  return `${numericYear}-${String(numericMonth).padStart(2, '0')}-${String(numericDay).padStart(2, '0')}`;
 }
 
 function extractRelativeCustomerDate(text) {
@@ -900,7 +1350,7 @@ function deliveryReply(session) { session.stage = 'delivery'; return { session, 
 function longevityReply(session) { session.stage = 'faq'; return { session, message: 'ご質問ありがとうございます😊 バルーンは種類や飾る環境によって異なります。直射日光・高温・尖った物を避けて室内に飾ると、より長く楽しんでいただけます。お写真を送っていただければ、その商品に合わせた目安と保管方法をご案内します🎈' }; }
 function orderReply(text, session) {
   if (isOrderStartTrigger(text)) {
-    session.fields = {};
+    session.fields = { questionCounts: {} };
   }
   session.stage = 'collecting';
   session.fields.purpose = ['開店','結婚','出産','誕生日','発表会','卒業','退職'].find((purpose) => text.includes(purpose)) || null;
@@ -911,6 +1361,7 @@ function orderReply(text, session) {
     session.stage = 'review';
     return { session, message: orderDetailsReceivedReply() };
   }
+  markSessionFieldsAsked(session, missing);
   return { session, message: intakePrompt(missing, session.fields.productType, session.customerKind, Boolean(session.fields.productType || session.fields.purpose)) };
 }
 
@@ -935,7 +1386,11 @@ function collectOrderDetail(text, session) {
   fields.lastCustomerMessage = redactContactDetails(text);
   mergeIntakeAnswers(fields, text);
   const missing = missingIntakeFields(fields);
-  if (missing.length) return { session, message: missingIntakePrompt(missing, fields.productType) };
+  if (missing.length) {
+    const nextMissing = missing.slice(0, 3);
+    markSessionFieldsAsked(session, nextMissing);
+    return { session, message: missingIntakePrompt(nextMissing, fields.productType) };
+  }
   session.stage = 'review';
   return { session, message: orderDetailsReceivedReply() };
 }
@@ -943,19 +1398,14 @@ function orderDetailsReceivedReply() {
   return 'ご回答ありがとうございます😊\n\nすべての項目を確認しました。\n制作できる内容・在庫・納期・お届け方法を確認し、改めてご案内いたします。\n\n価格やお届け日時は、この時点ではまだ確定していません。追加で確認が必要な場合はご連絡いたします。';
 }
 function basicOrderConfirmation(text, session) {
-  const productType = session.fields.productType || detectProductType(text);
-  const product = ({ arrangement: 'アレンジ', floating_balloon: '浮くタイプ', venue_decoration: '会場装飾', balloon_stand: 'バルーンスタンド', balloon_bouquet: 'バルーンブーケ', store_consultation: '来店相談' }[productType] || '未定');
-  const budget = text.match(/([0-9０-９][0-9０-９,，]*)\s*円/u)?.[1] || '未定';
-  const date = text.match(new RegExp(`(今日|明日|明後日|今週|来週|再来週|${DATE_INPUT_PATTERN})`, 'u'))?.[1] || '未定';
-  const time = text.match(/(午前|午後)?\s*\d{1,2}\s*時(?:頃|ごろ)?/u)?.[0]?.trim() || '未定';
-  const method = /配達|配送/u.test(text) ? '配達' : /来店/u.test(text) ? '来店相談' : /発送|郵送/u.test(text) ? '発送' : '店頭受取';
-  return `回答ありがとうございます😊\n\n基本内容を確認しました。\n\n・商品タイプ：${product}\n・ご希望日：${date}\n・ご希望時間：${time}\n・受取方法：${method}\n・ご予算：${budget}円\n\nこちらの内容で対応可能か確認を進めます。\n確認ができましたら、改めてご連絡いたします。\nその際、商品タイプに合わせた個別の基本情報や、必要な内容を追加でお伺いします。`;
+  const fields = session.fields;
+  return `ご回答ありがとうございます😊\n\n基本内容を確認しました。\n\n・商品番号・参考画像：${fields.productSourceValue || '未定'}\n・バルーンタイプ：${fields.productTypeValue || productTypeLabel(fields.productType) || '未定'}\n・ご予算：${fields.budgetValue || '未定'}\n・色味・雰囲気：${fields.colorValue || '未定'}\n・プレゼント・使用予定日：${fields.useDateValue || '未定'}\n・受取希望日：${fields.receiveDateValue || '未定'}\n・受取希望時間：${fields.receiveTimeValue || '未定'}\n・受取方法：${fields.methodValue || '未定'}\n\nこちらの内容で対応可能か確認を進めます。\n確認ができましたら、改めてご連絡いたします。\nその際、商品タイプに合わせて必要な内容だけ追加でお伺いします。`;
 }
 function intakePrompt(missing, productType, customerKind, hasKnownDetails) {
   const greeting = customerKind === 'returning' ? 'いつもありがとうございます☺︎ お久しぶりです。今回もお問い合わせありがとうございます。' : 'お問い合わせありがとうございます🎈';
-  const guidance = 'ご希望内容をもとに、制作できる内容や納期を確認いたします。確認をスムーズに進めるため、お手数ですが、下の項目すべてにご回答をお願いいたします。\n\nこの時点ですべてを決めていただく必要はありません。分からない・まだ決まっていない項目は「未定」、ご希望がない項目は「なし」とご記入いただければ大丈夫です。\n\nすべての項目を確認できてから次のご案内へ進みますので、各項目に「ご希望内容」「未定」「なし」のいずれかをご記入ください。\n\nHPの商品番号が分かる場合は番号を、分からない場合はHPのスクリーンショットや参考画像を添付してください。';
-  const rows = '【ご注文内容】📷\n※すべての項目にご記入ください（未定・なしでも大丈夫です）\n\n・HPの商品番号 または参考画像：\n（例：バルーンアレンジ36番／画像添付済み／未定）\n\n・バルーンのタイプ：\n（ブーケ／置き型アレンジメント／ヘリウム〈浮く〉タイプ／未定）\n\n・ご予算：\n（例：15,000円くらい／未定）\n\n・全体的なお色味と雰囲気：\n（例：ピンク系で可愛い雰囲気／お任せ／未定）\n\n・バルーンへのご希望の文字入れ：\n（ご希望の文字／なし／未定）\n\n・メッセージカードの有無：\n（ご希望の場合は50文字以内の内容／なし／未定）\n\n・お届けご希望日時：\n（例：2026年10月1日 14:00 店頭受取／配達／発送／未定）\n\n・お名前：\n（未定の場合は「未定」）\n\n・ご連絡先：\n（未定の場合は「未定」）\n\n・その他ご質問等：\n（なし／未定でも大丈夫です）';
-  const closing = 'すべての項目を確認できましたら、制作内容・在庫・納期・受取方法について確認を進めます。\n\n対応可能な場合は、当店の価格と納期を改めてご案内いたします。\n\n仕上がりのボリュームは、ご予算に合わせて調整いたします。\nご予算内でボリュームを優先するか、内容やデザインを優先するかは、ご相談しながら決めていただけます。\n\n画像やご希望内容について確認が必要な場合は、追加でお伺いすることがございます✨';
+  const guidance = 'ご希望に合う形でご用意できるか確認するため、まずは下の基本項目を教えてください。\n\nまだ決まっていない項目は「未定」で大丈夫です。空欄があると確認を進められないため、お手数ですが、すべての項目へご記入をお願いいたします。\n\nHPの商品番号が分かる場合は番号を、分からない場合はスクリーンショットや参考画像をお送りください。';
+  const rows = '【ご注文内容】📷\n※そのままコピーしてご記入ください\n※決まっていない項目は「未定」で大丈夫です\n\n・HPの商品番号 または参考画像：\n（例：バルーンアレンジ36番／画像添付済み／未定）\n\n・バルーンのタイプ：\n（ブーケ／置き型アレンジメント／ヘリウム〈浮く〉タイプ／未定）\n\n・ご予算：\n（例：15,000円くらい／未定）\n\n・全体的なお色味と雰囲気：\n（例：ピンク系で可愛い雰囲気／お任せ／未定）\n\n・プレゼント・使用予定日：\n（例：10月3日／未定）\n\n・受取希望日：\n（例：10月2日／未定）\n\n・受取希望時間：\n（例：14時頃／未定）\n\n・受取方法：\n（店頭受取／配達／発送／未定）';
+  const closing = '基本項目を確認できましたら、制作内容・在庫・納期・受取方法について確認を進めます。\n\n対応可能な場合は、当店の価格と納期を改めてご案内いたします。\n\n文字入れやメッセージカードなどは、制作可能な場合に商品内容に合わせて必要な項目だけ追加でお伺いします✨';
   return greeting + '\n\n' + guidance + '\n\n' + rows + '\n\n' + closing;
 }
 function intakeRows(items) {
@@ -964,28 +1414,34 @@ function intakeRows(items) {
     'バルーンのタイプ': '（ブーケ／置き型アレンジメント／ヘリウム〈浮く〉タイプ／未定）',
     'ご予算': '（例：5,000円くらい／未定）',
     '全体的なお色味と雰囲気': '（例：ピンク系で可愛い雰囲気／お任せ／未定）',
-    'バルーンへのご希望の文字入れ': '（ご希望の文字／なし／未定）',
-    'メッセージカードの有無': '（50文字以内の内容／なし／未定）',
-    'お届けご希望日時': '（例：2026年10月1日 14:00 店頭受取／配達／発送／未定）',
-    'お名前': '（未定の場合は「未定」）',
-    'ご連絡先': '（未定の場合は「未定」）',
-    'その他ご質問等': '（なし／未定でも大丈夫です）',
+    'プレゼント・使用予定日': '（例：10月3日／未定）',
+    '受取希望日': '（例：10月2日／未定）',
+    '受取希望時間': '（例：14時頃／未定）',
+    '受取方法': '（店頭受取／配達／発送／未定）',
   };
   return items.map((item) => `・${item}：\n${choices[item] || ''}`).join('\n\n');
 }
 function mergeIntakeAnswers(fields, text) {
   fields.productReference = fields.productReference || extractProductReference(text);
-  fields.hasProductSource = fields.hasProductSource || Boolean(fields.productReference) || Boolean(fields.referenceImage) || hasLabeledAnswer(text, 'HPの商品番号\\s*または参考画像|参考画像|商品番号');
+  fields.productSourceValue = fields.productSourceValue || fields.productReference || labeledAnswer(text, 'HPの商品番号\\s*または参考画像|参考画像|商品番号|品番');
+  fields.hasProductSource = fields.hasProductSource || Boolean(fields.productSourceValue) || Boolean(fields.productReference) || Boolean(fields.referenceImage) || hasLabeledAnswer(text, 'HPの商品番号\\s*または参考画像|参考画像|商品番号');
   const detectedProductType = detectProductType(text);
-  fields.hasProductType = fields.hasProductType || Boolean(detectedProductType) || hasLabeledAnswer(text, 'バルーンのタイプ|商品タイプ');
+  fields.productTypeValue = fields.productTypeValue || (detectedProductType ? productTypeLabel(detectedProductType) : labeledAnswer(text, 'バルーンのタイプ|商品タイプ'));
+  fields.hasProductType = fields.hasProductType || Boolean(fields.productTypeValue) || Boolean(detectedProductType) || hasLabeledAnswer(text, 'バルーンのタイプ|商品タイプ');
   fields.productType = fields.productType || detectedProductType || (fields.hasProductType ? 'other' : null);
   fields.hasPurpose = fields.hasPurpose || Boolean(fields.purpose) || hasLabeledAnswer(text, 'ご用途|用途');
-  fields.hasDate = fields.hasDate || new RegExp(`${DATE_INPUT_PATTERN}|今日|明日|あした|今週|来週|今度`, 'u').test(text) || hasLabeledAnswer(text, 'お届けご希望日時|ご希望日|希望日');
-  fields.hasUseDate = fields.hasUseDate || hasLabeledAnswer(text, 'プレゼント・使用予定日|使用予定日|利用日|使用日');
-  fields.hasTime = fields.hasTime || /\d{1,2}:\d{2}|午前|午後|時頃?|まで/u.test(text) || hasLabeledAnswer(text, 'お届けご希望日時|ご希望時間|希望時間');
-  fields.hasBudget = fields.hasBudget || /円/u.test(text) || hasLabeledAnswer(text, 'ご予算|予算');
-  fields.hasMethod = fields.hasMethod || /受取|受け取|来店|配達|配送|発送|郵送/u.test(text) || hasLabeledAnswer(text, 'お届けご希望日時|受取方法|受け取り方法|方法');
-  fields.hasColor = fields.hasColor || /ピンク|赤|青|黄|緑|紫|白|黒|金|銀|色味|カラー|おまかせ/u.test(text) || hasLabeledAnswer(text, '全体的なお色味と雰囲気|色味|雰囲気');
+  fields.useDateValue = fields.useDateValue || labeledAnswer(text, 'プレゼント・使用予定日|使用予定日|利用日|使用日');
+  fields.receiveDateValue = fields.receiveDateValue || labeledAnswer(text, '受取希望日|受け取り希望日|お届け希望日|ご希望日|希望日');
+  fields.receiveTimeValue = fields.receiveTimeValue || labeledAnswer(text, '受取希望時間|受け取り希望時間|お届け希望時間|ご希望時間|希望時間');
+  fields.budgetValue = fields.budgetValue || labeledAnswer(text, 'ご予算|予算') || text.match(/([0-9０-９][0-9０-９,，]*\s*円(?:くらい|程度)?)/u)?.[1];
+  fields.methodValue = fields.methodValue || labeledAnswer(text, '受取方法|受け取り方法|お届け方法|方法') || (/配達|配送/u.test(text) ? '配達' : /発送|郵送/u.test(text) ? '発送' : /店頭受取|店頭で受/u.test(text) ? '店頭受取' : null);
+  fields.colorValue = fields.colorValue || labeledAnswer(text, '全体的なお色味と雰囲気|色味・雰囲気|色味|雰囲気');
+  fields.hasDate = fields.hasDate || Boolean(fields.receiveDateValue);
+  fields.hasUseDate = fields.hasUseDate || Boolean(fields.useDateValue);
+  fields.hasTime = fields.hasTime || Boolean(fields.receiveTimeValue);
+  fields.hasBudget = fields.hasBudget || Boolean(fields.budgetValue);
+  fields.hasMethod = fields.hasMethod || Boolean(fields.methodValue);
+  fields.hasColor = fields.hasColor || Boolean(fields.colorValue);
   fields.hasBalloonMessage = fields.hasBalloonMessage || hasLabeledAnswer(text, 'バルーンへのご希望の文字入れ|文字入れ|バルーン(?:の)?(?:文字|メッセージ)') || /(?:文字入れ|バルーン(?:の)?(?:文字|メッセージ))\s*(?:は)?\s*(?:なし|不要)/u.test(text);
   fields.hasCard = fields.hasCard || hasLabeledAnswer(text, 'メッセージカードの有無|メッセージカード|カード(?:の内容)?') || /(?:メッセージカード|カード)\s*(?:は)?\s*(?:なし|不要)/u.test(text);
   fields.hasName = fields.hasName || hasLabeledAnswer(text, 'お名前|氏名|名前');
@@ -998,24 +1454,31 @@ function mergeIntakeAnswers(fields, text) {
   if (fields.productType === 'floating_balloon') fields.hasEnvironment = fields.hasEnvironment || /室内|屋外|屋内/u.test(text) || hasLabeledAnswer(text, '設置環境|室内外');
 }
 function hasLabeledAnswer(text, label) {
-  const answer = text.match(new RegExp(`(?:${label})\\s*[：:]\\s*([^\\n]*)`, 'u'))?.[1]?.trim();
+  const answer = text.match(new RegExp(`(?:${label})\\s*(?:→|[：:])\\s*([^\\n]*)`, 'u'))?.[1]?.trim();
   return Boolean(answer && !/^(?:未入力|空欄)$/u.test(answer));
 }
 function missingIntakeFields(fields) {
   return [
     !fields.hasProductSource && !fields.referenceImage && 'HPの商品番号 または参考画像',
     !fields.hasProductType && 'バルーンのタイプ',
-    !fields.hasColor && '全体的なお色味と雰囲気',
-    !fields.hasBalloonMessage && 'バルーンへのご希望の文字入れ',
-    !fields.hasCard && 'メッセージカードの有無',
-    (!fields.hasDate || !fields.hasTime || !fields.hasMethod) && 'お届けご希望日時',
     !fields.hasBudget && 'ご予算',
-    !fields.hasName && 'お名前',
-    !fields.hasContact && 'ご連絡先',
-    !fields.hasOtherQuestions && 'その他ご質問等',
+    !fields.hasColor && '全体的なお色味と雰囲気',
+    !fields.hasUseDate && 'プレゼント・使用予定日',
+    !fields.hasDate && '受取希望日',
+    !fields.hasTime && '受取希望時間',
+    !fields.hasMethod && '受取方法',
   ].filter(Boolean);
 }
-function missingIntakePrompt(missing, productType) { return 'ご回答ありがとうございます😊\n\nご希望内容を正確に確認するため、空欄になっている以下の項目にもご回答をお願いいたします。\n\nこの時点で決まっていない項目は「未定」、ご希望がない項目は「なし」で大丈夫です。\n\nお手数をおかけしますが、以下の項目をご記入いただけましたら、内容をまとめて確認いたします。\n\n【不足している項目】\n' + intakeRows(missing); }
+function missingIntakePrompt(missing, productType) { return 'ご回答ありがとうございます😊\n\n確認できた内容は注文カルテへ記録しました。\nまだ空欄になっている項目から、まずは以下をご回答ください。\n\n決まっていない項目は「未定」で大丈夫です。\n\n【確認したい項目】\n' + intakeRows(missing); }
+
+function markSessionFieldsAsked(session, missingLabels) {
+  if (!session.fields.questionCounts) session.fields.questionCounts = {};
+  for (const label of missingLabels) {
+    const field = ORDER_FEASIBILITY_FIELDS.find((item) => item.label === label);
+    if (!field) continue;
+    session.fields.questionCounts[field.key] = Number(session.fields.questionCounts[field.key] || 0) + 1;
+  }
+}
 function intakeIntro(productType) { return ({ arrangement: '置き型アレンジをご希望ですね。', floating_balloon: '浮くタイプのバルーンをご希望ですね。', venue_decoration: '会場装飾のご相談ですね。', balloon_stand: 'バルーンスタンドのご相談ですね。', balloon_bouquet: 'バルーンブーケ・手渡し用ギフトのご相談ですね。', store_consultation: 'ご来店でのご相談ですね。' }[productType] || 'ご希望の内容を確認しながらご案内いたします。'); }
 function intakeFollowUp(productType) { return ({ arrangement: '\n色味・大きさ・飾る場所、文字入れやカードの有無も教えてください。', floating_balloon: '\n室内・屋外、飾り始める時刻、サイズ・個数、固定方法の希望も教えてください。ヘリウム在庫は確認してご案内します。', venue_decoration: '\n会場名、設置・撤去の希望時刻、装飾する範囲、会場写真や平面図、テーマ・色味も教えてください。', balloon_stand: '\n設置先、希望の高さ・幅、名札や文字、設置・撤去の希望も教えてください。', balloon_bouquet: '\n贈る相手、色味・大きさ、文字入れ・カード内容も教えてください。', store_consultation: '\nご相談内容、希望日時、人数、参考画像の有無、予算の目安も教えてください。' }[productType] || '\nご希望の色味・雰囲気、文字入れ・メッセージカードの有無も分かる範囲で教えてください。'); }
 function redactContactDetails(text) { return text.replace(/\b\d{2,4}[- ]?\d{2,4}[- ]?\d{3,4}\b/g, '[連絡先]').slice(0, 500); }
