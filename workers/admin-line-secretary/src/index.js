@@ -185,6 +185,27 @@ async function handleAdmin(event, env) {
   if (/^(?:カルテ|最新カルテ)$/u.test(text)) {
     return replyLatestOrderRecord(event.replyToken, env);
   }
+  const shortOwnerDecision = text.match(/^(受ける|難しい|確認)(?:\s+(K[A-Z0-9]+))?(?:\s+([\s\S]+))?$/iu);
+  if (shortOwnerDecision) {
+    return handleOwnerShortDecision(
+      event.replyToken,
+      userId,
+      shortOwnerDecision[1],
+      shortOwnerDecision[2]?.toUpperCase() || null,
+      shortOwnerDecision[3]?.trim() || null,
+      env,
+    );
+  }
+  const lifecycleCommand = text.match(/^(制作開始|完成|受渡完了|支払完了)(?:\s+(K[A-Z0-9]+))?$/iu);
+  if (lifecycleCommand) {
+    return handleOrderLifecycleCommand(
+      event.replyToken,
+      userId,
+      lifecycleCommand[1],
+      lifecycleCommand[2]?.toUpperCase() || null,
+      env,
+    );
+  }
   const ownerDecision = text.match(/^店長確認\s+(decision:[^\s]+)\s+(.+)$/u);
   if (ownerDecision) {
     const result = await env.DB.prepare(`UPDATE owner_decision_requests
@@ -643,7 +664,20 @@ async function syncCustomerOrderRecord({ customerId, threadId, event, text, now,
       .bind(now, orderRecord.id, update.key).run();
   }
   await syncCustomerProfileFromOrderUpdates(customerId, updates, now, env);
+  await advanceOrderRecordAfterContact(orderRecord.id, now, env);
   return { orderRecord, pendingChanges };
+}
+
+async function advanceOrderRecordAfterContact(orderRecordId, now, env) {
+  const record = await env.DB.prepare(`SELECT status FROM customer_order_records WHERE id = ?`)
+    .bind(orderRecordId).first();
+  if (!['detail_intake', 'awaiting_customer_confirmation'].includes(record?.status)) return;
+  const rows = await env.DB.prepare(`SELECT field_key, status FROM order_record_fields
+      WHERE order_record_id = ? AND field_key IN ('customer_name', 'phone')`).bind(orderRecordId).all();
+  const states = Object.fromEntries((rows.results || []).map((row) => [row.field_key, row.status]));
+  if (!['answered', 'confirmed'].includes(states.customer_name) || !['answered', 'confirmed'].includes(states.phone)) return;
+  await env.DB.prepare(`UPDATE customer_order_records SET status = 'confirmed', updated_at = ? WHERE id = ?`)
+    .bind(now, orderRecordId).run();
 }
 
 async function getOrCreateActiveOrderRecord(customerId, threadId, sourceMessageId, now, env, allowCreate) {
@@ -657,11 +691,20 @@ async function getOrCreateActiveOrderRecord(customerId, threadId, sourceMessageI
   const sequenceNumber = Number(countRow?.total || 0) + 1;
   const safeSourceId = String(sourceMessageId).replace(/[^A-Za-z0-9_-]/g, '').slice(-60) || String(Date.now());
   const id = `order:${customerId}:${safeSourceId}`;
+  const displayCode = createOrderDisplayCode();
   await env.DB.prepare(`INSERT INTO customer_order_records
-      (id, customer_line_user_id, source_thread_id, sequence_number, status, is_active, created_at, updated_at)
-      VALUES (?, ?, ?, ?, 'feasibility_intake', 1, ?, ?)`)
-    .bind(id, customerId, threadId, sequenceNumber, now, now).run();
-  return { id, customer_line_user_id: customerId, source_thread_id: threadId, sequence_number: sequenceNumber, status: 'feasibility_intake', is_active: 1 };
+      (id, customer_line_user_id, source_thread_id, sequence_number, display_code,
+       status, is_active, created_at, updated_at)
+      VALUES (?, ?, ?, ?, ?, 'feasibility_intake', 1, ?, ?)`)
+    .bind(id, customerId, threadId, sequenceNumber, displayCode, now, now).run();
+  return { id, customer_line_user_id: customerId, source_thread_id: threadId, sequence_number: sequenceNumber, display_code: displayCode, status: 'feasibility_intake', is_active: 1 };
+}
+
+function createOrderDisplayCode(now = Date.now(), randomValue = randomUnit()) {
+  const timePart = now.toString(36).toUpperCase().slice(-5).padStart(5, '0');
+  const randomPart = Math.floor(Math.max(0, Math.min(0.999999, randomValue)) * 1296)
+    .toString(36).toUpperCase().padStart(2, '0');
+  return `K${timePart}${randomPart}`;
 }
 
 function extractOrderRecordUpdates(text, isImage, candidate) {
@@ -841,6 +884,154 @@ async function replyLatestOrderRecord(replyToken, env) {
   return reply(replyToken, message, env);
 }
 
+async function handleOwnerShortDecision(replyToken, userId, action, displayCode, note, env) {
+  let filter = '';
+  if (displayCode) {
+    filter = ' AND r.display_code = ?';
+  }
+  const statement = env.DB.prepare(`SELECT d.*, r.id AS order_record_id, r.display_code,
+      r.status AS order_status, t.customer_display_name, t.customer_confirmed_name
+      FROM owner_decision_requests d
+      JOIN customer_order_records r ON r.source_thread_id = d.order_thread_id AND r.is_active = 1
+      JOIN customer_order_threads t ON t.id = r.source_thread_id
+      WHERE d.status = 'needs_owner_review'${filter}
+      ORDER BY d.created_at DESC LIMIT 2`);
+  const rows = displayCode ? await statement.bind(displayCode).all() : await statement.all();
+  const candidates = rows.results || [];
+  if (!candidates.length) return reply(replyToken, displayCode
+    ? `${displayCode}に確認待ちの判断はありません。`
+    : '確認待ちの制作可否判断はありません。', env);
+  if (!displayCode && candidates.length > 1) {
+    return reply(replyToken, formatAmbiguousOrderChoices(candidates, `${action} カルテ番号`), env);
+  }
+  const decision = candidates[0];
+  if (action === '確認') {
+    return reply(replyToken, `【判断待ち／${decision.display_code}】\n\n${decision.customer_summary}\n\n対応可能：受ける ${decision.display_code}\n対応困難：難しい ${decision.display_code} 理由`, env);
+  }
+  const now = new Date().toISOString();
+  const accepted = action === '受ける';
+  const ownerResponse = accepted ? (note || '制作対応可能') : `対応困難${note ? `：${note}` : '（理由未入力）'}`;
+  await env.DB.batch([
+    env.DB.prepare(`UPDATE owner_decision_requests
+        SET status = 'recorded', owner_response = ?, decided_at = ?, decided_by = ?
+        WHERE id = ? AND status = 'needs_owner_review'`)
+      .bind(ownerResponse, now, userId, decision.id),
+    env.DB.prepare(`UPDATE customer_order_records SET status = ?, updated_at = ? WHERE id = ?`)
+      .bind(accepted ? 'detail_intake' : 'feasibility_review', now, decision.order_record_id),
+    env.DB.prepare(`INSERT INTO order_card_events
+        (order_card_id, event_type, actor, detail, occurred_at)
+        VALUES (?, ?, 'owner', ?, ?)`)
+      .bind(decision.order_card_id, accepted ? 'owner.feasibility_accepted' : 'owner.feasibility_declined', ownerResponse, now),
+  ]);
+  if (accepted) {
+    return reply(replyToken, `${decision.display_code}を「対応可能」として記録しました。\n次は商品別の詳細確認へ進みます。`, env);
+  }
+  return reply(replyToken, `${decision.display_code}を「対応困難」として記録しました。${note ? '' : '\nお客様へ案内する理由は、続けて確認してください。'}`, env);
+}
+
+async function handleOrderLifecycleCommand(replyToken, userId, action, displayCode, env) {
+  let filter = '';
+  if (displayCode) {
+    filter = ' AND r.display_code = ?';
+  }
+  const statement = env.DB.prepare(`SELECT r.*, t.customer_display_name, t.customer_confirmed_name
+      FROM customer_order_records r
+      JOIN customer_order_threads t ON t.id = r.source_thread_id
+      WHERE r.is_active = 1${filter}
+      ORDER BY r.updated_at DESC LIMIT 2`);
+  const rows = displayCode ? await statement.bind(displayCode).all() : await statement.all();
+  const candidates = rows.results || [];
+  if (!candidates.length) return reply(replyToken, displayCode
+    ? `${displayCode}の進行中カルテはありません。`
+    : '進行中の注文カルテはありません。', env);
+  if (!displayCode && candidates.length > 1) {
+    return reply(replyToken, formatAmbiguousOrderChoices(candidates, `${action} カルテ番号`), env);
+  }
+  const orderRecord = candidates[0];
+  const allowedStatuses = {
+    制作開始: ['confirmed'],
+    完成: ['production'],
+    受渡完了: ['ready'],
+    支払完了: ['confirmed', 'production', 'ready', 'fulfilled'],
+  };
+  if (!allowedStatuses[action].includes(orderRecord.status)) {
+    return reply(replyToken, `${orderRecord.display_code}は現在「${orderRecordStatusLabel(orderRecord.status)}」です。\n「${action}」へ進める前の確認が完了していません。`, env);
+  }
+  const now = new Date().toISOString();
+  if (action === '制作開始' || action === '完成') {
+    const nextStatus = action === '制作開始' ? 'production' : 'ready';
+    await env.DB.batch([
+      env.DB.prepare(`UPDATE customer_order_records SET status = ?, updated_at = ? WHERE id = ?`)
+        .bind(nextStatus, now, orderRecord.id),
+      env.DB.prepare(`INSERT INTO order_card_events
+          (order_card_id, event_type, actor, detail, occurred_at)
+          VALUES (?, ?, 'owner', ?, ?)`)
+        .bind(`order-card:${orderRecord.source_thread_id}`, action === '制作開始' ? 'production.started' : 'production.completed', action, now),
+    ]);
+    return reply(replyToken, `${orderRecord.display_code}を「${orderRecordStatusLabel(nextStatus)}」へ更新しました。`, env);
+  }
+
+  const fieldKey = action === '受渡完了' ? 'fulfillment_completed' : 'payment_status';
+  const phase = action === '受渡完了' ? 'completion' : 'payment';
+  await env.DB.prepare(`INSERT INTO order_record_fields
+      (order_record_id, field_key, phase, value_text, status, source_direction,
+       source_occurred_at, confidence, locked, updated_at, confirmed_at, confirmed_by)
+      VALUES (?, ?, ?, '完了', 'confirmed', 'owner_recorded', ?, 1, 1, ?, ?, ?)
+      ON CONFLICT(order_record_id, field_key) DO UPDATE SET
+        value_text = '完了', status = 'confirmed', source_direction = 'owner_recorded',
+        source_occurred_at = excluded.source_occurred_at, confidence = 1, locked = 1,
+        updated_at = excluded.updated_at, confirmed_at = excluded.confirmed_at,
+        confirmed_by = excluded.confirmed_by`)
+    .bind(orderRecord.id, fieldKey, phase, now, now, now, userId).run();
+  if (action === '受渡完了') {
+    await env.DB.prepare(`UPDATE customer_order_records SET status = 'fulfilled', updated_at = ? WHERE id = ?`)
+      .bind(now, orderRecord.id).run();
+  }
+  const closed = await closeOrderRecordWhenComplete(orderRecord, now, env);
+  if (closed) return reply(replyToken, `${orderRecord.display_code}は受渡し・支払いともに完了し、注文カルテを完了しました。`, env);
+  const remaining = action === '受渡完了' ? '支払完了' : '受渡完了';
+  return reply(replyToken, `${orderRecord.display_code}へ「${action}」を記録しました。\n残りの確認：${remaining}`, env);
+}
+
+async function closeOrderRecordWhenComplete(orderRecord, now, env) {
+  const rows = await env.DB.prepare(`SELECT field_key, status FROM order_record_fields
+      WHERE order_record_id = ? AND field_key IN ('fulfillment_completed', 'payment_status')`)
+    .bind(orderRecord.id).all();
+  const fields = Object.fromEntries((rows.results || []).map((row) => [row.field_key, row.status]));
+  if (fields.fulfillment_completed !== 'confirmed' || fields.payment_status !== 'confirmed') return false;
+  await env.DB.batch([
+    env.DB.prepare(`UPDATE customer_order_records
+        SET status = 'closed', is_active = 0, updated_at = ?, closed_at = ? WHERE id = ?`)
+      .bind(now, now, orderRecord.id),
+    env.DB.prepare(`UPDATE customer_profiles SET completed_order_count = completed_order_count + 1
+        WHERE customer_line_user_id = ?`).bind(orderRecord.customer_line_user_id),
+  ]);
+  return true;
+}
+
+function formatAmbiguousOrderChoices(records, commandExample) {
+  const choices = records.map((record) => {
+    const name = formatCustomerLabel(record.customer_confirmed_name || record.customer_display_name);
+    return `・${record.display_code}：${name}（${orderRecordStatusLabel(record.order_status || record.status)}）`;
+  }).join('\n');
+  return `対象の注文が複数あります。カルテ番号を付けてください。\n\n${choices}\n\n例：${commandExample.replace('カルテ番号', records[0].display_code)}`;
+}
+
+function orderRecordStatusLabel(status) {
+  return ({
+    feasibility_intake: '基本情報を聞き取り中',
+    feasibility_review: '制作可否の判断待ち',
+    detail_intake: '商品別の詳細確認中',
+    awaiting_customer_confirmation: 'お客様の最終確認待ち',
+    confirmed: '注文確定',
+    production: '制作中',
+    ready: 'お渡し準備完了',
+    fulfilled: '受渡完了・支払確認待ち',
+    closed: '完了',
+    cancelled: 'キャンセル',
+  })[status] || status;
+}
+
 function formatOrderRecordCard(customerLabel, orderRecord, fields, pendingChangeCount = 0) {
   const statusLabels = {
     feasibility_intake: '制作可否の基本情報を聞き取り中',
@@ -866,7 +1057,7 @@ function formatOrderRecordCard(customerLabel, orderRecord, fields, pendingChange
       && ['answered', 'confirmed', 'not_applicable'].includes(field.status))
     .map(([key, field]) => `・${ORDER_FIELD_LABELS[key] || key}：${field.value_text || '対象外'}`);
   const sections = [
-    `【注文カルテ No.${orderRecord.sequence_number}】`,
+    `【注文カルテ ${orderRecord.display_code || `No.${orderRecord.sequence_number}`}】`,
     `お客様：${customerLabel}`,
     `現在：${statusLabels[orderRecord.status] || orderRecord.status}`,
   ];
@@ -1079,7 +1270,7 @@ function summarizeOwnerReviewFromRecord(customerLabel, orderRecord, fields) {
     .filter(({ key }) => fields?.[key]?.status === 'undecided')
     .map(({ label }) => `・${label}`);
   const lines = [
-    `${customerLabel}からの聞き取り内容（注文カルテ No.${orderRecord.sequence_number}）`,
+    `${customerLabel}からの聞き取り内容（注文カルテ ${orderRecord.display_code || `No.${orderRecord.sequence_number}`}）`,
     '',
     '【制作可否の確認項目】',
     `・商品番号・参考画像：${value('product_source')}`,

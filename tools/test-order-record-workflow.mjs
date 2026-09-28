@@ -11,7 +11,8 @@ const source = fs.readFileSync(sourcePath, 'utf8')
     summarizeOwnerReviewFromRecord, extractScheduleCandidate,
     parseFlexibleCustomerDate, parseFlexibleCustomerTime, formatOrderRecordCard,
     shouldBypassCustomerMessageBundle, createBundledCustomerEvent,
-    processCustomerMessageBundleAfterWait
+    processCustomerMessageBundleAfterWait, createOrderDisplayCode,
+    formatAmbiguousOrderChoices, orderRecordStatusLabel
   };`;
 
 const context = vm.createContext({
@@ -47,6 +48,9 @@ const {
   shouldBypassCustomerMessageBundle,
   createBundledCustomerEvent,
   processCustomerMessageBundleAfterWait,
+  createOrderDisplayCode,
+  formatAmbiguousOrderChoices,
+  orderRecordStatusLabel,
 } = context.__orderTests;
 
 const session = { stage: 'new', fields: {}, customerKind: 'new' };
@@ -166,4 +170,14 @@ const supersededEnv = {
 };
 assert.equal(await processCustomerMessageBundleAfterWait('U-test', 'old-generation', supersededEnv, 0), false);
 
-console.log('order record workflow tests: 45 assertions passed');
+const displayCode = createOrderDisplayCode(1_790_000_000_000, 0.5);
+assert.match(displayCode, /^K[A-Z0-9]{7}$/);
+assert.equal(orderRecordStatusLabel('production'), '制作中');
+const ambiguous = formatAmbiguousOrderChoices([
+  { display_code: 'KABC123', customer_confirmed_name: '山田花子', status: 'confirmed' },
+  { display_code: 'KDEF456', customer_display_name: '田中', status: 'production' },
+], '制作開始 カルテ番号');
+assert.match(ambiguous, /KABC123：山田花子さん（注文確定）/);
+assert.match(ambiguous, /例：制作開始 KABC123/);
+
+console.log('order record workflow tests: 49 assertions passed');
