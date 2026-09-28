@@ -1464,9 +1464,15 @@ async function createOwnerDecisionRequest({ threadId, sourceEventId, text, candi
   const recordFields = orderRecord ? await loadOrderRecordFields(orderRecord.id, env) : null;
   if (orderRecord && !orderRecordReadyForFeasibilityReview(recordFields)) return null;
   if (!orderRecord && !orderCardReadyForOwnerReview(card)) return null;
-  const existing = await env.DB.prepare(`SELECT id FROM owner_decision_requests
+  const existing = await env.DB.prepare(`SELECT id, request_types, customer_summary FROM owner_decision_requests
       WHERE order_card_id = ? AND status != 'cancelled' AND customer_summary LIKE '%聞き取り内容%' LIMIT 1`).bind(`order-card:${threadId}`).first();
-  if (existing) return null;
+  if (existing) {
+    return {
+      id: existing.id,
+      requestTypes: JSON.parse(existing.request_types || '[]'),
+      customerSummary: existing.customer_summary,
+    };
+  }
   const requestTypes = orderRecord ? detectOwnerDecisionTypesFromRecord(recordFields) : detectOwnerDecisionTypesFromCard(card);
   const requestId = `decision:${sourceEventId}`;
   const customerSummary = orderRecord
@@ -2142,6 +2148,7 @@ async function pushCustomerMessages(to, messages, env) {
 
 async function notifyOwners(message, env, extraMessages = []) {
   const owners = (env.ADMIN_LINE_USER_IDS || '').split(',').map((id) => id.trim()).filter(Boolean);
+  console.log('owner notification prepared', { ownerCount: owners.length, hasAccessToken: Boolean(env.LINE_CHANNEL_ACCESS_TOKEN) });
   const messages = [
     { type: 'text', text: message.slice(0, 4900) },
     ...extraMessages.filter((item) => item?.type === 'image' && /^https:\/\//u.test(item.originalContentUrl || '') && /^https:\/\//u.test(item.previewImageUrl || '')),
