@@ -12,7 +12,7 @@ const source = fs.readFileSync(sourcePath, 'utf8')
     parseFlexibleCustomerDate, parseFlexibleCustomerTime, formatOrderRecordCard,
     shouldBypassCustomerMessageBundle, createBundledCustomerEvent,
     processCustomerMessageBundleAfterWait, createOrderDisplayCode,
-    formatAmbiguousOrderChoices, orderRecordStatusLabel
+    formatAmbiguousOrderChoices, orderRecordStatusLabel, formatOrderUpdateConflicts
   };`;
 
 const context = vm.createContext({
@@ -51,6 +51,7 @@ const {
   createOrderDisplayCode,
   formatAmbiguousOrderChoices,
   orderRecordStatusLabel,
+  formatOrderUpdateConflicts,
 } = context.__orderTests;
 
 const session = { stage: 'new', fields: {}, customerKind: 'new' };
@@ -179,5 +180,11 @@ const ambiguous = formatAmbiguousOrderChoices([
 ], '制作開始 カルテ番号');
 assert.match(ambiguous, /KABC123：山田花子さん（注文確定）/);
 assert.match(ambiguous, /例：制作開始 KABC123/);
+const conflictText = formatOrderUpdateConflicts([
+  { fieldKey: 'receive_time', oldValue: '14時頃', newValue: '15時頃' },
+  { fieldKey: 'budget', oldValue: '15,000円', newValue: '18,000円' },
+]);
+assert.match(conflictText, /受取希望時間[\s\S]*変更前：14時頃[\s\S]*変更後：15時頃/);
+assert.match(conflictText, /ご予算[\s\S]*変更前：15,000円[\s\S]*変更後：18,000円/);
 
-console.log('order record workflow tests: 49 assertions passed');
+console.log('order record workflow tests: 51 assertions passed');

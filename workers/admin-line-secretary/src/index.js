@@ -27,6 +27,8 @@ const ORDER_FIELD_LABELS = Object.fromEntries([
   ['phone', 'ご連絡先'],
   ['delivery_address', 'お届け先'],
   ['payment_method', '支払方法'],
+  ['payment_status', '支払い'],
+  ['fulfillment_completed', '受渡し・納品'],
   ['receipt', '領収書'],
   ['sns_permission', 'HP・SNS掲載'],
 ]);
@@ -185,6 +187,29 @@ async function handleAdmin(event, env) {
   if (/^(?:カルテ|最新カルテ)$/u.test(text)) {
     return replyLatestOrderRecord(event.replyToken, env);
   }
+  if (text === '顧客送信確認') {
+    return confirmPendingOwnerCustomerMessage(event.replyToken, userId, env);
+  }
+  const ownerCustomerMessage = text.match(/^(?:お客様へ|顧客送信)(?:\s+(K[A-Z0-9]+))?\s+([\s\S]+)$/iu);
+  if (ownerCustomerMessage) {
+    return prepareOwnerCustomerMessage(
+      event.replyToken,
+      userId,
+      ownerCustomerMessage[1]?.toUpperCase() || null,
+      ownerCustomerMessage[2].trim(),
+      env,
+    );
+  }
+  const phoneMemo = text.match(/^電話メモ(?:\s+(K[A-Z0-9]+))?\s+([\s\S]+)$/iu);
+  if (phoneMemo) {
+    return recordOwnerPhoneMemo(
+      event.replyToken,
+      userId,
+      phoneMemo[1]?.toUpperCase() || null,
+      phoneMemo[2].trim(),
+      env,
+    );
+  }
   const shortOwnerDecision = text.match(/^(受ける|難しい|確認)(?:\s+(K[A-Z0-9]+))?(?:\s+([\s\S]+))?$/iu);
   if (shortOwnerDecision) {
     return handleOwnerShortDecision(
@@ -224,6 +249,7 @@ async function handleAdmin(event, env) {
   }
   if (/^(取消|キャンセル)$/u.test(text)) {
     await env.SECRETARY_KV.delete(pendingKey);
+    await env.SECRETARY_KV.delete('pending-customer-send:' + userId);
     return reply(event.replyToken, '確認待ちの変更を取り消しました。', env);
   }
 
@@ -817,27 +843,40 @@ function formatPendingOrderChanges(customerLabel, changes) {
 }
 
 async function reviewLatestOrderFieldChange(replyToken, userId, requestedId, approve, env) {
-  const change = requestedId
+  const seed = requestedId
     ? await env.DB.prepare(`SELECT * FROM order_field_changes WHERE id = ? AND status = 'pending_owner'`).bind(requestedId).first()
     : await env.DB.prepare(`SELECT * FROM order_field_changes WHERE status = 'pending_owner' ORDER BY created_at DESC LIMIT 1`).first();
-  if (!change) return reply(replyToken, '確認待ちの注文内容変更はありません。', env);
+  if (!seed) return reply(replyToken, '確認待ちの注文内容変更はありません。', env);
+  const changes = requestedId
+    ? [seed]
+    : (await env.DB.prepare(`SELECT * FROM order_field_changes
+        WHERE order_record_id = ? AND source_message_id = ? AND status = 'pending_owner'
+        ORDER BY created_at ASC`).bind(seed.order_record_id, seed.source_message_id).all()).results || [];
   const now = new Date().toISOString();
   if (!approve) {
-    await env.DB.prepare(`UPDATE order_field_changes SET status = 'rejected', reviewed_at = ?, reviewed_by = ? WHERE id = ?`)
-      .bind(now, userId, change.id).run();
-    return reply(replyToken, `「${ORDER_FIELD_LABELS[change.field_key] || change.field_key}」は変更せず、元の内容を残しました。`, env);
+    await env.DB.batch(changes.map((change) => env.DB.prepare(`UPDATE order_field_changes
+        SET status = 'rejected', reviewed_at = ?, reviewed_by = ? WHERE id = ?`)
+      .bind(now, userId, change.id)));
+    const labels = changes.map((change) => ORDER_FIELD_LABELS[change.field_key] || change.field_key).join('、');
+    return reply(replyToken, `${labels}は変更せず、元の内容を残しました。`, env);
   }
-  await env.DB.batch([
-    env.DB.prepare(`UPDATE order_record_fields SET value_text = ?, status = 'confirmed',
-        source_message_id = ?, source_direction = 'customer_inbound', source_occurred_at = ?,
-        confidence = 1, locked = 1, updated_at = ?, confirmed_at = ?, confirmed_by = ?
-        WHERE order_record_id = ? AND field_key = ?`)
-      .bind(change.new_value, change.source_message_id, change.source_occurred_at,
-        now, now, userId, change.order_record_id, change.field_key),
-    env.DB.prepare(`UPDATE order_field_changes SET status = 'approved', reviewed_at = ?, reviewed_by = ? WHERE id = ?`)
-      .bind(now, userId, change.id),
-  ]);
-  return reply(replyToken, `「${ORDER_FIELD_LABELS[change.field_key] || change.field_key}」を新しい内容へ更新しました。`, env);
+  const statements = [];
+  for (const change of changes) {
+    const sourceDirection = String(change.source_message_id || '').startsWith('phone:') ? 'owner_recorded' : 'customer_inbound';
+    statements.push(
+      env.DB.prepare(`UPDATE order_record_fields SET value_text = ?, status = 'confirmed',
+          source_message_id = ?, source_direction = ?, source_occurred_at = ?,
+          confidence = 1, locked = 1, updated_at = ?, confirmed_at = ?, confirmed_by = ?
+          WHERE order_record_id = ? AND field_key = ?`)
+        .bind(change.new_value, change.source_message_id, sourceDirection, change.source_occurred_at,
+          now, now, userId, change.order_record_id, change.field_key),
+      env.DB.prepare(`UPDATE order_field_changes SET status = 'approved', reviewed_at = ?, reviewed_by = ? WHERE id = ?`)
+        .bind(now, userId, change.id),
+    );
+  }
+  await env.DB.batch(statements);
+  const labels = changes.map((change) => ORDER_FIELD_LABELS[change.field_key] || change.field_key).join('、');
+  return reply(replyToken, `${labels}を新しい内容へ更新しました。`, env);
 }
 
 async function recordOrderQuestions(customerId, labels, questionText, askedAt, env) {
@@ -882,6 +921,182 @@ async function replyLatestOrderRecord(replyToken, env) {
     Number(pendingRow?.total || 0),
   );
   return reply(replyToken, message, env);
+}
+
+async function selectActiveOrderForManager(displayCode, env) {
+  const filter = displayCode ? ' AND r.display_code = ?' : '';
+  const statement = env.DB.prepare(`SELECT r.*, t.customer_display_name, t.customer_confirmed_name
+      FROM customer_order_records r
+      JOIN customer_order_threads t ON t.id = r.source_thread_id
+      WHERE r.is_active = 1${filter}
+      ORDER BY r.updated_at DESC LIMIT 2`);
+  const rows = displayCode ? await statement.bind(displayCode).all() : await statement.all();
+  const candidates = rows.results || [];
+  return {
+    orderRecord: candidates.length === 1 ? candidates[0] : null,
+    candidates,
+  };
+}
+
+async function prepareOwnerCustomerMessage(replyToken, userId, displayCode, message, env) {
+  if (!message) return reply(replyToken, '送信する文章を「お客様へ 本文」の形で入力してください。', env);
+  const selection = await selectActiveOrderForManager(displayCode, env);
+  if (!selection.candidates.length) return reply(replyToken, displayCode
+    ? `${displayCode}の進行中カルテはありません。`
+    : '進行中の注文カルテはありません。', env);
+  if (!selection.orderRecord) {
+    return reply(replyToken, formatAmbiguousOrderChoices(selection.candidates, 'お客様へ カルテ番号 本文'), env);
+  }
+  const orderRecord = selection.orderRecord;
+  const updates = extractOrderRecordUpdates(message, false, extractScheduleCandidate(message));
+  const conflicts = await findOrderUpdateConflicts(orderRecord.id, updates, env);
+  if (conflicts.length) {
+    const pending = {
+      orderRecordId: orderRecord.id,
+      displayCode: orderRecord.display_code,
+      customerLineUserId: orderRecord.customer_line_user_id,
+      sourceThreadId: orderRecord.source_thread_id,
+      message: message.slice(0, 4900),
+      updates,
+      conflicts,
+    };
+    await env.SECRETARY_KV.put('pending-customer-send:' + userId, JSON.stringify(pending), { expirationTtl: 600 });
+    return reply(replyToken, `送信文に注文カルテの変更が含まれています。\n\n${formatOrderUpdateConflicts(conflicts)}\n\nこの内容でお客様へ送り、カルテも更新する場合：顧客送信確認\n取り消す場合：取消`, env);
+  }
+  return sendOwnerCustomerMessage(replyToken, userId, {
+    orderRecordId: orderRecord.id,
+    displayCode: orderRecord.display_code,
+    customerLineUserId: orderRecord.customer_line_user_id,
+    sourceThreadId: orderRecord.source_thread_id,
+    message: message.slice(0, 4900),
+    updates,
+  }, env);
+}
+
+async function confirmPendingOwnerCustomerMessage(replyToken, userId, env) {
+  const key = 'pending-customer-send:' + userId;
+  const pending = await env.SECRETARY_KV.get(key, 'json');
+  if (!pending) return reply(replyToken, '確認待ちのお客様向けメッセージはありません。', env);
+  const orderRecord = await env.DB.prepare(`SELECT id, is_active FROM customer_order_records WHERE id = ?`)
+    .bind(pending.orderRecordId).first();
+  if (!orderRecord?.is_active) {
+    await env.SECRETARY_KV.delete(key);
+    return reply(replyToken, '対象の注文カルテはすでに完了しています。送信しませんでした。', env);
+  }
+  const result = await sendOwnerCustomerMessage(replyToken, userId, pending, env);
+  await env.SECRETARY_KV.delete(key);
+  return result;
+}
+
+async function sendOwnerCustomerMessage(replyToken, userId, pending, env) {
+  const sent = await pushCustomerMessage(pending.customerLineUserId, pending.message, env);
+  if (!sent) return reply(replyToken, 'お客様への送信に失敗しました。カルテは更新していません。', env);
+  const now = new Date().toISOString();
+  const sourceMessageId = `owner-send:${Date.now()}`;
+  await env.DB.batch([
+    env.DB.prepare(`INSERT INTO order_messages
+        (webhook_event_id, order_thread_id, direction, message_text, occurred_at)
+        VALUES (?, ?, 'owner_recorded', ?, ?)`)
+      .bind(sourceMessageId, pending.sourceThreadId, pending.message, now),
+    env.DB.prepare(`INSERT INTO order_card_events
+        (order_card_id, event_type, actor, detail, occurred_at)
+        VALUES (?, 'owner.customer_message_sent', 'owner', ?, ?)`)
+      .bind(`order-card:${pending.sourceThreadId}`, pending.message.slice(0, 1500), now),
+  ]);
+  await applyOwnerOrderUpdates(pending.orderRecordId, pending.updates || [], sourceMessageId, now, userId, env);
+  return reply(replyToken, `${pending.displayCode}のお客様へ送信し、会話ログと注文カルテへ記録しました。`, env);
+}
+
+async function recordOwnerPhoneMemo(replyToken, userId, displayCode, memo, env) {
+  if (!memo) return reply(replyToken, '「電話メモ 内容」の形で入力してください。', env);
+  const selection = await selectActiveOrderForManager(displayCode, env);
+  if (!selection.candidates.length) return reply(replyToken, displayCode
+    ? `${displayCode}の進行中カルテはありません。`
+    : '進行中の注文カルテはありません。', env);
+  if (!selection.orderRecord) {
+    return reply(replyToken, formatAmbiguousOrderChoices(selection.candidates, '電話メモ カルテ番号 内容'), env);
+  }
+  const orderRecord = selection.orderRecord;
+  const now = new Date().toISOString();
+  const sourceMessageId = `phone:${Date.now()}`;
+  const updates = extractOrderRecordUpdates(memo, false, extractScheduleCandidate(memo));
+  const conflicts = await findOrderUpdateConflicts(orderRecord.id, updates, env);
+  const conflictKeys = new Set(conflicts.map((conflict) => conflict.fieldKey));
+  const safeUpdates = updates.filter((update) => !conflictKeys.has(update.key));
+  await env.DB.batch([
+    env.DB.prepare(`INSERT INTO order_messages
+        (webhook_event_id, order_thread_id, direction, message_text, occurred_at)
+        VALUES (?, ?, 'owner_recorded', ?, ?)`)
+      .bind(sourceMessageId, orderRecord.source_thread_id, `[電話メモ] ${memo}`.slice(0, 4900), now),
+    env.DB.prepare(`INSERT INTO order_card_events
+        (order_card_id, event_type, actor, detail, occurred_at)
+        VALUES (?, 'owner.phone_memo_recorded', 'owner', ?, ?)`)
+      .bind(`order-card:${orderRecord.source_thread_id}`, memo.slice(0, 1500), now),
+  ]);
+  await applyOwnerOrderUpdates(orderRecord.id, safeUpdates, sourceMessageId, now, userId, env);
+  if (!conflicts.length) return reply(replyToken, `${orderRecord.display_code}へ電話メモを記録しました。`, env);
+
+  for (const conflict of conflicts) {
+    const changeId = `change:${orderRecord.id}:${conflict.fieldKey}:${sourceMessageId}`;
+    await env.DB.prepare(`INSERT OR IGNORE INTO order_field_changes
+        (id, order_record_id, field_key, old_value, new_value, requested_status,
+         status, source_message_id, source_occurred_at, created_at)
+        VALUES (?, ?, ?, ?, ?, ?, 'pending_owner', ?, ?, ?)`)
+      .bind(changeId, orderRecord.id, conflict.fieldKey, conflict.oldValue, conflict.newValue,
+        conflict.requestedStatus, sourceMessageId, now, now).run();
+  }
+  return reply(replyToken, `電話メモを保存しました。注文カルテの変更候補があります。\n\n${formatOrderUpdateConflicts(conflicts)}\n\nすべて反映する場合：変更OK\n元の内容を残す場合：変更しない`, env);
+}
+
+async function findOrderUpdateConflicts(orderRecordId, updates, env) {
+  const fields = await loadOrderRecordFields(orderRecordId, env);
+  return updates
+    .filter((update) => fields[update.key]?.value_text
+      && normalizeChartValue(fields[update.key].value_text) !== normalizeChartValue(update.value))
+    .map((update) => ({
+      fieldKey: update.key,
+      oldValue: fields[update.key].value_text,
+      newValue: update.value,
+      requestedStatus: update.status,
+    }));
+}
+
+function formatOrderUpdateConflicts(conflicts) {
+  return conflicts.map((conflict) => [
+    `・${ORDER_FIELD_LABELS[conflict.fieldKey] || conflict.fieldKey}`,
+    `  変更前：${conflict.oldValue}`,
+    `  変更後：${conflict.newValue}`,
+  ].join('\n')).join('\n\n');
+}
+
+async function applyOwnerOrderUpdates(orderRecordId, updates, sourceMessageId, now, userId, env) {
+  for (const update of updates) {
+    const existing = await env.DB.prepare(`SELECT value_text FROM order_record_fields
+        WHERE order_record_id = ? AND field_key = ?`).bind(orderRecordId, update.key).first();
+    if (existing?.value_text && normalizeChartValue(existing.value_text) !== normalizeChartValue(update.value)) {
+      const changeId = `change:owner:${orderRecordId}:${update.key}:${sourceMessageId}`;
+      await env.DB.prepare(`INSERT OR IGNORE INTO order_field_changes
+          (id, order_record_id, field_key, old_value, new_value, requested_status,
+           status, source_message_id, source_occurred_at, created_at, reviewed_at, reviewed_by)
+          VALUES (?, ?, ?, ?, ?, 'confirmed', 'approved', ?, ?, ?, ?, ?)`)
+        .bind(changeId, orderRecordId, update.key, existing.value_text, update.value,
+          sourceMessageId, now, now, now, userId).run();
+    }
+    await env.DB.prepare(`INSERT INTO order_record_fields
+        (order_record_id, field_key, phase, value_text, status, source_message_id,
+         source_direction, source_occurred_at, confidence, locked, updated_at,
+         confirmed_at, confirmed_by)
+        VALUES (?, ?, ?, ?, 'confirmed', ?, 'owner_recorded', ?, 1, 1, ?, ?, ?)
+        ON CONFLICT(order_record_id, field_key) DO UPDATE SET
+          value_text = excluded.value_text, status = 'confirmed', source_message_id = excluded.source_message_id,
+          source_direction = 'owner_recorded', source_occurred_at = excluded.source_occurred_at,
+          confidence = 1, locked = 1, updated_at = excluded.updated_at,
+          confirmed_at = excluded.confirmed_at, confirmed_by = excluded.confirmed_by`)
+      .bind(orderRecordId, update.key, update.phase, update.value, sourceMessageId,
+        now, now, now, userId).run();
+  }
+  await env.DB.prepare(`UPDATE customer_order_records SET updated_at = ? WHERE id = ?`)
+    .bind(now, orderRecordId).run();
 }
 
 async function handleOwnerShortDecision(replyToken, userId, action, displayCode, note, env) {
