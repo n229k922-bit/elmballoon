@@ -98,6 +98,94 @@ assert.equal(updateMap.fulfillment_method.value, '店頭受取');
 assert.equal(orderFieldStatus('未定', 'budget'), 'undecided');
 assert.equal(orderFieldStatus('なし', 'card_message'), 'not_applicable');
 
+const placeholderSession = orderReply('注文担当を呼び出します', {
+  stage: 'new', fields: {}, customerKind: 'new',
+}).session;
+const placeholderAnswer = `【ご注文内容】📷
+・HPの商品番号 または参考画像：36
+（例：バルーンアレンジ36番／画像添付済み／未定）
+・バルーンのタイプ：置き型アレンジメント
+（ブーケ／置き型アレンジメント／ヘリウム〈浮く〉タイプ／未定）
+・ご予算：3000
+（例：15,000円くらい／未定）
+・全体的なお色味と雰囲気：パープル系・派手な感じ
+（例：ピンク系で可愛い雰囲気／お任せ／未定）
+・プレゼント・使用予定日：来月1日
+（例：10月3日／未定）
+・受取希望日：
+（例：10月2日／未定）
+・受取希望時間：
+（例：14時頃／未定）
+・受取方法：
+（店頭受取／配達／発送／未定）`;
+const placeholderResult = collectOrderDetail(placeholderAnswer, placeholderSession);
+assert.equal(placeholderResult.session.stage, 'collecting');
+assert.deepEqual(
+  [...missingIntakeFields(placeholderResult.session.fields)],
+  ['受取希望日', '受取希望時間', '受取方法'],
+);
+assert.equal(placeholderResult.session.fields.receiveDateValue, null);
+assert.equal(placeholderResult.session.fields.receiveTimeValue, null);
+assert.equal(placeholderResult.session.fields.methodValue, null);
+assert.match(placeholderResult.message, /受取希望日/);
+assert.match(placeholderResult.message, /受取希望時間/);
+assert.match(placeholderResult.message, /受取方法/);
+const placeholderUpdates = Object.fromEntries(
+  extractOrderRecordUpdates(placeholderAnswer, false, null).map((update) => [update.key, update]),
+);
+assert.equal(placeholderUpdates.receive_date, undefined);
+assert.equal(placeholderUpdates.receive_time, undefined);
+assert.equal(placeholderUpdates.fulfillment_method, undefined);
+
+const nextLineSession = orderReply('注文担当を呼び出します', {
+  stage: 'new', fields: {}, customerKind: 'new',
+}).session;
+const nextLineAnswer = `・HPの商品番号 または参考画像：
+36
+・バルーンのタイプ：
+置き型アレンジメント
+・ご予算：
+3000円
+・全体的なお色味と雰囲気：
+パープル系
+・プレゼント・使用予定日：
+10月3日
+・受取希望日：
+10月2日
+・受取希望時間：
+14時頃
+・受取方法：
+店頭受取`;
+const nextLineResult = collectOrderDetail(nextLineAnswer, nextLineSession);
+assert.equal(nextLineResult.session.stage, 'review');
+assert.equal(missingIntakeFields(nextLineResult.session.fields).length, 0);
+assert.equal(nextLineResult.session.fields.receiveDateValue, '10月2日');
+assert.equal(nextLineResult.session.fields.receiveTimeValue, '14時頃');
+assert.equal(nextLineResult.session.fields.methodValue, '店頭受取');
+
+const blankTemplateSession = orderReply('注文担当を呼び出します', {
+  stage: 'new', fields: {}, customerKind: 'new',
+}).session;
+const blankTemplateResult = collectOrderDetail(`・HPの商品番号 または参考画像：
+（例：バルーンアレンジ36番／画像添付済み／未定）
+・バルーンのタイプ：
+（ブーケ／置き型アレンジメント／ヘリウム〈浮く〉タイプ／未定）
+・ご予算：
+（例：15,000円くらい／未定）
+・全体的なお色味と雰囲気：
+（例：ピンク系で可愛い雰囲気／お任せ／未定）
+・プレゼント・使用予定日：
+（例：10月3日／未定）
+・受取希望日：
+（例：10月2日／未定）
+・受取希望時間：
+（例：14時頃／未定）
+・受取方法：
+（店頭受取／配達／発送／未定）`, blankTemplateSession);
+assert.equal(blankTemplateResult.session.stage, 'collecting');
+assert.equal(missingIntakeFields(blankTemplateResult.session.fields).length, 8);
+assert.equal(extractOrderRecordUpdates(blankTemplateResult.session.fields.lastCustomerMessage, false, null).length, 0);
+
 const undecidedUpdates = extractOrderRecordUpdates(`・HPの商品番号 または参考画像：未定
 ・バルーンのタイプ：未定
 ・ご予算：未定
@@ -187,4 +275,4 @@ const conflictText = formatOrderUpdateConflicts([
 assert.match(conflictText, /受取希望時間[\s\S]*変更前：14時頃[\s\S]*変更後：15時頃/);
 assert.match(conflictText, /ご予算[\s\S]*変更前：15,000円[\s\S]*変更後：18,000円/);
 
-console.log('order record workflow tests: 51 assertions passed');
+console.log('order record workflow tests: 70 assertions passed');

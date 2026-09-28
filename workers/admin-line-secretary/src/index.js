@@ -734,6 +734,7 @@ function createOrderDisplayCode(now = Date.now(), randomValue = randomUnit()) {
 }
 
 function extractOrderRecordUpdates(text, isImage, candidate) {
+  text = stripIntakeTemplateHints(text);
   const updates = [];
   const add = (key, value, confidence = 1, phase = 'feasibility') => {
     const normalized = value?.trim();
@@ -795,7 +796,30 @@ function addLaterOrderField(updates, text, key, pattern, phase) {
 }
 
 function labeledAnswer(text, label) {
-  return text.match(new RegExp(`(?:${label})\\s*(?:→|[：:])\\s*([^\\n]*)`, 'u'))?.[1]?.trim() || null;
+  const lines = stripIntakeTemplateHints(text).split(/\r?\n/u);
+  const pattern = new RegExp(`(?:${label})[ \t\u3000]*(?:→|[：:])[ \t\u3000]*(.*)$`, 'u');
+  for (let index = 0; index < lines.length; index += 1) {
+    const match = lines[index].match(pattern);
+    if (!match) continue;
+    const sameLine = match[1]?.trim();
+    if (sameLine) return sameLine;
+    for (let nextIndex = index + 1; nextIndex < lines.length; nextIndex += 1) {
+      const nextLine = lines[nextIndex].trim();
+      if (!nextLine) continue;
+      if (/^[・•●▪︎]\s*[^\n]{1,50}[：:]/u.test(nextLine)) return null;
+      return nextLine;
+    }
+    return null;
+  }
+  return null;
+}
+
+function stripIntakeTemplateHints(text) {
+  return String(text || '').split(/\r?\n/u).filter((line) => {
+    const value = line.trim();
+    if (!/^[（(].*[）)]$/u.test(value)) return true;
+    return !/(?:^\s*[（(]\s*例[：:]|このトークに画像|いつプレゼント|いつ使う|画像添付済み|ブーケ.*置き型|店頭受取.*配達)/u.test(value);
+  }).join('\n');
 }
 
 function orderFieldStatus(value, key) {
@@ -1322,6 +1346,7 @@ async function upsertOrderCard(threadId, text, candidate, now, env, providedDeta
 }
 
 function extractOrderDetails(text, candidate) {
+  text = stripIntakeTemplateHints(text);
   const purpose = ['誕生日', 'バースデー', '開店', '周年', '退職', '卒業', '入学', '発表会', '結婚', '出産', 'お見舞い', '記念', 'お祝い']
     .find((value) => text.includes(value)) || null;
   const budgetMatch = text.match(/(?:予算|ご予算)?\s*([0-9０-９][0-9０-９,，]*)\s*円/u);
@@ -1347,6 +1372,7 @@ function extractOrderDetails(text, candidate) {
 }
 
 function detectProductType(text) {
+  text = stripIntakeTemplateHints(text);
   if (/(?:会場装飾|イベント装飾|フォトブース|装飾)/u.test(text)) return 'venue_decoration';
   if (/スタンド/u.test(text)) return 'balloon_stand';
   if (/(?:フロート|ヘリウム|浮[かき]|ガス)/u.test(text)) return 'floating_balloon';
@@ -1362,6 +1388,7 @@ function extractLabeledText(text, labelPattern) {
 }
 
 function extractProductReference(text) {
+  text = stripIntakeTemplateHints(text);
   const circled = '[⓪①②③④⑤⑥⑦⑧⑨⑩⑪⑫⑬⑭⑮⑯⑰⑱⑲⑳㉑㉒㉓㉔㉕㉖㉗㉘㉙㉚㉛㉜㉝㉞㉟㊱㊲㊳㊴㊵㊶㊷㊸㊹㊺㊻㊼㊽㊾㊿]';
   const numberPattern = `(?:${circled}|[0-9０-９]{1,4})`;
   const labelled = text.match(new RegExp(`(?:商品番号|品番|商品No\\.?|No\\.?)\\s*(?:は|の|:|：)?\\s*[#＃]?(${numberPattern})\\s*(?:番|号)?`, 'iu'));
@@ -1599,6 +1626,7 @@ function formatCustomerLabel(name) {
 }
 
 function extractScheduleCandidate(text) {
+  text = stripIntakeTemplateHints(text);
   const methodAnswer = labeledAnswer(text, '受取方法|受け取り方法|お届け方法|方法') || '';
   const typeText = methodAnswer || text;
   const type = /配達|配送/u.test(typeText) ? 'delivery'
@@ -1924,6 +1952,7 @@ function intakeRows(items) {
   return items.map((item) => `・${item}：\n${choices[item] || ''}`).join('\n\n');
 }
 function mergeIntakeAnswers(fields, text) {
+  text = stripIntakeTemplateHints(text);
   fields.productReference = fields.productReference || extractProductReference(text);
   fields.productSourceValue = fields.productSourceValue || fields.productReference || labeledAnswer(text, 'HPの商品番号\\s*または参考画像|参考画像|商品番号|品番');
   fields.hasProductSource = fields.hasProductSource || Boolean(fields.productSourceValue) || Boolean(fields.productReference) || Boolean(fields.referenceImage) || hasLabeledAnswer(text, 'HPの商品番号\\s*または参考画像|参考画像|商品番号');
@@ -1956,7 +1985,7 @@ function mergeIntakeAnswers(fields, text) {
   if (fields.productType === 'floating_balloon') fields.hasEnvironment = fields.hasEnvironment || /室内|屋外|屋内/u.test(text) || hasLabeledAnswer(text, '設置環境|室内外');
 }
 function hasLabeledAnswer(text, label) {
-  const answer = text.match(new RegExp(`(?:${label})\\s*(?:→|[：:])\\s*([^\\n]*)`, 'u'))?.[1]?.trim();
+  const answer = labeledAnswer(text, label);
   return Boolean(answer && !/^(?:未入力|空欄)$/u.test(answer));
 }
 function missingIntakeFields(fields) {
