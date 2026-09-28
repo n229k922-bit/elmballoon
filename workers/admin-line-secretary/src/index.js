@@ -2247,6 +2247,11 @@ async function retryPendingOwnerNotifications(env, limit = 10) {
           WHERE a.action = ('owner.notification:owner-decision:' || d.id)
             AND a.result = 'success'
         )
+        AND EXISTS (
+          SELECT 1 FROM audit_log a
+          WHERE a.action = ('owner.notification:owner-decision:' || d.id)
+            AND a.result = 'failure'
+        )
         AND (
           SELECT COUNT(*) FROM audit_log a
           WHERE a.action = ('owner.notification:owner-decision:' || d.id)
