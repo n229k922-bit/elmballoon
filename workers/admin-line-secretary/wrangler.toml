@@ -18,6 +18,9 @@ ALLOWED_ORIGINS = ""
 [observability]
 enabled = true
 
+[triggers]
+crons = ["*/5 * * * *"]
+
 # Set these with `wrangler secret put`; never commit their values:
 # LINE_CHANNEL_SECRET
 # LINE_CHANNEL_ACCESS_TOKEN

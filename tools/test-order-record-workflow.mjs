@@ -12,7 +12,9 @@ const source = fs.readFileSync(sourcePath, 'utf8')
     parseFlexibleCustomerDate, parseFlexibleCustomerTime, formatOrderRecordCard,
     shouldBypassCustomerMessageBundle, createBundledCustomerEvent,
     processCustomerMessageBundleAfterWait, createOrderDisplayCode,
-    formatAmbiguousOrderChoices, orderRecordStatusLabel, formatOrderUpdateConflicts
+    formatAmbiguousOrderChoices, orderRecordStatusLabel, formatOrderUpdateConflicts,
+    ownerDecisionScopeMarker, ownerNotificationAction, formatOwnerDecisionRequest,
+    notifyOwners, productReferenceFromOwnerSummary
   };`;
 
 const context = vm.createContext({
@@ -52,6 +54,11 @@ const {
   formatAmbiguousOrderChoices,
   orderRecordStatusLabel,
   formatOrderUpdateConflicts,
+  ownerDecisionScopeMarker,
+  ownerNotificationAction,
+  formatOwnerDecisionRequest,
+  notifyOwners,
+  productReferenceFromOwnerSummary,
 } = context.__orderTests;
 
 const session = { stage: 'new', fields: {}, customerKind: 'new' };
@@ -210,6 +217,53 @@ assert.equal(schedule.date, '2026-10-02');
 assert.equal(schedule.time, '14:00');
 assert.equal(schedule.type, 'pickup');
 
+const shorthandPickupSchedule = extractScheduleCandidate(`・受取希望日：来週木曜日
+・受取希望時間：午後2時半
+・受取方法：店頭`);
+assert.equal(shorthandPickupSchedule.type, 'pickup');
+assert.equal(shorthandPickupSchedule.time, '14:30');
+assert.equal(shorthandPickupSchedule.dateExpression, '来週木曜日');
+assert.equal(ownerDecisionScopeMarker({ display_code: 'KTEST01', sequence_number: 7 }), '%注文カルテ KTEST01%');
+assert.equal(ownerDecisionScopeMarker({ display_code: null, sequence_number: 7 }), '%注文カルテ No.7%');
+assert.equal(ownerNotificationAction('owner-decision:decision:test'), 'owner.notification:owner-decision:decision:test');
+const ownerReport = formatOwnerDecisionRequest({
+  id: 'decision:test',
+  requestTypes: ['schedule'],
+  customerSummary: 'テスト注文',
+}, {
+  name: 'バルーンアレンジ㊱',
+  product_number: '36',
+  product_url: 'https://example.com/item-36',
+});
+assert.match(ownerReport, /商品名：バルーンアレンジ㊱/);
+assert.match(ownerReport, /該当する商品画像をこの報告に添付/);
+
+const ownerNotificationAudits = [];
+const notificationEnv = {
+  ADMIN_LINE_USER_IDS: 'U-manager',
+  LINE_CHANNEL_ACCESS_TOKEN: 'test-token',
+  DB: {
+    prepare(sql) {
+      return {
+        bind(...args) { this.args = args; return this; },
+        async run() { ownerNotificationAudits.push({ sql, args: this.args }); return { meta: { changes: 1 } }; },
+      };
+    },
+  },
+};
+const originalFetch = context.fetch;
+context.fetch = async () => ({ ok: true, status: 200, text: async () => '' });
+const notificationResult = await notifyOwners('統括報告', notificationEnv, [], 'owner-decision:decision:test');
+context.fetch = originalFetch;
+assert.equal(notificationResult.requested, 1);
+assert.equal(notificationResult.sent, 1);
+assert.equal(notificationResult.error, null);
+assert.equal(ownerNotificationAudits.length, 1);
+assert.equal(ownerNotificationAudits[0].args[1], 'owner.notification:owner-decision:decision:test');
+assert.equal(productReferenceFromOwnerSummary('・商品番号・参考画像：36\n・ご予算：15,000円'), '36');
+assert.equal(productReferenceFromOwnerSummary('・商品番号・参考画像：参考画像あり'), null);
+assert.equal(productReferenceFromOwnerSummary('・商品番号・参考画像：未定'), null);
+
 const fieldRows = Object.fromEntries(updates.map((update) => [update.key, {
   value_text: update.value,
   status: update.status,
@@ -275,4 +329,4 @@ const conflictText = formatOrderUpdateConflicts([
 assert.match(conflictText, /受取希望時間[\s\S]*変更前：14時頃[\s\S]*変更後：15時頃/);
 assert.match(conflictText, /ご予算[\s\S]*変更前：15,000円[\s\S]*変更後：18,000円/);
 
-console.log('order record workflow tests: 70 assertions passed');
+console.log('order record workflow tests: 86 assertions passed');

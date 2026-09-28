@@ -52,6 +52,9 @@ export default {
     }
     return new Response('Not found', { status: 404 });
   },
+  async scheduled(_controller, env, ctx) {
+    ctx.waitUntil(retryPendingOwnerNotifications(env));
+  },
 };
 
 const GOOGLE_REDIRECT_URI = 'https://elm-balloon-admin-line-secretary.n229k922.workers.dev/oauth/google/callback';
@@ -443,9 +446,8 @@ async function recordCustomerMessage(event, env) {
   if (details.productReference) {
     if (catalogProduct) {
       await recordProductCatalogMatch(threadId, details.productReference, catalogProduct, now, env);
-      await notifyOwners(formatProductCatalogMatch(customerLabel, details.productReference, catalogProduct), env, [
-        { type: 'image', originalContentUrl: catalogProduct.image_url, previewImageUrl: catalogProduct.image_url },
-      ]);
+      // 商品画像は基本項目が揃った時点の制作可否確認へまとめて添付する。
+      // 聞き取り途中の別通知にすると、最終確認と画像が離れて見落とされやすい。
     } else {
       await notifyOwners(`統括マネージャーです。\n\n【商品番号確認】\n${customerLabel}から「${details.productReference}」の指定がありましたが、現在の商品マスターでは一致する商品を確認できませんでした。\n\nHPの商品番号・商品ページURL、または参考画像を確認してからご案内してください。`, env);
     }
@@ -538,8 +540,8 @@ async function queueCustomerReplyReview(event, env, ctx) {
     return;
   }
 
-  // 基本5項目が揃った直後は、注文担当が内容を復唱してお客様へ確認する。
-  // この確認段階では統括・店長へは通知せず、追加情報の回答後に引き継ぐ。
+  // 基本8項目が揃った直後は、お客様へ復唱しながら統括へ制作可否確認を引き継ぐ。
+  // 統括通知は顧客向けの自然な待ち時間に依存させず、先に確実に処理する。
   if (result.session.stage === 'review' && wasCollecting) {
     const confirmation = basicOrderConfirmation(event.message?.text?.trim() || '', result.session);
     const names = await getCustomerNames('customer:' + customerId, env);
@@ -554,7 +556,22 @@ async function queueCustomerReplyReview(event, env, ctx) {
       now: new Date().toISOString(),
       env,
     });
-    if (ownerRequest) await notifyOwners(formatOwnerDecisionRequest(ownerRequest), env);
+    if (ownerRequest) {
+      const notificationKey = `owner-decision:${ownerRequest.id}`;
+      if (!(await ownerNotificationSucceeded(notificationKey, env))) {
+        const productReference = result.session.fields.productReference || result.session.fields.productSourceValue;
+        const catalogProduct = productReference ? await findProductCatalogMatch(productReference, env) : null;
+        const productImages = catalogProduct?.image_url
+          ? [{ type: 'image', originalContentUrl: catalogProduct.image_url, previewImageUrl: catalogProduct.image_url }]
+          : [];
+        await notifyOwners(
+          formatOwnerDecisionRequest(ownerRequest, catalogProduct),
+          env,
+          productImages,
+          notificationKey,
+        );
+      }
+    }
     const delivery = deliverCustomerMessagesAfterDelay(
       customerId,
       [confirmation],
@@ -1464,8 +1481,10 @@ async function createOwnerDecisionRequest({ threadId, sourceEventId, text, candi
   const recordFields = orderRecord ? await loadOrderRecordFields(orderRecord.id, env) : null;
   if (orderRecord && !orderRecordReadyForFeasibilityReview(recordFields)) return null;
   if (!orderRecord && !orderCardReadyForOwnerReview(card)) return null;
+  const scopeMarker = orderRecord ? ownerDecisionScopeMarker(orderRecord) : '%聞き取り内容%';
   const existing = await env.DB.prepare(`SELECT id, request_types, customer_summary FROM owner_decision_requests
-      WHERE order_card_id = ? AND status != 'cancelled' AND customer_summary LIKE '%聞き取り内容%' LIMIT 1`).bind(`order-card:${threadId}`).first();
+      WHERE order_card_id = ? AND status = 'needs_owner_review' AND customer_summary LIKE ? LIMIT 1`)
+    .bind(`order-card:${threadId}`, scopeMarker).first();
   if (existing) {
     return {
       id: existing.id,
@@ -1492,6 +1511,10 @@ async function createOwnerDecisionRequest({ threadId, sourceEventId, text, candi
     ]);
   }
   return result.meta.changes ? { id: requestId, requestTypes, customerSummary } : null;
+}
+
+function ownerDecisionScopeMarker(orderRecord) {
+  return `%注文カルテ ${orderRecord.display_code || `No.${orderRecord.sequence_number}`}%`;
 }
 
 async function loadOrderRecordFields(orderRecordId, env) {
@@ -1568,7 +1591,7 @@ function summarizeOwnerReviewFromCard(customerLabel, card) {
   return lines.join('\n');
 }
 
-function formatOwnerDecisionRequest(request) {
+function formatOwnerDecisionRequest(request, catalogProduct = null) {
   const labels = {
     schedule: '予約・受取時間の可否',
     delivery: '配達エリア・配達料・対応可否',
@@ -1576,7 +1599,10 @@ function formatOwnerDecisionRequest(request) {
     store_policy: '在庫・休業・キャンセル等の個別判断',
   };
   const checks = request.requestTypes.map((type) => `・${labels[type]}`).join('\n');
-  return `統括マネージャーです。\n\n注文担当から店長確認が必要な内容を受け取りました。AIは価格・在庫・納期・配達可否を確約しません。\n\n【店長確認フォーム】\n${request.customerSummary}\n\n【ご判断をお願いします】\n${checks}\n\n判断内容は「店長確認 ${request.id} （判断内容）」と返信してください。\n例：店長確認 ${request.id} 配達可。配達料は個別見積、16時以降は不可`;
+  const productMatch = catalogProduct
+    ? `\n\n【HP商品照合】\n・商品名：${catalogProduct.name}\n・商品番号：${catalogProduct.product_number}\n・商品ページ：${catalogProduct.product_url}\n※該当する商品画像をこの報告に添付しています。`
+    : '';
+  return `統括マネージャーです。\n\n注文担当から店長確認が必要な内容を受け取りました。AIは価格・在庫・納期・配達可否を確約しません。\n\n【店長確認フォーム】\n${request.customerSummary}${productMatch}\n\n【ご判断をお願いします】\n${checks}\n\n判断内容は「店長確認 ${request.id} （判断内容）」と返信してください。\n例：店長確認 ${request.id} 配達可。配達料は個別見積、16時以降は不可`;
 }
 
 async function replyCustomerConversation(event, env) {
@@ -1640,7 +1666,7 @@ function extractScheduleCandidate(text) {
   const typeText = methodAnswer || text;
   const type = /配達|配送/u.test(typeText) ? 'delivery'
     : /発送|郵送/u.test(typeText) ? null
-      : /店頭受取|受取|受け取り|引取/u.test(typeText) ? 'pickup'
+      : /店頭(?:受取)?|受取|受け取り|引取/u.test(typeText) ? 'pickup'
         : /来店/u.test(typeText) ? 'visit' : null;
   if (!type) return null;
   const dateAnswer = labeledAnswer(text, '受取希望日|受け取り希望日|お届け希望日|ご希望日|希望日');
@@ -1673,7 +1699,9 @@ function parseFlexibleCustomerDate(value) {
 
 function parseFlexibleCustomerTime(value) {
   const normalized = String(value || '').normalize('NFKC');
-  let match = normalized.match(/(午前|午後)?\s*(\d{1,2})\s*[:：]\s*(\d{2})/u);
+  let match = normalized.match(/(午前|午後)?\s*(\d{1,2})\s*時\s*半/u);
+  if (match) match[3] = '30';
+  else match = normalized.match(/(午前|午後)?\s*(\d{1,2})\s*[:：]\s*(\d{2})/u);
   if (!match) match = normalized.match(/(午前|午後)?\s*(\d{1,2})\s*時(?:\s*(\d{1,2})\s*分)?/u);
   if (!match) return null;
   let hour = Number(match[2]);
@@ -2146,19 +2174,136 @@ async function pushCustomerMessages(to, messages, env) {
   return response.ok;
 }
 
-async function notifyOwners(message, env, extraMessages = []) {
+async function notifyOwners(message, env, extraMessages = [], notificationKey = null) {
   const owners = (env.ADMIN_LINE_USER_IDS || '').split(',').map((id) => id.trim()).filter(Boolean);
-  console.log('owner notification prepared', { ownerCount: owners.length, hasAccessToken: Boolean(env.LINE_CHANNEL_ACCESS_TOKEN) });
   const messages = [
     { type: 'text', text: message.slice(0, 4900) },
     ...extraMessages.filter((item) => item?.type === 'image' && /^https:\/\//u.test(item.originalContentUrl || '') && /^https:\/\//u.test(item.previewImageUrl || '')),
   ].slice(0, 5);
+  console.log('owner notification prepared', {
+    ownerCount: owners.length,
+    hasAccessToken: Boolean(env.LINE_CHANNEL_ACCESS_TOKEN),
+    notificationKey,
+  });
+  if (!owners.length) {
+    console.error('LINE owner notification skipped: ADMIN_LINE_USER_IDS is missing');
+    await recordOwnerNotificationAudit(env, notificationKey, 'failure', {
+      requested: 0,
+      sent: 0,
+      messageCount: messages.length,
+    }, 'OWNER_IDS_MISSING');
+    return { requested: 0, sent: 0, error: 'OWNER_IDS_MISSING' };
+  }
+  if (!env.LINE_CHANNEL_ACCESS_TOKEN) {
+    console.error('LINE owner notification skipped: LINE_CHANNEL_ACCESS_TOKEN is missing');
+    await recordOwnerNotificationAudit(env, notificationKey, 'failure', {
+      requested: owners.length,
+      sent: 0,
+      messageCount: messages.length,
+    }, 'OWNER_ACCESS_TOKEN_MISSING');
+    return { requested: owners.length, sent: 0, error: 'OWNER_ACCESS_TOKEN_MISSING' };
+  }
+  let sent = 0;
+  const attempts = [];
   for (const to of owners) {
-    const response = await fetch('https://api.line.me/v2/bot/message/push', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json', Authorization: 'Bearer ' + env.LINE_CHANNEL_ACCESS_TOKEN },
-      body: JSON.stringify({ to, messages }),
-    });
-    console.log('LINE owner notification result', response.status, await response.text());
+    try {
+      const response = await fetch('https://api.line.me/v2/bot/message/push', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Authorization: 'Bearer ' + env.LINE_CHANNEL_ACCESS_TOKEN },
+        body: JSON.stringify({ to, messages }),
+      });
+      const responseText = await response.text();
+      console.log('LINE owner notification result', response.status, responseText);
+      attempts.push({ status: response.status, ok: response.ok });
+      if (response.ok) sent += 1;
+    } catch (error) {
+      console.error('LINE owner notification request failed', error);
+      attempts.push({ status: null, ok: false });
+    }
+  }
+  const delivered = sent === owners.length;
+  await recordOwnerNotificationAudit(env, notificationKey, delivered ? 'success' : 'failure', {
+    requested: owners.length,
+    sent,
+    messageCount: messages.length,
+    attempts,
+  }, delivered ? null : 'LINE_PUSH_FAILED');
+  return { requested: owners.length, sent, error: delivered ? null : 'LINE_PUSH_FAILED' };
+}
+
+async function ownerNotificationSucceeded(notificationKey, env) {
+  if (!notificationKey) return false;
+  const row = await env.DB.prepare(`SELECT id FROM audit_log
+      WHERE action = ? AND result = 'success' ORDER BY id DESC LIMIT 1`)
+    .bind(ownerNotificationAction(notificationKey)).first();
+  return Boolean(row);
+}
+
+async function retryPendingOwnerNotifications(env, limit = 10) {
+  const rows = await env.DB.prepare(`SELECT d.* FROM owner_decision_requests d
+      WHERE d.status = 'needs_owner_review'
+        AND NOT EXISTS (
+          SELECT 1 FROM audit_log a
+          WHERE a.action = ('owner.notification:owner-decision:' || d.id)
+            AND a.result = 'success'
+        )
+        AND (
+          SELECT COUNT(*) FROM audit_log a
+          WHERE a.action = ('owner.notification:owner-decision:' || d.id)
+            AND a.result = 'failure'
+        ) < 5
+      ORDER BY d.created_at ASC LIMIT ?`)
+    .bind(limit).all();
+  let delivered = 0;
+  for (const row of rows.results || []) {
+    const request = {
+      id: row.id,
+      requestTypes: JSON.parse(row.request_types || '[]'),
+      customerSummary: row.customer_summary,
+    };
+    const productReference = productReferenceFromOwnerSummary(row.customer_summary);
+    const catalogProduct = productReference ? await findProductCatalogMatch(productReference, env) : null;
+    const productImages = catalogProduct?.image_url
+      ? [{ type: 'image', originalContentUrl: catalogProduct.image_url, previewImageUrl: catalogProduct.image_url }]
+      : [];
+    const result = await notifyOwners(
+      formatOwnerDecisionRequest(request, catalogProduct),
+      env,
+      productImages,
+      `owner-decision:${row.id}`,
+    );
+    if (!result.error) delivered += 1;
+  }
+  console.log('pending owner notification retry finished', {
+    candidates: rows.results?.length || 0,
+    delivered,
+  });
+  return { candidates: rows.results?.length || 0, delivered };
+}
+
+function productReferenceFromOwnerSummary(summary) {
+  const value = String(summary || '').match(/・商品番号・参考画像：([^\n]+)/u)?.[1]?.trim();
+  if (!value || /^(?:未定|参考画像あり|画像添付済み)$/u.test(value)) return null;
+  return value;
+}
+
+function ownerNotificationAction(notificationKey) {
+  return notificationKey ? `owner.notification:${String(notificationKey).slice(0, 180)}` : 'owner.notification';
+}
+
+async function recordOwnerNotificationAudit(env, notificationKey, result, detail, errorCode) {
+  try {
+    await env.DB.prepare(`INSERT INTO audit_log
+        (timestamp, actor_line_user_id, action, before_json, after_json, result, error_code)
+      VALUES (?, 'system', ?, NULL, ?, ?, ?)`)
+      .bind(
+        new Date().toISOString(),
+        ownerNotificationAction(notificationKey),
+        JSON.stringify(detail),
+        result,
+        errorCode,
+      ).run();
+  } catch (error) {
+    console.error('owner notification audit failed', error);
   }
 }
