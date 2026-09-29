@@ -257,7 +257,7 @@ const pendingMenuReport = formatPendingOwnerDecisionList([
 assert.match(pendingMenuReport, /【確認待ち一覧】/);
 assert.match(pendingMenuReport, /1 受ける/);
 assert.match(pendingMenuReport, /正式カルテ番号/);
-assert.match(richMenuPrompt('日付変更依頼'), /変更前と変更後を確認/);
+assert.match(richMenuPrompt('日付変更依頼'), /カレンダーの重複を確認/);
 assert.match(richMenuPrompt('お客様への返信依頼'), /1 お客様へ/);
 assert.match(richMenuPrompt('お客様への返信依頼'), /1 指定メッセージ/);
 assert.match(formatCalendarReport('2026-10-05', '20:00', '21:00', []), /夜間の配達は.*個別にご案内/);

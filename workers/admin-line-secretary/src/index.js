@@ -1009,24 +1009,27 @@ async function replyLatestOrderRecord(replyToken, env) {
 }
 
 async function handleRichMenuCommand(replyToken, command, env) {
-  if (command === '確認待ち一覧' || command === '受注判断') {
-    return replyPendingOwnerDecisions(replyToken, env, command === '受注判断');
+  if (command === '確認待ち一覧') {
+    return replyPendingOwnerDecisions(replyToken, env, false, '【確認待ち一覧】\n\n受注判断・返信承認・変更確認など、店長の確認が必要な案件を表示します。');
+  }
+  if (command === '受注判断') {
+    return replyPendingOwnerDecisions(replyToken, env, true, '【受注判断】\n\n制作可否の判断が必要な注文だけを表示します。');
   }
   return reply(replyToken, richMenuPrompt(command), env);
 }
 
-async function replyPendingOwnerDecisions(replyToken, env, decisionMode = false) {
+async function replyPendingOwnerDecisions(replyToken, env, decisionMode = false, heading = '【確認待ち一覧】') {
   const rows = await env.DB.prepare(`SELECT d.id, d.request_types, d.customer_summary,
       r.display_code, r.status AS order_status
       FROM owner_decision_requests d
       LEFT JOIN customer_order_records r ON r.source_thread_id = d.order_thread_id AND r.is_active = 1
       WHERE d.status = 'needs_owner_review'
       ORDER BY d.created_at ASC LIMIT 10`).all();
-  return reply(replyToken, formatPendingOwnerDecisionList(rows.results || [], decisionMode), env);
+  return reply(replyToken, formatPendingOwnerDecisionList(rows.results || [], decisionMode, heading), env);
 }
 
-function formatPendingOwnerDecisionList(rows, decisionMode = false) {
-  if (!rows.length) return '確認待ちの注文はありません。';
+function formatPendingOwnerDecisionList(rows, decisionMode = false, heading = '【確認待ち一覧】') {
+  if (!rows.length) return `${heading}\n\n該当する確認待ちはありません。`;
   const lines = rows.map((row, index) => {
     const code = row.display_code || row.id;
     const summary = String(row.customer_summary || '').split('\n').slice(0, 4).join('\n');
@@ -1035,15 +1038,15 @@ function formatPendingOwnerDecisionList(rows, decisionMode = false) {
   const suffix = decisionMode
     ? '\n\n操作番号で返信できます（一覧を表示した時点の番号）。\n・1 受ける\n・1 難しい 理由\n・1 確認\n\n正式カルテ番号（Kから始まる番号）も利用できます。'
     : '\n\n受注判断を行う場合は「受注判断」を押してください。';
-  return `【確認待ち一覧】\n\n${lines.join('\n\n')}${suffix}`;
+  return `${heading}\n\n${lines.join('\n\n')}${suffix}`;
 }
 
 function richMenuPrompt(command) {
   const prompts = {
-    '日付変更依頼': '【日付変更依頼】\n\n変更する注文の操作番号（確認待ち一覧の1〜9）またはカルテ番号、変更後の日付、希望時間を送ってください。\n\n例：1 日付変更 10月5日 14時頃\n\n変更前と変更後を確認し、店長の確定後に反映します。',
-    'お客様への返信依頼': '【お客様への返信依頼】\n\n返信する注文の操作番号（確認待ち一覧の1〜9）またはカルテ番号と、送りたい内容を送ってください。\n\n例：1 お客様へ ご希望の日時で対応可能か確認します。\n（店長指定文は「1 指定メッセージ 本文」でも入力できます）\n\n送信前に内容を表示し、店長の確認後にお客様へ送信します。',
+    '日付変更依頼': '【日付変更依頼】\n\n注文の操作番号（確認待ち一覧の1〜9）または正式カルテ番号と、変更後の日付・時間を送ってください。\n\n例：1 日付変更 10月5日 14時頃\n\n変更内容を復唱し、カレンダーの重複を確認してから反映します。',
+    'お客様への返信依頼': '【お客様への返信依頼】\n\n注文の操作番号または正式カルテ番号と、送りたい文章を送ってください。\n\n例：1 お客様へ ご希望の日時で対応可能か確認します。\n（店長指定文：1 指定メッセージ 本文）\n\n送信案を表示し、店長が「顧客送信確認」と返信した後に送信します。',
     '制作進捗更新': '【制作進捗更新】\n\n更新する注文の操作番号（1〜9）またはカルテ番号と進捗を送ってください。\n\n例：1 制作開始\n1 完成\n1 受渡完了\n1 支払案内済み\n1 支払確認待ち\n1 支払完了\n\n遠隔クレジット決済の発行・確認は店長が手動で行います。',
-    'システム変更依頼': '【システム変更依頼】\n\n変更したい対象と内容を送ってください。\n\n例：商品ページの画像を差し替えたい\n例：注文ヒアリング文を変更したい\n\n変更案を整理し、店長確認後に反映します。',
+    'システム変更依頼': '【システム変更依頼】\n\n変更対象・変更内容・希望時期を送ってください。\n\n例：商品ページの画像を差し替えたい\n例：注文ヒアリング文を変更したい\n\n変更案と影響範囲を整理し、店長の承認後に反映します。',
   };
   return prompts[command] || `${command}を受け付けました。内容を確認して整理します。`;
 }
