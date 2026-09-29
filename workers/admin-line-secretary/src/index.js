@@ -1,6 +1,7 @@
 const encoder = new TextEncoder();
 const CUSTOMER_SESSION_TTL = 60 * 60 * 24 * 14;
 const CUSTOMER_MESSAGE_BUNDLE_WAIT_MS = 12_000;
+const STORE_SERVICE_HOURS_NOTICE = '店舗対応時間は10:00〜16:00です。夜間の配達は、地域・内容・当日の予定を確認して個別にご案内します。';
 const DATE_INPUT_PATTERN = '(?:令和\\s*\\d{1,2}年?\\s*\\d{1,2}[月/-]\\s*\\d{1,2}日?|R\\s*\\d{1,2}[年/月/-]\\s*\\d{1,2}[月/-]\\s*\\d{1,2}日?|\\d{4}年?\\s*\\d{1,2}[月/-]\\s*\\d{1,2}日?|\\d{1,2}月\\s*\\d{1,2}日?|\\d{4}[/-]\\d{1,2}[/-]\\d{1,2})';
 const CUSTOMER_REPLY_TIMINGS = {
   initial_intake: { minDelayMs: 3000, maxDelayMs: 5000, loadingSeconds: 5 },
@@ -60,11 +61,11 @@ export default {
 const GOOGLE_REDIRECT_URI = 'https://elm-balloon-admin-line-secretary.n229k922.workers.dev/oauth/google/callback';
 
 async function publicSchedule(request, env) {
-  const rows = await env.DB.prepare(`SELECT date, status, open_time, close_time, note, updated_at
+  const rows = await env.DB.prepare(`SELECT date, status, open_time, close_time, delivery_window, note, updated_at
       FROM business_schedule ORDER BY date ASC`).all();
   const exceptions = (rows.results || []).map((row) => {
     if (row.status === 'special_hours') {
-      return { date: row.date, status: row.status, start: row.open_time, end: row.close_time, label: row.note || '営業時間変更' };
+      return { date: row.date, status: row.status, start: row.open_time, end: row.close_time, delivery_window: row.delivery_window || null, label: row.note || '営業時間変更' };
     }
     return { date: row.date, status: row.status, label: row.note || (row.status === 'closed' ? '臨時休業' : '営業予定') };
   });
@@ -133,7 +134,7 @@ function formatCalendarReport(date, startTime, endTime, busy) {
   const lines = busy.length
     ? busy.map((event) => `・${event.start?.slice(11, 16) || '終日'}〜${event.end?.slice(11, 16) || '終日'}：${event.summary}`).join('\n')
     : '・重複する予定はありません。';
-  return `【カレンダー確認結果】\n\n対象日時：${formatJapanDate(date)} ${startTime}〜${endTime}\n\n【既存予定】\n${lines}`;
+  return `【カレンダー確認結果】\n\n対象日時：${formatJapanDate(date)} ${startTime}〜${endTime}\n${STORE_SERVICE_HOURS_NOTICE}\n\n【既存予定】\n${lines}`;
 }
 
 function json(value, status = 200, extraHeaders = {}) {
@@ -198,7 +199,7 @@ async function handleAdmin(event, env) {
   if (text === '顧客送信確認') {
     return confirmPendingOwnerCustomerMessage(event.replyToken, userId, env);
   }
-  const ownerCustomerMessage = text.match(/^(?:お客様へ|顧客送信)(?:\s+(K[A-Z0-9]+))?\s+([\s\S]+)$/iu);
+  const ownerCustomerMessage = text.match(/^(?:お客様へ|顧客送信|指定メッセージ|店長指定メッセージ)(?:\s+(K[A-Z0-9]+))?\s+([\s\S]+)$/iu);
   if (ownerCustomerMessage) {
     return prepareOwnerCustomerMessage(
       event.replyToken,
@@ -272,7 +273,7 @@ async function handleAdmin(event, env) {
   }
   const route = routeManagerRequest(text);
   if (route) return reply(event.replyToken, route, env);
-  return reply(event.replyToken, '例:「休業 2026-09-22」または「営業時間 2026-09-23 10:00-18:00」。内容を確認後に「確定」と返信してください。', env);
+  return reply(event.replyToken, '例:「休業 2026-09-22」または「営業時間 2026-09-23 10:00-18:00」。内容を確認後に「確定」と返信してください。\n\n' + STORE_SERVICE_HOURS_NOTICE, env);
 }
 
 async function customerLineWebhook(request, env, ctx) {
@@ -495,9 +496,9 @@ async function findBusinessScheduleConflict(candidate, env) {
   if (row.status === 'closed') return row.note || 'この日は店休日です。';
   if (row.status === 'special_hours' && candidate.time && row.open_time && row.close_time
       && (candidate.time < row.open_time || candidate.time >= row.close_time)) {
-    return `${row.open_time}〜${row.close_time}のみ営業です（希望時刻は営業時間外）。`;
+    return `${row.open_time}〜${row.close_time}は店頭受取などの店舗対応時間です（希望時刻は営業時間外）。${row.delivery_window ? ` 夜間配達の目安：${row.delivery_window}。` : ' 夜間配達は地域・内容・当日の予定を確認して個別判断します。'}`;
   }
-  if (row.status === 'special_hours' && !candidate.time) return `${row.open_time}〜${row.close_time}のみ営業です（希望時刻の確認が必要）。`;
+  if (row.status === 'special_hours' && !candidate.time) return `${row.open_time}〜${row.close_time}は店頭受取などの店舗対応時間です（希望時刻の確認が必要）。${row.delivery_window ? ` 夜間配達の目安：${row.delivery_window}。` : ' 夜間配達は地域・内容・当日の予定を確認して個別判断します。'}`;
   return null;
 }
 
@@ -1019,7 +1020,7 @@ function formatPendingOwnerDecisionList(rows, decisionMode = false) {
 function richMenuPrompt(command) {
   const prompts = {
     '日付変更依頼': '【日付変更依頼】\n\n変更する注文のカルテ番号、変更後の日付、希望時間を送ってください。\n\n例：日付変更 KABC123 2026年10月5日 14時頃\n\n変更前と変更後を確認し、店長の確定後に反映します。',
-    'お客様への返信依頼': '【お客様への返信依頼】\n\n返信する注文のカルテ番号と、送りたい内容を送ってください。\n\n例：お客様へ KABC123 ご希望の日時で対応可能か確認します。\n\n送信前に内容を表示し、店長の確認後にお客様へ送信します。',
+    'お客様への返信依頼': '【お客様への返信依頼】\n\n返信する注文のカルテ番号と、送りたい内容を送ってください。\n\n例：お客様へ KABC123 ご希望の日時で対応可能か確認します。\n（店長指定文は「指定メッセージ KABC123 本文」でも入力できます）\n\n送信前に内容を表示し、店長の確認後にお客様へ送信します。',
     '制作進捗更新': '【制作進捗更新】\n\n更新する注文のカルテ番号と進捗を送ってください。\n\n例：制作開始 KABC123\n完成 KABC123\n受渡完了 KABC123\n支払完了 KABC123',
     'システム変更依頼': '【システム変更依頼】\n\n変更したい対象と内容を送ってください。\n\n例：商品ページの画像を差し替えたい\n例：注文ヒアリング文を変更したい\n\n変更案を整理し、店長確認後に反映します。',
   };
@@ -1053,8 +1054,7 @@ async function prepareOwnerCustomerMessage(replyToken, userId, displayCode, mess
   const orderRecord = selection.orderRecord;
   const updates = extractOrderRecordUpdates(message, false, extractScheduleCandidate(message));
   const conflicts = await findOrderUpdateConflicts(orderRecord.id, updates, env);
-  if (conflicts.length) {
-    const pending = {
+  const pending = {
       orderRecordId: orderRecord.id,
       displayCode: orderRecord.display_code,
       customerLineUserId: orderRecord.customer_line_user_id,
@@ -1062,18 +1062,12 @@ async function prepareOwnerCustomerMessage(replyToken, userId, displayCode, mess
       message: message.slice(0, 4900),
       updates,
       conflicts,
-    };
-    await env.SECRETARY_KV.put('pending-customer-send:' + userId, JSON.stringify(pending), { expirationTtl: 600 });
-    return reply(replyToken, `送信文に注文カルテの変更が含まれています。\n\n${formatOrderUpdateConflicts(conflicts)}\n\nこの内容でお客様へ送り、カルテも更新する場合：顧客送信確認\n取り消す場合：取消`, env);
-  }
-  return sendOwnerCustomerMessage(replyToken, userId, {
-    orderRecordId: orderRecord.id,
-    displayCode: orderRecord.display_code,
-    customerLineUserId: orderRecord.customer_line_user_id,
-    sourceThreadId: orderRecord.source_thread_id,
-    message: message.slice(0, 4900),
-    updates,
-  }, env);
+  };
+  await env.SECRETARY_KV.put('pending-customer-send:' + userId, JSON.stringify(pending), { expirationTtl: 600 });
+  const conflictNotice = conflicts.length
+    ? `\n\n送信文に注文カルテの変更が含まれています。\n${formatOrderUpdateConflicts(conflicts)}`
+    : '';
+  return reply(replyToken, `【お客様への送信案】\n\n${pending.message}${conflictNotice}\n\n内容を確認し、このまま送信する場合は「顧客送信確認」と返信してください。\n修正する場合は「指定メッセージ ${pending.displayCode} 修正文」、取り消す場合は「取消」と返信してください。`, env);
 }
 
 async function confirmPendingOwnerCustomerMessage(replyToken, userId, env) {
@@ -1870,7 +1864,7 @@ function formatDeliveryPlaceNote(place) {
 function routeManagerRequest(text) {
   const isScheduleCommand = /^(?:休業|休み|営業(?:時間)?|休業解除)\s*(?:\d{4}-\d{2}-\d{2}|\d{4}-\d{2}-\d{2}\s+\d{2}:\d{2}-\d{2}:\d{2})$/u.test(text);
   if (!isScheduleCommand && /(?:営業日|営業(?:時間)?|休業日|休業|休み|休日|臨時休業|営業再開)/u.test(text)) {
-    return '統括マネージャーです。営業日・休業日・営業時間の変更として受け取りました。システム担当へ引き継ぎます。\n\n変更内容を「休業 2026-09-22」「営業 2026-09-23 10:00-18:00」「休業解除 2026-09-22」の形式で送ってください。内容を確認後、反映前に改めて確認します。';
+    return `統括マネージャーです。営業日・休業日・営業時間の変更として受け取りました。システム担当へ引き継ぎます。\n\n変更内容を「休業 2026-09-22」「営業 2026-09-23 10:00-18:00」「休業解除 2026-09-22」の形式で送ってください。内容を確認後、反映前に改めて確認します。\n\n${STORE_SERVICE_HOURS_NOTICE}`;
   }
   if (/(?:配達|受取|引取|制作|納期|進捗|スケジュール|カレンダー)/u.test(text)) {
     return '統括マネージャーです。スケジュール担当への依頼として受け取りました。Googleカレンダーの予定を照会し、重複の有無と近い空き時間を整理して店長へ確認します。対象の注文名・受取または配達日・時間を教えてください。';
@@ -2010,7 +2004,7 @@ function balloonCareKnowledgeReply(text, session) {
 
 function urgentReply(session) { session.stage = 'urgent'; session.fields.urgent = true; return { session, message: 'お急ぎですね。ご相談ありがとうございます☺︎ 当日・翌日のご注文は、制作状況と商品の内容を確認してからのご案内になります。\nご希望日と、①ご用途 ②ご予算 ③お受け取り・配達のどちらか ④参考のお写真または商品番号 をお送りいただけますか？確認でき次第、可能な範囲をお返事します。' }; }
 function heliumReply(session) { session.stage = 'helium'; return { session, message: 'ヘリウムバルーンのご相談ですね😊 バルーンの大きさ・種類・個数で必要量が変わるため、商品パッケージのお写真か、サイズと個数をお送りください。持ち込みの場合も確認してご案内します。\n※在庫状況や対応可能な時間は日によって変わるため、希望日も一緒にお願いします。' }; }
-function deliveryReply(session) { session.stage = 'delivery'; return { session, message: '配達のご相談ありがとうございます😊 お届け地域・ご希望日・ご希望時間・ご予算を確認してご案内します。夏場は高温による破損を防ぐため、発送を控える場合があります。近隣への配達や店頭受け取りも含めて、いちばん良い方法をご提案しますね。' }; }
+function deliveryReply(session) { session.stage = 'delivery'; return { session, message: `配達のご相談ありがとうございます😊 お届け地域・ご希望日・ご希望時間・ご予算を確認してご案内します。${STORE_SERVICE_HOURS_NOTICE} 夏場は高温による破損を防ぐため、発送を控える場合があります。近隣への配達や店頭受け取りも含めて、いちばん良い方法をご提案しますね。` }; }
 function longevityReply(session) { session.stage = 'faq'; return { session, message: 'ご質問ありがとうございます😊 バルーンは種類や飾る環境によって異なります。直射日光・高温・尖った物を避けて室内に飾ると、より長く楽しんでいただけます。お写真を送っていただければ、その商品に合わせた目安と保管方法をご案内します🎈' }; }
 function orderReply(text, session) {
   if (isOrderStartTrigger(text)) {
@@ -2067,7 +2061,7 @@ function basicOrderConfirmation(text, session) {
 }
 function intakePrompt(missing, productType, customerKind, hasKnownDetails) {
   const greeting = customerKind === 'returning' ? 'いつもありがとうございます☺︎ お久しぶりです。今回もお問い合わせありがとうございます。' : 'お問い合わせありがとうございます🎈';
-  const guidance = 'ご希望に合う形でご用意できるか確認するため、まずは下の基本項目を教えてください。\n\nまだ決まっていない項目は「未定」で大丈夫です。空欄があると確認を進められないため、お手数ですが、すべての項目へご記入をお願いいたします。\n\nHPの商品番号が分かる場合は番号を、分からない場合はスクリーンショットや参考画像をお送りください。';
+  const guidance = `ご希望に合う形でご用意できるか確認するため、まずは下の基本項目を教えてください。\n\nまだ決まっていない項目は「未定」で大丈夫です。空欄があると確認を進められないため、お手数ですが、すべての項目へご記入をお願いいたします。\n\nHPの商品番号が分かる場合は番号を、分からない場合はスクリーンショットや参考画像をお送りください。\n\n${STORE_SERVICE_HOURS_NOTICE}`;
   const rows = '【ご注文内容】📷\n※そのままコピーしてご記入ください\n※決まっていない項目は「未定」で大丈夫です\n\n・HPの商品番号 または参考画像：\n（例：バルーンアレンジ36番／画像添付済み／未定）\n\n・バルーンのタイプ：\n（ブーケ／置き型アレンジメント／ヘリウム〈浮く〉タイプ／未定）\n\n・ご予算：\n（例：15,000円くらい／未定）\n\n・全体的なお色味と雰囲気：\n（例：ピンク系で可愛い雰囲気／お任せ／未定）\n\n・プレゼント・使用予定日：\n（例：10月3日／未定）\n\n・受取希望日：\n（例：10月2日／未定）\n\n・受取希望時間：\n（例：14時頃／未定）\n\n・受取方法：\n（店頭受取／配達／発送／未定）';
   const closing = '基本項目を確認できましたら、制作内容・在庫・納期・受取方法について確認を進めます。\n\n対応可能な場合は、当店の価格と納期を改めてご案内いたします。\n\n文字入れやメッセージカードなどは、制作可能な場合に商品内容に合わせて必要な項目だけ追加でお伺いします✨';
   return greeting + '\n\n' + guidance + '\n\n' + rows + '\n\n' + closing;

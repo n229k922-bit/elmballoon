@@ -15,7 +15,7 @@ const source = fs.readFileSync(sourcePath, 'utf8')
     formatAmbiguousOrderChoices, orderRecordStatusLabel, formatOrderUpdateConflicts,
     ownerDecisionScopeMarker, ownerNotificationAction, formatOwnerDecisionRequest,
     appendOwnerReviewEvents, formatPendingOwnerDecisionList, richMenuPrompt,
-    notifyOwners, productReferenceFromOwnerSummary
+    notifyOwners, productReferenceFromOwnerSummary, formatCalendarReport
   };`;
 
 const context = vm.createContext({
@@ -63,6 +63,7 @@ const {
   richMenuPrompt,
   notifyOwners,
   productReferenceFromOwnerSummary,
+  formatCalendarReport,
 } = context.__orderTests;
 
 const session = { stage: 'new', fields: {}, customerKind: 'new' };
@@ -70,6 +71,7 @@ const start = orderReply('注文担当を呼び出します', session);
 assert.equal(start.session.stage, 'collecting');
 assert.equal(missingIntakeFields(start.session.fields).length, 8);
 assert.match(start.message, /プレゼント・使用予定日/);
+assert.match(start.message, /店舗対応時間は10:00〜16:00/);
 assert.doesNotMatch(start.message, /・お名前：/);
 assert.doesNotMatch(start.message, /メッセージカードの有無/);
 assert.equal(splitCustomerReply(start.message).length, 3);
@@ -253,6 +255,8 @@ assert.match(pendingMenuReport, /【確認待ち一覧】/);
 assert.match(pendingMenuReport, /受ける KABC123/);
 assert.match(richMenuPrompt('日付変更依頼'), /変更前と変更後を確認/);
 assert.match(richMenuPrompt('お客様への返信依頼'), /お客様へ KABC123/);
+assert.match(richMenuPrompt('お客様への返信依頼'), /指定メッセージ KABC123/);
+assert.match(formatCalendarReport('2026-10-05', '20:00', '21:00', []), /夜間の配達は.*個別にご案内/);
 assert.match(richMenuPrompt('制作進捗更新'), /制作開始 KABC123/);
 assert.match(richMenuPrompt('システム変更依頼'), /変更案を整理/);
 const consolidatedOwnerSummary = appendOwnerReviewEvents('テスト様からの聞き取り内容', [
