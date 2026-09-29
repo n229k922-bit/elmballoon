@@ -6,7 +6,7 @@ const sourcePath = new URL('../workers/admin-line-secretary/src/index.js', impor
 const source = fs.readFileSync(sourcePath, 'utf8')
   .replace('export default {', 'const workerDefault = {')
   + `\nglobalThis.__orderTests = {
-    orderReply, collectOrderDetail, missingIntakeFields, splitCustomerReply,
+    orderReply, selectOrderRoute, collectScheduleDetail, collectOrderDetail, missingIntakeFields, splitCustomerReply,
     extractOrderRecordUpdates, orderFieldStatus, basicOrderConfirmation,
     summarizeOwnerReviewFromRecord, extractScheduleCandidate,
     parseFlexibleCustomerDate, parseFlexibleCustomerTime, formatOrderRecordCard,
@@ -38,6 +38,8 @@ vm.runInContext(source, context, { filename: sourcePath.pathname });
 
 const {
   orderReply,
+  selectOrderRoute,
+  collectScheduleDetail,
   collectOrderDetail,
   missingIntakeFields,
   splitCustomerReply,
@@ -73,13 +75,27 @@ const {
 
 const session = { stage: 'new', fields: {}, customerKind: 'new' };
 const start = orderReply('注文担当を呼び出します', session);
-assert.equal(start.session.stage, 'collecting');
-assert.equal(missingIntakeFields(start.session.fields).length, 8);
-assert.match(start.message, /プレゼント・使用予定日/);
-assert.match(start.message, /店舗対応時間は10:00〜16:00/);
-assert.doesNotMatch(start.message, /・お名前：/);
-assert.doesNotMatch(start.message, /メッセージカードの有無/);
-assert.equal(splitCustomerReply(start.message).length, 3);
+assert.equal(start.session.stage, 'awaiting_order_route');
+assert.match(start.message, /① 商品や参考画像が決まっている/);
+assert.match(start.message, /② 用途やイメージから提案してほしい/);
+const routed = orderReply('①', start.session);
+assert.equal(routed.session.stage, 'collecting');
+assert.equal(missingIntakeFields(routed.session.fields).length, 8);
+assert.match(routed.message, /プレゼント・使用予定日/);
+assert.match(routed.message, /店舗対応時間は10:00〜16:00/);
+assert.doesNotMatch(routed.message, /・お名前：/);
+assert.doesNotMatch(routed.message, /メッセージカードの有無/);
+assert.equal(splitCustomerReply(routed.message).length, 3);
+
+const scheduleStart = orderReply('注文担当を呼び出します', { stage: 'new', fields: {}, customerKind: 'new' });
+const scheduleRoute = selectOrderRoute('③', scheduleStart.session);
+assert.equal(scheduleRoute.session.stage, 'schedule_consulting');
+assert.match(scheduleRoute.message, /ご希望日/);
+const scheduleResult = collectScheduleDetail('・ご希望日：10月10日\n・希望時間帯：午後2時\n・受け取り方法：店頭受取', scheduleRoute.session);
+assert.equal(scheduleResult.session.stage, 'review');
+assert.equal(scheduleResult.session.fields.receiveDateValue, '10月10日');
+assert.equal(scheduleResult.session.fields.receiveTimeValue, '午後2時');
+assert.equal(scheduleResult.session.fields.methodValue, '店頭受取');
 
 const answer = `【ご注文内容】
 ・HPの商品番号 または参考画像：バルーンアレンジ36番
@@ -91,7 +107,7 @@ const answer = `【ご注文内容】
 ・受取希望時間：14時頃
 ・受取方法：店頭受取`;
 
-const completed = collectOrderDetail(answer, start.session);
+const completed = collectOrderDetail(answer, routed.session);
 assert.equal(completed.session.stage, 'review');
 assert.equal(missingIntakeFields(completed.session.fields).length, 0);
 assert.equal(completed.session.fields.useDateValue, '10月3日');
@@ -116,9 +132,9 @@ assert.equal(updateMap.fulfillment_method.value, '店頭受取');
 assert.equal(orderFieldStatus('未定', 'budget'), 'undecided');
 assert.equal(orderFieldStatus('なし', 'card_message'), 'not_applicable');
 
-const placeholderSession = orderReply('注文担当を呼び出します', {
+const placeholderSession = orderReply('①', orderReply('注文担当を呼び出します', {
   stage: 'new', fields: {}, customerKind: 'new',
-}).session;
+}).session).session;
 const placeholderAnswer = `【ご注文内容】📷
 ・HPの商品番号 または参考画像：36
 （例：バルーンアレンジ36番／画像添付済み／未定）
@@ -155,9 +171,9 @@ assert.equal(placeholderUpdates.receive_date, undefined);
 assert.equal(placeholderUpdates.receive_time, undefined);
 assert.equal(placeholderUpdates.fulfillment_method, undefined);
 
-const nextLineSession = orderReply('注文担当を呼び出します', {
+const nextLineSession = orderReply('①', orderReply('注文担当を呼び出します', {
   stage: 'new', fields: {}, customerKind: 'new',
-}).session;
+}).session).session;
 const nextLineAnswer = `・HPの商品番号 または参考画像：
 36
 ・バルーンのタイプ：
@@ -181,9 +197,9 @@ assert.equal(nextLineResult.session.fields.receiveDateValue, '10月2日');
 assert.equal(nextLineResult.session.fields.receiveTimeValue, '14時頃');
 assert.equal(nextLineResult.session.fields.methodValue, '店頭受取');
 
-const blankTemplateSession = orderReply('注文担当を呼び出します', {
+const blankTemplateSession = orderReply('①', orderReply('注文担当を呼び出します', {
   stage: 'new', fields: {}, customerKind: 'new',
-}).session;
+}).session).session;
 const blankTemplateResult = collectOrderDetail(`・HPの商品番号 または参考画像：
 （例：バルーンアレンジ36番／画像添付済み／未定）
 ・バルーンのタイプ：

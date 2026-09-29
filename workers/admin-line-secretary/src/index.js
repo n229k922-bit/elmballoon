@@ -2191,6 +2191,9 @@ function buildCustomerReply(text, session) {
   if (careReply) return careReply;
   if (session.stage === 'review' && /(?:注文お願いします|注文をお願いします|この内容で注文|お願いします)/u.test(text)) return requestCustomerContact(session);
   if (session.stage === 'awaiting_contact') return recordCustomerContact(text, session);
+  if (session.stage === 'awaiting_order_route') return selectOrderRoute(text, session);
+  if (session.stage === 'consulting') return collectConsultationDetail(text, session);
+  if (session.stage === 'schedule_consulting') return collectScheduleDetail(text, session);
   if (session.stage === 'collecting') return collectOrderDetail(text, session);
   if (/(今日|本日|明日|あした|急ぎ|至急)/u.test(text)) return urgentReply(session);
   if (/(ヘリウム|浮[かき]|ガス)/u.test(text)) return heliumReply(session);
@@ -2247,6 +2250,8 @@ function longevityReply(session) { session.stage = 'faq'; return { session, mess
 function orderReply(text, session) {
   if (isOrderStartTrigger(text)) {
     session.fields = { questionCounts: {} };
+    session.stage = 'awaiting_order_route';
+    return { session, message: orderRoutePrompt() };
   }
   session.stage = 'collecting';
   session.fields.purpose = ['開店','結婚','出産','誕生日','発表会','卒業','退職'].find((purpose) => text.includes(purpose)) || null;
@@ -2259,6 +2264,58 @@ function orderReply(text, session) {
   }
   markSessionFieldsAsked(session, missing);
   return { session, message: intakePrompt(missing, session.fields.productType, session.customerKind, Boolean(session.fields.productType || session.fields.purpose)) };
+}
+function orderRoutePrompt() {
+  return 'ご相談ありがとうございます🎈\n\nまず、近いものをお選びください。まだ何も決まっていなくても大丈夫です。\n\n① 商品や参考画像が決まっている\n② 用途やイメージから提案してほしい\n③ 日程や受け取り方法だけ先に相談したい\n\n「①」「②」「③」のいずれかを返信してください。';
+}
+function selectOrderRoute(text, session) {
+  const normalized = text.trim();
+  if (/^(?:1|①|商品|決まって|画像)/u.test(normalized)) {
+    session.stage = 'collecting';
+    const missing = missingIntakeFields(session.fields);
+    markSessionFieldsAsked(session, missing);
+    return { session, message: intakePrompt(missing, session.fields.productType, session.customerKind, false) };
+  }
+  if (/^(?:2|②|相談|提案|おまかせ|分から|わから)/u.test(normalized)) {
+    session.stage = 'consulting';
+    session.fields.consultationMode = 'proposal';
+    return { session, message: consultationPrompt() };
+  }
+  if (/^(?:3|③|日程|日付|受け取り|受取|スケジュール)/u.test(normalized)) {
+    session.stage = 'schedule_consulting';
+    session.fields.consultationMode = 'schedule_only';
+    return { session, message: scheduleConsultationPrompt() };
+  }
+  return { session, message: '① 商品や参考画像が決まっている\n② 用途やイメージから提案してほしい\n③ 日程や受け取り方法だけ先に相談したい\n\n番号でお知らせください。' };
+}
+function consultationPrompt() {
+  return 'ありがとうございます😊\n\n用途やイメージから一緒に考えます。分かる範囲で教えてください。\n\n・ご用途（誕生日、開店祝い、結婚祝い、イベント装飾など）：\n・贈る相手や飾る場所：\n・バルーンの種類（ブーケ、スタンド、置き型、会場装飾、ヘリウムなど）：\n・ご予算：\n・必要な日：\n・その他のご希望・ご質問：\n\nまだ決まっていない項目は「未定」、自由に相談したい内容は「その他」に続けてご記入ください。';
+}
+function collectConsultationDetail(text, session) {
+  session.fields.consultationText = [session.fields.consultationText, stripIntakeTemplateHints(text)].filter(Boolean).join('\n').slice(0, 3000);
+  session.fields.purpose = session.fields.purpose || ['開店','結婚','出産','誕生日','発表会','卒業','退職','イベント','装飾'].find((purpose) => text.includes(purpose)) || null;
+  session.fields.productType = session.fields.productType || detectProductType(text);
+  session.fields.budgetValue = session.fields.budgetValue || labeledAnswer(text, 'ご予算');
+  session.fields.useDateValue = session.fields.useDateValue || labeledAnswer(text, '必要な日|使用予定日');
+  if (/(?:ご予算|必要な日|使用予定日|その他|相談|提案)/u.test(text) || session.fields.consultationText.length > 20) {
+    session.stage = 'review';
+    return { session, message: 'ありがとうございます😊\n\nご相談内容を注文カルテへ記録しました。\n\n・用途・イメージ：確認中\n・バルーンの種類：' + (productTypeLabel(session.fields.productType) || '未定') + '\n・ご予算：' + (session.fields.budgetValue || '未定') + '\n・必要な日：' + (session.fields.useDateValue || '未定') + '\n・その他のご希望：受け付けました\n\n内容に合う商品や装飾案を整理して、統括からご提案します。' };
+  }
+  return { session, message: consultationPrompt() };
+}
+function scheduleConsultationPrompt() {
+  return '承知しました😊 商品がまだ決まっていなくても、日程の空き状況から確認できます。\n\n分かる範囲で教えてください。\n\n・ご希望日（必須。未定でも可）：\n・希望時間帯：\n・受け取り方法（店頭受取／配達／発送／未定）：\n・用途やイベント（任意）：\n・その他のご希望・ご質問：\n\n確認後、対応可能な日程と、次に決める内容をご案内します。';
+}
+function collectScheduleDetail(text, session) {
+  session.fields.scheduleText = [session.fields.scheduleText, stripIntakeTemplateHints(text)].filter(Boolean).join('\n').slice(0, 2000);
+  session.fields.receiveDateValue = session.fields.receiveDateValue || labeledAnswer(text, 'ご希望日|受取希望日|受け取り希望日|必要な日');
+  session.fields.receiveTimeValue = session.fields.receiveTimeValue || labeledAnswer(text, '希望時間帯|受取希望時間|受け取り希望時間');
+  session.fields.methodValue = session.fields.methodValue || labeledAnswer(text, '受け取り方法|受取方法');
+  if (/(?:ご希望日|受取希望日|受け取り希望日|必要な日)/u.test(text) || session.fields.scheduleText.length > 10) {
+    session.stage = 'review';
+    return { session, message: 'ありがとうございます😊\n\n日程相談として注文カルテに記録しました。\n\n・ご希望日：' + (session.fields.receiveDateValue || '未定') + '\n・希望時間帯：' + (session.fields.receiveTimeValue || '未定') + '\n・受け取り方法：' + (session.fields.methodValue || '未定') + '\n\n空き状況と対応可能な受け取り方法を確認し、統括からご案内します。商品内容は後から追加でご相談いただけます。' };
+  }
+  return { session, message: scheduleConsultationPrompt() };
 }
 
 function requestCustomerContact(session) {
