@@ -261,7 +261,8 @@ assert.match(richMenuPrompt('日付変更依頼'), /カレンダーの重複を�
 assert.match(richMenuPrompt('お客様への返信依頼'), /1 お客様へ/);
 assert.match(richMenuPrompt('お客様への返信依頼'), /1 指定メッセージ/);
 assert.match(formatCalendarReport('2026-10-05', '20:00', '21:00', []), /夜間の配達は.*個別にご案内/);
-assert.match(richMenuPrompt('制作進捗更新'), /1 制作開始/);
+assert.match(richMenuPrompt('制作進捗更新'), /はい／いいえ/);
+assert.match(richMenuPrompt('制作進捗更新'), /制作が完成しました/);
 assert.match(richMenuPrompt('制作進捗更新'), /遠隔クレジット決済.*手動/);
 assert.match(richMenuPrompt('システム変更依頼'), /変更案と影響範囲を整理/);
 const consolidatedOwnerSummary = appendOwnerReviewEvents('テスト様からの聞き取り内容', [

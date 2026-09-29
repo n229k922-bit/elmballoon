@@ -167,6 +167,7 @@ async function handleAdmin(event, env) {
   if (event.message?.type === 'image') return registerManualOrderFormImage(event, env);
   if (event.message?.type !== 'text') return reply(event.replyToken, '注文書画像または文字でお送りください。', env);
   const userId = event.source.userId, text = normalizeManagerCommand(event.message.text.trim()), pendingKey = 'pending:' + userId;
+  const pendingStatusKey = 'pending-status:' + userId;
   const sendReply = text.match(/^送信\s+(review:[^\s]+)(?:\s+([\s\S]+))?$/u);
   if (sendReply) return prepareCustomerReplySend(event.replyToken, userId, sendReply[1], sendReply[2]?.trim() || null, false, env);
   if (text === '送信') {
@@ -205,6 +206,12 @@ async function handleAdmin(event, env) {
   }
   if (text === '顧客送信確認') {
     return confirmPendingOwnerCustomerMessage(event.replyToken, userId, env);
+  }
+  // 自然文で届いた進捗報告も、対象カルテを推定して確認フローへ送ります。
+  const implicitStatus = text.match(/^(?:(K[A-Z0-9]+|[1-9])\s*)?(制作が?完了|完成(?:しました)?|できあが(?:りました|った)|受け渡し(?:が)?完了|受渡完了|お渡し(?:しました|完了)|引き渡し完了)(?:[。！!].*)?$/iu);
+  if (implicitStatus) {
+    const action = /受け渡し|受渡|お渡し|引き渡し/u.test(implicitStatus[2]) ? '受渡完了' : '完成';
+    return proposeOrderLifecycleTransition(event.replyToken, userId, action, implicitStatus[1]?.toUpperCase() || null, env);
   }
   const manualSupplement = text.match(/^紙注文補足(?:\s+((?:K[A-Z0-9]+|[1-9])))?\s+([\s\S]+)$/iu);
   if (manualSupplement) {
@@ -272,13 +279,27 @@ async function handleAdmin(event, env) {
       : '確認待ちのフォームが見つからないか、すでに記録済みです。', env);
   }
   if (/^(はい|確定|承認)$/u.test(text)) {
+    const pendingStatus = await env.SECRETARY_KV.get(pendingStatusKey, 'json');
+    if (pendingStatus) {
+      await env.SECRETARY_KV.delete(pendingStatusKey);
+      return applyPendingStatusTransition(event.replyToken, userId, pendingStatus, env);
+    }
     const pending = await env.SECRETARY_KV.get(pendingKey, 'json');
     if (!pending) return reply(event.replyToken, '確認待ちの変更はありません。', env);
     await applyChange(pending, userId, env); await env.SECRETARY_KV.delete(pendingKey);
     return reply(event.replyToken, pending.summary + ' を反映しました。', env);
   }
+  if (/^いいえ$/u.test(text)) {
+    const pendingStatus = await env.SECRETARY_KV.get(pendingStatusKey, 'json');
+    if (pendingStatus) {
+      await env.SECRETARY_KV.delete(pendingStatusKey);
+      return reply(event.replyToken, 'ステータスは変更せず、現在の状態を維持しました。', env);
+    }
+    return reply(event.replyToken, '確認待ちのステータス変更はありません。', env);
+  }
   if (/^(取消|キャンセル)$/u.test(text)) {
     await env.SECRETARY_KV.delete(pendingKey);
+    await env.SECRETARY_KV.delete(pendingStatusKey);
     await env.SECRETARY_KV.delete('pending-customer-send:' + userId);
     return reply(event.replyToken, '確認待ちの変更を取り消しました。', env);
   }
@@ -1045,7 +1066,7 @@ function richMenuPrompt(command) {
   const prompts = {
     '日付変更依頼': '【日付変更依頼】\n\n注文の操作番号（確認待ち一覧の1〜9）または正式カルテ番号と、変更後の日付・時間を送ってください。\n\n例：1 日付変更 10月5日 14時頃\n\n変更内容を復唱し、カレンダーの重複を確認してから反映します。',
     'お客様への返信依頼': '【お客様への返信依頼】\n\n注文の操作番号または正式カルテ番号と、送りたい文章を送ってください。\n\n例：1 お客様へ ご希望の日時で対応可能か確認します。\n（店長指定文：1 指定メッセージ 本文）\n\n送信案を表示し、店長が「顧客送信確認」と返信した後に送信します。',
-    '制作進捗更新': '【制作進捗更新】\n\n更新する注文の操作番号（1〜9）またはカルテ番号と進捗を送ってください。\n\n例：1 制作開始\n1 完成\n1 受渡完了\n1 支払案内済み\n1 支払確認待ち\n1 支払完了\n\n遠隔クレジット決済の発行・確認は店長が手動で行います。',
+    '制作進捗更新': '【制作進捗更新】\n\n進捗は統括が注文内容を確認し、変更前に「はい／いいえ」で確認します。\n制作開始・完成・受渡し・支払い確認の内容が分かるメッセージを送ってください。\n\n例：KABC123の制作が完成しました。\n例：1 お渡ししました\n\n遠隔クレジット決済の発行・確認は店長が手動で行います。',
     'システム変更依頼': '【システム変更依頼】\n\n変更対象・変更内容・希望時期を送ってください。\n\n例：商品ページの画像を差し替えたい\n例：注文ヒアリング文を変更したい\n\n変更案と影響範囲を整理し、店長の承認後に反映します。',
   };
   return prompts[command] || `${command}を受け付けました。内容を確認して整理します。`;
@@ -1373,7 +1394,16 @@ async function handleOwnerShortDecision(replyToken, userId, action, displayCode,
       .bind(decision.order_card_id, accepted ? 'owner.feasibility_accepted' : 'owner.feasibility_declined', ownerResponse, now),
   ]);
   if (accepted) {
-    return reply(replyToken, `${decision.display_code}を「対応可能」として記録しました。\n次は商品別の詳細確認へ進みます。`, env);
+    await env.SECRETARY_KV.put('pending-status:' + userId, JSON.stringify({
+      orderRecordId: decision.order_record_id,
+      displayCode: decision.display_code,
+      currentStatus: 'detail_intake',
+      action: '制作開始',
+      nextStatus: 'production',
+      eventType: 'production.started',
+      createdAt: now,
+    }), { expirationTtl: 600 });
+    return reply(replyToken, `${decision.display_code}を「対応可能」として記録しました。\n\n注文内容を受け付けたため、ステータスを「制作中」に変更してよいですか？\n「はい」または「いいえ」でお答えください。`, env);
   }
   return reply(replyToken, `${decision.display_code}を「対応困難」として記録しました。${note ? '' : '\nお客様へ案内する理由は、続けて確認してください。'}`, env);
 }
@@ -1411,44 +1441,76 @@ async function handleOrderLifecycleCommand(replyToken, userId, action, displayCo
   if (!allowedStatuses[action].includes(orderRecord.status)) {
     return reply(replyToken, `${orderRecord.display_code}は現在「${orderRecordStatusLabel(orderRecord.status)}」です。\n「${action}」へ進める前の確認が完了していません。`, env);
   }
-  const now = new Date().toISOString();
-  if (action === '制作開始' || action === '完成') {
-    const nextStatus = action === '制作開始' ? 'production' : 'ready';
-    await env.DB.batch([
-      env.DB.prepare(`UPDATE customer_order_records SET status = ?, updated_at = ? WHERE id = ?`)
-        .bind(nextStatus, now, orderRecord.id),
-      env.DB.prepare(`INSERT INTO order_card_events
-          (order_card_id, event_type, actor, detail, occurred_at)
-          VALUES (?, ?, 'owner', ?, ?)`)
-        .bind(`order-card:${orderRecord.source_thread_id}`, action === '制作開始' ? 'production.started' : 'production.completed', action, now),
-    ]);
-    return reply(replyToken, `${orderRecord.display_code}を「${orderRecordStatusLabel(nextStatus)}」へ更新しました。`, env);
-  }
+  return proposeOrderLifecycleTransition(replyToken, userId, action, orderRecord.display_code, env, orderRecord);
+}
 
-  const fieldKey = action === '受渡完了' ? 'fulfillment_completed' : 'payment_status';
-  const phase = action === '受渡完了' ? 'completion' : 'payment';
-  const paymentValue = action === '支払案内済み' ? '決済案内済み' : action === '支払確認待ち' ? '支払い確認待ち' : '完了';
+async function proposeOrderLifecycleTransition(replyToken, userId, action, displayCode, env, selectedOrder = null) {
+  let orderRecord = selectedOrder;
+  if (!orderRecord) {
+    const resolved = await resolveManagerDisplayCode(displayCode, env);
+    const filter = resolved ? ' AND r.display_code = ?' : '';
+    const statement = env.DB.prepare(`SELECT r.*, t.customer_display_name, t.customer_confirmed_name
+        FROM customer_order_records r JOIN customer_order_threads t ON t.id = r.source_thread_id
+        WHERE r.is_active = 1${filter} ORDER BY r.updated_at DESC LIMIT 2`);
+    const rows = resolved ? await statement.bind(resolved).all() : await statement.all();
+    const candidates = rows.results || [];
+    if (!candidates.length) return reply(replyToken, resolved ? `${resolved}の進行中カルテはありません。` : '進行中の注文カルテはありません。', env);
+    if (!resolved && candidates.length > 1) return reply(replyToken, formatAmbiguousOrderChoices(candidates, `${action} カルテ番号`), env);
+    orderRecord = candidates[0];
+  }
+  const transition = {
+    制作開始: { nextStatus: 'production', eventType: 'production.started', label: '制作中' },
+    完成: { nextStatus: 'ready', eventType: 'production.completed', label: 'お渡し準備完了' },
+    受渡完了: { nextStatus: 'fulfilled', eventType: 'fulfillment.completed', label: '受渡完了・支払確認待ち' },
+    支払案内済み: { fieldKey: 'payment_status', fieldValue: '決済案内済み', label: '決済案内済み' },
+    支払確認待ち: { fieldKey: 'payment_status', fieldValue: '支払い確認待ち', label: '支払い確認待ち' },
+    支払完了: { fieldKey: 'payment_status', fieldValue: '完了', label: '支払完了' },
+  }[action];
+  if (!transition) return reply(replyToken, '変更内容を確認できませんでした。', env);
+  const currentLabel = orderRecordStatusLabel(orderRecord.status);
+  await env.SECRETARY_KV.put('pending-status:' + userId, JSON.stringify({
+    orderRecordId: orderRecord.id, displayCode: orderRecord.display_code,
+    currentStatus: orderRecord.status, action, ...transition, createdAt: new Date().toISOString(),
+  }), { expirationTtl: 600 });
+  const caution = action === '支払完了' ? '\n※決済画面で店長が確認済みの場合のみ「はい」とお答えください。' : '';
+  return reply(replyToken, `【ステータス変更確認】\nカルテ：${orderRecord.display_code}\n現在：${currentLabel}\n変更後：${transition.label}\n\nこの内容で変更してよいですか？\n「はい」または「いいえ」でお答えください。${caution}`, env);
+}
+
+async function applyPendingStatusTransition(replyToken, userId, pending, env) {
+  const row = await env.DB.prepare(`SELECT r.*, t.customer_display_name, t.customer_confirmed_name
+      FROM customer_order_records r JOIN customer_order_threads t ON t.id = r.source_thread_id
+      WHERE r.id = ? AND r.is_active = 1`).bind(pending.orderRecordId).first();
+  if (!row) return reply(replyToken, '対象カルテが見つからないか、すでに完了しています。', env);
+  if (row.status !== pending.currentStatus) return reply(replyToken, `カルテ${row.display_code}はすでに「${orderRecordStatusLabel(row.status)}」へ更新されています。`, env);
+  const now = new Date().toISOString();
+  if (pending.nextStatus) {
+    const statements = [
+      env.DB.prepare(`UPDATE customer_order_records SET status = ?, updated_at = ? WHERE id = ?`).bind(pending.nextStatus, now, row.id),
+      env.DB.prepare(`INSERT INTO order_card_events (order_card_id, event_type, actor, detail, occurred_at) VALUES (?, ?, 'owner', ?, ?)`).bind(`order-card:${row.source_thread_id}`, pending.eventType, pending.action, now),
+    ];
+    if (pending.action === '受渡完了') {
+      statements.push(env.DB.prepare(`INSERT INTO order_record_fields
+          (order_record_id, field_key, phase, value_text, status, source_direction, source_occurred_at, confidence, locked, updated_at, confirmed_at, confirmed_by)
+          VALUES (?, 'fulfillment_completed', 'completion', '完了', 'confirmed', 'owner_recorded', ?, 1, 1, ?, ?, ?)
+          ON CONFLICT(order_record_id, field_key) DO UPDATE SET value_text = '完了', status = 'confirmed', source_direction = 'owner_recorded', source_occurred_at = excluded.source_occurred_at, confidence = 1, locked = 1, updated_at = excluded.updated_at, confirmed_at = excluded.confirmed_at, confirmed_by = excluded.confirmed_by`)
+        .bind(row.id, now, now, now, userId));
+    }
+    await env.DB.batch(statements);
+    if (pending.action === '受渡完了') await closeOrderRecordWhenComplete({ ...row, status: pending.nextStatus }, now, env);
+    return reply(replyToken, `${row.display_code}を「${pending.label}」へ更新しました。`, env);
+  }
+  const fieldKey = pending.fieldKey || (pending.action === '受渡完了' ? 'fulfillment_completed' : null);
+  const phase = fieldKey === 'payment_status' ? 'payment' : 'completion';
+  if (pending.action === '受渡完了') pending.fieldValue = '完了';
   await env.DB.prepare(`INSERT INTO order_record_fields
-      (order_record_id, field_key, phase, value_text, status, source_direction,
-       source_occurred_at, confidence, locked, updated_at, confirmed_at, confirmed_by)
+      (order_record_id, field_key, phase, value_text, status, source_direction, source_occurred_at, confidence, locked, updated_at, confirmed_at, confirmed_by)
       VALUES (?, ?, ?, ?, 'confirmed', 'owner_recorded', ?, 1, 1, ?, ?, ?)
-      ON CONFLICT(order_record_id, field_key) DO UPDATE SET
-        value_text = excluded.value_text, status = 'confirmed', source_direction = 'owner_recorded',
-        source_occurred_at = excluded.source_occurred_at, confidence = 1, locked = 1,
-        updated_at = excluded.updated_at, confirmed_at = excluded.confirmed_at,
-        confirmed_by = excluded.confirmed_by`)
-    .bind(orderRecord.id, fieldKey, phase, action === '受渡完了' ? '完了' : paymentValue, now, now, now, userId).run();
-  if (action === '支払案内済み' || action === '支払確認待ち') {
-    return reply(replyToken, `${orderRecord.display_code}へ「${paymentValue}」を記録しました。決済操作と支払い済みの確認は店長が手動で行ってください。`, env);
-  }
-  if (action === '受渡完了') {
-    await env.DB.prepare(`UPDATE customer_order_records SET status = 'fulfilled', updated_at = ? WHERE id = ?`)
-      .bind(now, orderRecord.id).run();
-  }
-  const closed = await closeOrderRecordWhenComplete(orderRecord, now, env);
-  if (closed) return reply(replyToken, `${orderRecord.display_code}は受渡し・支払いともに完了し、注文カルテを完了しました。`, env);
-  const remaining = action === '受渡完了' ? '支払完了' : '受渡完了';
-  return reply(replyToken, `${orderRecord.display_code}へ「${action}」を記録しました。\n残りの確認：${remaining}`, env);
+      ON CONFLICT(order_record_id, field_key) DO UPDATE SET value_text = excluded.value_text, status = 'confirmed', source_direction = 'owner_recorded', source_occurred_at = excluded.source_occurred_at, confidence = 1, locked = 1, updated_at = excluded.updated_at, confirmed_at = excluded.confirmed_at, confirmed_by = excluded.confirmed_by`)
+    .bind(row.id, fieldKey, phase, pending.fieldValue, now, now, now, userId).run();
+  if (pending.action === '受渡完了') await env.DB.prepare(`UPDATE customer_order_records SET status = 'fulfilled', updated_at = ? WHERE id = ?`).bind(now, row.id).run();
+  const closed = await closeOrderRecordWhenComplete(row, now, env);
+  if (closed) return reply(replyToken, `${row.display_code}は受渡し・支払いともに完了し、注文カルテを完了しました。`, env);
+  return reply(replyToken, `${row.display_code}へ「${pending.label}」を記録しました。`, env);
 }
 
 async function closeOrderRecordWhenComplete(orderRecord, now, env) {
