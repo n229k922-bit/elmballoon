@@ -490,7 +490,7 @@ async function recordCustomerMessage(event, env) {
 }
 
 async function findBusinessScheduleConflict(candidate, env) {
-  const row = await env.DB.prepare(`SELECT status, open_time, close_time, note
+  const row = await env.DB.prepare(`SELECT status, open_time, close_time, delivery_window, note
       FROM business_schedule WHERE date = ?`).bind(candidate.date).first();
   if (!row) return null;
   if (row.status === 'closed') return row.note || 'この日は店休日です。';
