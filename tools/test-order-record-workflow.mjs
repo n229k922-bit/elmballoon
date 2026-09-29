@@ -239,6 +239,11 @@ const ownerReport = formatOwnerDecisionRequest({
 });
 assert.match(ownerReport, /商品名：バルーンアレンジ㊱/);
 assert.match(ownerReport, /該当する商品画像をこの報告に添付/);
+assert.match(ownerReport, /【返信方法】/);
+assert.match(ownerReport, /・受ける：この内容で対応可能/);
+assert.match(ownerReport, /・難しい：対応が難しい/);
+assert.match(ownerReport, /例：受ける KABC123/);
+assert.doesNotMatch(ownerReport, /店長確認 decision:/);
 const consolidatedOwnerSummary = appendOwnerReviewEvents('テスト様からの聞き取り内容', [
   { event_type: 'customer.name_confirmed', detail: JSON.stringify({ name: '山田花子' }) },
   { event_type: 'product.reference_unmatched', detail: JSON.stringify({ reference: '36' }) },
@@ -341,4 +346,4 @@ const conflictText = formatOrderUpdateConflicts([
 assert.match(conflictText, /受取希望時間[\s\S]*変更前：14時頃[\s\S]*変更後：15時頃/);
 assert.match(conflictText, /ご予算[\s\S]*変更前：15,000円[\s\S]*変更後：18,000円/);
 
-console.log('order record workflow tests: 91 assertions passed');
+console.log('order record workflow tests: 95 assertions passed');

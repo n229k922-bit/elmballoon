@@ -1655,7 +1655,7 @@ function formatOwnerDecisionRequest(request, catalogProduct = null) {
   const productMatch = catalogProduct
     ? `\n\n【HP商品照合】\n・商品名：${catalogProduct.name}\n・商品番号：${catalogProduct.product_number}\n・商品ページ：${catalogProduct.product_url}\n※該当する商品画像をこの報告に添付しています。`
     : '';
-  return `統括マネージャーです。\n\n注文担当から店長確認が必要な内容を受け取りました。AIは価格・在庫・納期・配達可否を確約しません。\n\n【店長確認フォーム】\n${request.customerSummary}${productMatch}\n\n【ご判断をお願いします】\n${checks}\n\n判断内容は「店長確認 ${request.id} （判断内容）」と返信してください。\n例：店長確認 ${request.id} 配達可。配達料は個別見積、16時以降は不可`;
+  return `統括マネージャーです。\n\n注文担当から、店長の判断が必要な内容を受け取りました。\nAIは価格・在庫・納期・配達可否を確約しません。\n\n【確認内容】\n${request.customerSummary}${productMatch}\n\n【確認していただきたいこと】\n${checks}\n\n【返信方法】\n確認待ちが1件の場合は、次のいずれかをそのまま返信してください。\n\n・受ける：この内容で対応可能\n・難しい：対応が難しい\n・確認：内容を見直す\n\n条件や理由を添える場合\n・受ける 配達料は別途、16時以降は不可\n・難しい 納期が合わないため\n\n確認待ちが複数ある場合は、カルテ番号を付けてください。\n例：受ける KABC123`;
 }
 
 async function replyCustomerConversation(event, env) {
