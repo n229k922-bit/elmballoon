@@ -1,5 +1,22 @@
 # AIマネージャー育成計画
 
+## 今回の総合検証（2026-09-29）
+
+- [x] ローカル回帰テストを実行し、失敗箇所を修正する
+- [x] Worker構文・Wrangler dry-run・DBマイグレーション整合性を確認する
+- [x] ステータス確認フロー（受注・制作開始・完成・受渡し・支払い）を検証する
+- [x] 店長userId・Webhook・Tokenなど本番依存設定を洗い出す
+- [x] 本番公開前の残課題と、店長向けの最小操作手順を整理する
+
+### Review
+
+- ローカル回帰テストは101 assertions、静的サイト検証は123ページ、Worker構文検査・Wrangler dry-runは成功した。
+- ローカルD1へ0001〜0012の全12マイグレーションを適用し、注文カルテ関連テーブルを確認した。
+- Cloudflare本番D1は一覧上 `num_tables: 0` で、remote migration照会はアカウント権限エラー（7403）になった。本番DB適用と公開は未実施のため、Cloudflare権限または対象アカウントを確認してから実行する。
+- 店長userId、LINEの2系統Webhook、4つのSecret/Token、Google Calendarのrefresh token、統括リッチメニューのテスト登録が本番前の依存事項として残っている。
+- 公開WorkerのカレンダーAPIを実機確認したところ、Secret名の不一致で `calendar_token_refresh_failed` が発生していたため、`GOOGLE_OAUTH_CLIENT_*` と旧 `GOOGLE_CLIENT_*` の両方を参照する修正を追加した。修正後の本番確認にはWorkerデプロイが必要。
+
+
 ## 実装
 
 ### 店長通知の一本化（2026-09-29）

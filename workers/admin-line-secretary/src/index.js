@@ -60,6 +60,15 @@ export default {
 
 const GOOGLE_REDIRECT_URI = 'https://elm-balloon-admin-line-secretary.n229k922.workers.dev/oauth/google/callback';
 
+// Secret名は旧環境と現行環境の両方を許容する。
+function googleClientId(env) {
+  return env.GOOGLE_OAUTH_CLIENT_ID || env.GOOGLE_CLIENT_ID || '';
+}
+
+function googleClientSecret(env) {
+  return env.GOOGLE_OAUTH_CLIENT_SECRET || env.GOOGLE_CLIENT_SECRET || '';
+}
+
 async function publicSchedule(request, env) {
   const rows = await env.DB.prepare(`SELECT date, status, open_time, close_time, delivery_window, note, updated_at
       FROM business_schedule ORDER BY date ASC`).all();
@@ -80,10 +89,11 @@ async function publicSchedule(request, env) {
 }
 
 function googleOAuthStart(env) {
-  if (!env.GOOGLE_CLIENT_ID) return new Response('Google OAuth client is not configured', { status: 503 });
+  const clientId = googleClientId(env);
+  if (!clientId) return new Response('Google OAuth client is not configured', { status: 503 });
   const auth = new URL('https://accounts.google.com/o/oauth2/v2/auth');
   auth.search = new URLSearchParams({
-    client_id: env.GOOGLE_CLIENT_ID,
+    client_id: clientId,
     redirect_uri: GOOGLE_REDIRECT_URI,
     response_type: 'code',
     access_type: 'offline',
@@ -96,9 +106,12 @@ function googleOAuthStart(env) {
 async function googleOAuthCallback(url, env) {
   const code = url.searchParams.get('code');
   if (!code) return new Response('Google OAuth was cancelled or failed.', { status: 400 });
+  const clientId = googleClientId(env);
+  const clientSecret = googleClientSecret(env);
+  if (!clientId || !clientSecret) return new Response('Google OAuth client is not configured', { status: 503 });
   const response = await fetch('https://oauth2.googleapis.com/token', {
     method: 'POST', headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-    body: new URLSearchParams({ code, client_id: env.GOOGLE_CLIENT_ID, client_secret: env.GOOGLE_CLIENT_SECRET, redirect_uri: GOOGLE_REDIRECT_URI, grant_type: 'authorization_code' }),
+    body: new URLSearchParams({ code, client_id: clientId, client_secret: clientSecret, redirect_uri: GOOGLE_REDIRECT_URI, grant_type: 'authorization_code' }),
   });
   const token = await response.json();
   if (!response.ok || !token.refresh_token) return new Response('Google OAuth token exchange failed.', { status: 502 });
@@ -116,7 +129,7 @@ async function calendarAvailability(request, env) {
   if (!refreshToken) return json({ error: 'calendar_not_connected' }, 503);
   const tokenRes = await fetch('https://oauth2.googleapis.com/token', {
     method: 'POST', headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-    body: new URLSearchParams({ client_id: env.GOOGLE_CLIENT_ID, client_secret: env.GOOGLE_CLIENT_SECRET, refresh_token: refreshToken, grant_type: 'refresh_token' }),
+    body: new URLSearchParams({ client_id: googleClientId(env), client_secret: googleClientSecret(env), refresh_token: refreshToken, grant_type: 'refresh_token' }),
   });
   const token = await tokenRes.json();
   if (!tokenRes.ok || !token.access_token) return json({ error: 'calendar_token_refresh_failed' }, 502);

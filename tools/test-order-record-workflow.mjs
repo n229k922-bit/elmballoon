@@ -16,7 +16,7 @@ const source = fs.readFileSync(sourcePath, 'utf8')
     ownerDecisionScopeMarker, ownerNotificationAction, formatOwnerDecisionRequest,
     appendOwnerReviewEvents, formatPendingOwnerDecisionList, richMenuPrompt,
     notifyOwners, productReferenceFromOwnerSummary, formatCalendarReport,
-    normalizeManagerCommand, detectOrderRiskFlags
+    normalizeManagerCommand, detectOrderRiskFlags, googleClientId, googleClientSecret
   };`;
 
 const context = vm.createContext({
@@ -67,6 +67,8 @@ const {
   formatCalendarReport,
   normalizeManagerCommand,
   detectOrderRiskFlags,
+  googleClientId,
+  googleClientSecret,
 } = context.__orderTests;
 
 const session = { stage: 'new', fields: {}, customerKind: 'new' };
@@ -265,6 +267,9 @@ assert.match(richMenuPrompt('制作進捗更新'), /はい／いいえ/);
 assert.match(richMenuPrompt('制作進捗更新'), /制作が完成しました/);
 assert.match(richMenuPrompt('制作進捗更新'), /遠隔クレジット決済.*手動/);
 assert.match(richMenuPrompt('システム変更依頼'), /変更案と影響範囲を整理/);
+assert.equal(googleClientId({ GOOGLE_OAUTH_CLIENT_ID: 'oauth-id' }), 'oauth-id');
+assert.equal(googleClientId({ GOOGLE_CLIENT_ID: 'legacy-id' }), 'legacy-id');
+assert.equal(googleClientSecret({ GOOGLE_OAUTH_CLIENT_SECRET: 'oauth-secret' }), 'oauth-secret');
 const consolidatedOwnerSummary = appendOwnerReviewEvents('テスト様からの聞き取り内容', [
   { event_type: 'customer.name_confirmed', detail: JSON.stringify({ name: '山田花子' }) },
   { event_type: 'product.reference_unmatched', detail: JSON.stringify({ reference: '36' }) },
