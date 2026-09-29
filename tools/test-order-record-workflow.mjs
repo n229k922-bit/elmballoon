@@ -14,7 +14,7 @@ const source = fs.readFileSync(sourcePath, 'utf8')
     processCustomerMessageBundleAfterWait, createOrderDisplayCode,
     formatAmbiguousOrderChoices, orderRecordStatusLabel, formatOrderUpdateConflicts,
     ownerDecisionScopeMarker, ownerNotificationAction, formatOwnerDecisionRequest,
-    appendOwnerReviewEvents,
+    appendOwnerReviewEvents, formatPendingOwnerDecisionList, richMenuPrompt,
     notifyOwners, productReferenceFromOwnerSummary
   };`;
 
@@ -59,6 +59,8 @@ const {
   ownerNotificationAction,
   formatOwnerDecisionRequest,
   appendOwnerReviewEvents,
+  formatPendingOwnerDecisionList,
+  richMenuPrompt,
   notifyOwners,
   productReferenceFromOwnerSummary,
 } = context.__orderTests;
@@ -244,6 +246,15 @@ assert.match(ownerReport, /・受ける：この内容で対応可能/);
 assert.match(ownerReport, /・難しい：対応が難しい/);
 assert.match(ownerReport, /例：受ける KABC123/);
 assert.doesNotMatch(ownerReport, /店長確認 decision:/);
+const pendingMenuReport = formatPendingOwnerDecisionList([
+  { display_code: 'KABC123', customer_summary: '山田花子さんからの聞き取り内容\n\n【制作可否の確認項目】\n・ご予算：15,000円' },
+], true);
+assert.match(pendingMenuReport, /【確認待ち一覧】/);
+assert.match(pendingMenuReport, /受ける KABC123/);
+assert.match(richMenuPrompt('日付変更依頼'), /変更前と変更後を確認/);
+assert.match(richMenuPrompt('お客様への返信依頼'), /お客様へ KABC123/);
+assert.match(richMenuPrompt('制作進捗更新'), /制作開始 KABC123/);
+assert.match(richMenuPrompt('システム変更依頼'), /変更案を整理/);
 const consolidatedOwnerSummary = appendOwnerReviewEvents('テスト様からの聞き取り内容', [
   { event_type: 'customer.name_confirmed', detail: JSON.stringify({ name: '山田花子' }) },
   { event_type: 'product.reference_unmatched', detail: JSON.stringify({ reference: '36' }) },
@@ -346,4 +357,4 @@ const conflictText = formatOrderUpdateConflicts([
 assert.match(conflictText, /受取希望時間[\s\S]*変更前：14時頃[\s\S]*変更後：15時頃/);
 assert.match(conflictText, /ご予算[\s\S]*変更前：15,000円[\s\S]*変更後：18,000円/);
 
-console.log('order record workflow tests: 95 assertions passed');
+console.log('order record workflow tests: 101 assertions passed');

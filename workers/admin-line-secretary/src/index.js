@@ -191,6 +191,10 @@ async function handleAdmin(event, env) {
   if (/^(?:カルテ|最新カルテ)$/u.test(text)) {
     return replyLatestOrderRecord(event.replyToken, env);
   }
+  const richMenuCommand = text.match(/^(確認待ち一覧|受注判断|日付変更依頼|お客様への返信依頼|制作進捗更新|システム変更依頼)$/u);
+  if (richMenuCommand) {
+    return handleRichMenuCommand(event.replyToken, richMenuCommand[1], env);
+  }
   if (text === '顧客送信確認') {
     return confirmPendingOwnerCustomerMessage(event.replyToken, userId, env);
   }
@@ -980,6 +984,46 @@ async function replyLatestOrderRecord(replyToken, env) {
     Number(pendingRow?.total || 0),
   );
   return reply(replyToken, message, env);
+}
+
+async function handleRichMenuCommand(replyToken, command, env) {
+  if (command === '確認待ち一覧' || command === '受注判断') {
+    return replyPendingOwnerDecisions(replyToken, env, command === '受注判断');
+  }
+  return reply(replyToken, richMenuPrompt(command), env);
+}
+
+async function replyPendingOwnerDecisions(replyToken, env, decisionMode = false) {
+  const rows = await env.DB.prepare(`SELECT d.id, d.request_types, d.customer_summary,
+      r.display_code, r.status AS order_status
+      FROM owner_decision_requests d
+      LEFT JOIN customer_order_records r ON r.source_thread_id = d.order_thread_id AND r.is_active = 1
+      WHERE d.status = 'needs_owner_review'
+      ORDER BY d.created_at ASC LIMIT 10`).all();
+  return reply(replyToken, formatPendingOwnerDecisionList(rows.results || [], decisionMode), env);
+}
+
+function formatPendingOwnerDecisionList(rows, decisionMode = false) {
+  if (!rows.length) return '確認待ちの注文はありません。';
+  const lines = rows.map((row, index) => {
+    const code = row.display_code || row.id;
+    const summary = String(row.customer_summary || '').split('\n').slice(0, 4).join('\n');
+    return `【${index + 1}】${code}\n${summary}`;
+  });
+  const suffix = decisionMode
+    ? '\n\n返信例：\n・受ける KABC123\n・難しい KABC123 理由\n・確認 KABC123'
+    : '\n\n受注判断を行う場合は「受注判断」を押してください。';
+  return `【確認待ち一覧】\n\n${lines.join('\n\n')}${suffix}`;
+}
+
+function richMenuPrompt(command) {
+  const prompts = {
+    '日付変更依頼': '【日付変更依頼】\n\n変更する注文のカルテ番号、変更後の日付、希望時間を送ってください。\n\n例：日付変更 KABC123 2026年10月5日 14時頃\n\n変更前と変更後を確認し、店長の確定後に反映します。',
+    'お客様への返信依頼': '【お客様への返信依頼】\n\n返信する注文のカルテ番号と、送りたい内容を送ってください。\n\n例：お客様へ KABC123 ご希望の日時で対応可能か確認します。\n\n送信前に内容を表示し、店長の確認後にお客様へ送信します。',
+    '制作進捗更新': '【制作進捗更新】\n\n更新する注文のカルテ番号と進捗を送ってください。\n\n例：制作開始 KABC123\n完成 KABC123\n受渡完了 KABC123\n支払完了 KABC123',
+    'システム変更依頼': '【システム変更依頼】\n\n変更したい対象と内容を送ってください。\n\n例：商品ページの画像を差し替えたい\n例：注文ヒアリング文を変更したい\n\n変更案を整理し、店長確認後に反映します。',
+  };
+  return prompts[command] || `${command}を受け付けました。内容を確認して整理します。`;
 }
 
 async function selectActiveOrderForManager(displayCode, env) {
