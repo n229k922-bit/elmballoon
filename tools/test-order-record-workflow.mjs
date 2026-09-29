@@ -12,7 +12,11 @@ const source = fs.readFileSync(sourcePath, 'utf8')
     parseFlexibleCustomerDate, parseFlexibleCustomerTime, formatOrderRecordCard,
     shouldBypassCustomerMessageBundle, createBundledCustomerEvent,
     processCustomerMessageBundleAfterWait, createOrderDisplayCode,
-    formatAmbiguousOrderChoices, orderRecordStatusLabel, formatOrderUpdateConflicts
+    formatAmbiguousOrderChoices, orderRecordStatusLabel, formatOrderUpdateConflicts,
+    ownerDecisionScopeMarker, ownerNotificationAction, formatOwnerDecisionRequest,
+    appendOwnerReviewEvents, formatPendingOwnerDecisionList, richMenuPrompt,
+    notifyOwners, productReferenceFromOwnerSummary, formatCalendarReport,
+    normalizeManagerCommand, detectOrderRiskFlags, googleClientId, googleClientSecret
   };`;
 
 const context = vm.createContext({
@@ -52,6 +56,19 @@ const {
   formatAmbiguousOrderChoices,
   orderRecordStatusLabel,
   formatOrderUpdateConflicts,
+  ownerDecisionScopeMarker,
+  ownerNotificationAction,
+  formatOwnerDecisionRequest,
+  appendOwnerReviewEvents,
+  formatPendingOwnerDecisionList,
+  richMenuPrompt,
+  notifyOwners,
+  productReferenceFromOwnerSummary,
+  formatCalendarReport,
+  normalizeManagerCommand,
+  detectOrderRiskFlags,
+  googleClientId,
+  googleClientSecret,
 } = context.__orderTests;
 
 const session = { stage: 'new', fields: {}, customerKind: 'new' };
@@ -59,6 +76,7 @@ const start = orderReply('注文担当を呼び出します', session);
 assert.equal(start.session.stage, 'collecting');
 assert.equal(missingIntakeFields(start.session.fields).length, 8);
 assert.match(start.message, /プレゼント・使用予定日/);
+assert.match(start.message, /店舗対応時間は10:00〜16:00/);
 assert.doesNotMatch(start.message, /・お名前：/);
 assert.doesNotMatch(start.message, /メッセージカードの有無/);
 assert.equal(splitCustomerReply(start.message).length, 3);
@@ -210,6 +228,85 @@ assert.equal(schedule.date, '2026-10-02');
 assert.equal(schedule.time, '14:00');
 assert.equal(schedule.type, 'pickup');
 
+const shorthandPickupSchedule = extractScheduleCandidate(`・受取希望日：来週木曜日
+・受取希望時間：午後2時半
+・受取方法：店頭`);
+assert.equal(shorthandPickupSchedule.type, 'pickup');
+assert.equal(shorthandPickupSchedule.time, '14:30');
+assert.equal(shorthandPickupSchedule.dateExpression, '来週木曜日');
+assert.equal(ownerDecisionScopeMarker({ display_code: 'KTEST01', sequence_number: 7 }), '%注文カルテ KTEST01%');
+assert.equal(ownerDecisionScopeMarker({ display_code: null, sequence_number: 7 }), '%注文カルテ No.7%');
+assert.equal(ownerNotificationAction('owner-decision:decision:test'), 'owner.notification:owner-decision:decision:test');
+const ownerReport = formatOwnerDecisionRequest({
+  id: 'decision:test',
+  requestTypes: ['schedule'],
+  customerSummary: 'テスト注文',
+}, {
+  name: 'バルーンアレンジ㊱',
+  product_number: '36',
+  product_url: 'https://example.com/item-36',
+});
+assert.match(ownerReport, /商品名：バルーンアレンジ㊱/);
+assert.match(ownerReport, /該当する商品画像をこの報告に添付/);
+assert.match(ownerReport, /【返信方法】/);
+assert.match(ownerReport, /・1 受ける：この内容で対応可能/);
+assert.match(ownerReport, /・1 難しい 理由：対応が難しい/);
+assert.match(ownerReport, /1 受ける/);
+assert.doesNotMatch(ownerReport, /店長確認 decision:/);
+const pendingMenuReport = formatPendingOwnerDecisionList([
+  { display_code: 'KABC123', customer_summary: '山田花子さんからの聞き取り内容\n\n【制作可否の確認項目】\n・ご予算：15,000円' },
+], true);
+assert.match(pendingMenuReport, /【確認待ち一覧】/);
+assert.match(pendingMenuReport, /1 受ける/);
+assert.match(pendingMenuReport, /正式カルテ番号/);
+assert.match(richMenuPrompt('日付変更依頼'), /カレンダーの重複を確認/);
+assert.match(richMenuPrompt('お客様への返信依頼'), /1 お客様へ/);
+assert.match(richMenuPrompt('お客様への返信依頼'), /1 指定メッセージ/);
+assert.match(formatCalendarReport('2026-10-05', '20:00', '21:00', []), /夜間の配達は.*個別にご案内/);
+assert.match(richMenuPrompt('制作進捗更新'), /はい／いいえ/);
+assert.match(richMenuPrompt('制作進捗更新'), /制作が完成しました/);
+assert.match(richMenuPrompt('制作進捗更新'), /遠隔クレジット決済.*手動/);
+assert.match(richMenuPrompt('システム変更依頼'), /変更案と影響範囲を整理/);
+assert.equal(googleClientId({ GOOGLE_OAUTH_CLIENT_ID: 'oauth-id' }), 'oauth-id');
+assert.equal(googleClientId({ GOOGLE_CLIENT_ID: 'legacy-id' }), 'legacy-id');
+assert.equal(googleClientSecret({ GOOGLE_OAUTH_CLIENT_SECRET: 'oauth-secret' }), 'oauth-secret');
+const consolidatedOwnerSummary = appendOwnerReviewEvents('テスト様からの聞き取り内容', [
+  { event_type: 'customer.name_confirmed', detail: JSON.stringify({ name: '山田花子' }) },
+  { event_type: 'product.reference_unmatched', detail: JSON.stringify({ reference: '36' }) },
+  { event_type: 'product.reference_unmatched', detail: JSON.stringify({ reference: '36' }) },
+  { event_type: 'schedule.conflict', detail: JSON.stringify({ requested: '2026年10月2日 14:00', detail: 'この日は店休日です。' }) },
+]);
+assert.match(consolidatedOwnerSummary, /【追加確認事項】/);
+assert.match(consolidatedOwnerSummary, /商品番号「36」/);
+assert.match(consolidatedOwnerSummary, /この日は店休日です/);
+assert.equal((consolidatedOwnerSummary.match(/商品番号「36」/g) || []).length, 1);
+
+const ownerNotificationAudits = [];
+const notificationEnv = {
+  ADMIN_LINE_USER_IDS: 'U-manager',
+  LINE_CHANNEL_ACCESS_TOKEN: 'test-token',
+  DB: {
+    prepare(sql) {
+      return {
+        bind(...args) { this.args = args; return this; },
+        async run() { ownerNotificationAudits.push({ sql, args: this.args }); return { meta: { changes: 1 } }; },
+      };
+    },
+  },
+};
+const originalFetch = context.fetch;
+context.fetch = async () => ({ ok: true, status: 200, text: async () => '' });
+const notificationResult = await notifyOwners('統括報告', notificationEnv, [], 'owner-decision:decision:test');
+context.fetch = originalFetch;
+assert.equal(notificationResult.requested, 1);
+assert.equal(notificationResult.sent, 1);
+assert.equal(notificationResult.error, null);
+assert.equal(ownerNotificationAudits.length, 1);
+assert.equal(ownerNotificationAudits[0].args[1], 'owner.notification:owner-decision:decision:test');
+assert.equal(productReferenceFromOwnerSummary('・商品番号・参考画像：36\n・ご予算：15,000円'), '36');
+assert.equal(productReferenceFromOwnerSummary('・商品番号・参考画像：参考画像あり'), null);
+assert.equal(productReferenceFromOwnerSummary('・商品番号・参考画像：未定'), null);
+
 const fieldRows = Object.fromEntries(updates.map((update) => [update.key, {
   value_text: update.value,
   status: update.status,
@@ -267,7 +364,12 @@ const ambiguous = formatAmbiguousOrderChoices([
   { display_code: 'KDEF456', customer_display_name: '田中', status: 'production' },
 ], '制作開始 カルテ番号');
 assert.match(ambiguous, /KABC123：山田花子さん（注文確定）/);
-assert.match(ambiguous, /例：制作開始 KABC123/);
+assert.match(ambiguous, /例：1 制作開始/);
+assert.equal(normalizeManagerCommand('1 受ける'), '受ける 1');
+assert.equal(normalizeManagerCommand('2 難しい 納期が合わない'), '難しい 2 納期が合わない');
+assert.equal(normalizeManagerCommand('1 支払案内済み'), '支払案内済み 1');
+assert.match(detectOrderRiskFlags('明日の夜に配達、画像と同じ仕上がり、返金の相談', { time: '20:00' }).join('\n'), /直前・急ぎ/);
+assert.match(detectOrderRiskFlags('明日の夜に配達、画像と同じ仕上がり、返金の相談', { time: '20:00' }).join('\n'), /夜間配達/);
 const conflictText = formatOrderUpdateConflicts([
   { fieldKey: 'receive_time', oldValue: '14時頃', newValue: '15時頃' },
   { fieldKey: 'budget', oldValue: '15,000円', newValue: '18,000円' },
@@ -275,4 +377,4 @@ const conflictText = formatOrderUpdateConflicts([
 assert.match(conflictText, /受取希望時間[\s\S]*変更前：14時頃[\s\S]*変更後：15時頃/);
 assert.match(conflictText, /ご予算[\s\S]*変更前：15,000円[\s\S]*変更後：18,000円/);
 
-console.log('order record workflow tests: 70 assertions passed');
+console.log('order record workflow tests: 101 assertions passed');

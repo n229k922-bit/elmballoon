@@ -1,6 +1,7 @@
 const encoder = new TextEncoder();
 const CUSTOMER_SESSION_TTL = 60 * 60 * 24 * 14;
 const CUSTOMER_MESSAGE_BUNDLE_WAIT_MS = 12_000;
+const STORE_SERVICE_HOURS_NOTICE = '店舗対応時間は10:00〜16:00です。夜間の配達は、地域・内容・当日の予定を確認して個別にご案内します。';
 const DATE_INPUT_PATTERN = '(?:令和\\s*\\d{1,2}年?\\s*\\d{1,2}[月/-]\\s*\\d{1,2}日?|R\\s*\\d{1,2}[年/月/-]\\s*\\d{1,2}[月/-]\\s*\\d{1,2}日?|\\d{4}年?\\s*\\d{1,2}[月/-]\\s*\\d{1,2}日?|\\d{1,2}月\\s*\\d{1,2}日?|\\d{4}[/-]\\d{1,2}[/-]\\d{1,2})';
 const CUSTOMER_REPLY_TIMINGS = {
   initial_intake: { minDelayMs: 3000, maxDelayMs: 5000, loadingSeconds: 5 },
@@ -52,16 +53,28 @@ export default {
     }
     return new Response('Not found', { status: 404 });
   },
+  async scheduled(_controller, env, ctx) {
+    ctx.waitUntil(retryPendingOwnerNotifications(env));
+  },
 };
 
 const GOOGLE_REDIRECT_URI = 'https://elm-balloon-admin-line-secretary.n229k922.workers.dev/oauth/google/callback';
 
+// Secret名は旧環境と現行環境の両方を許容する。
+function googleClientId(env) {
+  return env.GOOGLE_OAUTH_CLIENT_ID || env.GOOGLE_CLIENT_ID || '';
+}
+
+function googleClientSecret(env) {
+  return env.GOOGLE_OAUTH_CLIENT_SECRET || env.GOOGLE_CLIENT_SECRET || '';
+}
+
 async function publicSchedule(request, env) {
-  const rows = await env.DB.prepare(`SELECT date, status, open_time, close_time, note, updated_at
+  const rows = await env.DB.prepare(`SELECT date, status, open_time, close_time, delivery_window, note, updated_at
       FROM business_schedule ORDER BY date ASC`).all();
   const exceptions = (rows.results || []).map((row) => {
     if (row.status === 'special_hours') {
-      return { date: row.date, status: row.status, start: row.open_time, end: row.close_time, label: row.note || '営業時間変更' };
+      return { date: row.date, status: row.status, start: row.open_time, end: row.close_time, delivery_window: row.delivery_window || null, label: row.note || '営業時間変更' };
     }
     return { date: row.date, status: row.status, label: row.note || (row.status === 'closed' ? '臨時休業' : '営業予定') };
   });
@@ -76,10 +89,11 @@ async function publicSchedule(request, env) {
 }
 
 function googleOAuthStart(env) {
-  if (!env.GOOGLE_CLIENT_ID) return new Response('Google OAuth client is not configured', { status: 503 });
+  const clientId = googleClientId(env);
+  if (!clientId) return new Response('Google OAuth client is not configured', { status: 503 });
   const auth = new URL('https://accounts.google.com/o/oauth2/v2/auth');
   auth.search = new URLSearchParams({
-    client_id: env.GOOGLE_CLIENT_ID,
+    client_id: clientId,
     redirect_uri: GOOGLE_REDIRECT_URI,
     response_type: 'code',
     access_type: 'offline',
@@ -92,9 +106,12 @@ function googleOAuthStart(env) {
 async function googleOAuthCallback(url, env) {
   const code = url.searchParams.get('code');
   if (!code) return new Response('Google OAuth was cancelled or failed.', { status: 400 });
+  const clientId = googleClientId(env);
+  const clientSecret = googleClientSecret(env);
+  if (!clientId || !clientSecret) return new Response('Google OAuth client is not configured', { status: 503 });
   const response = await fetch('https://oauth2.googleapis.com/token', {
     method: 'POST', headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-    body: new URLSearchParams({ code, client_id: env.GOOGLE_CLIENT_ID, client_secret: env.GOOGLE_CLIENT_SECRET, redirect_uri: GOOGLE_REDIRECT_URI, grant_type: 'authorization_code' }),
+    body: new URLSearchParams({ code, client_id: clientId, client_secret: clientSecret, redirect_uri: GOOGLE_REDIRECT_URI, grant_type: 'authorization_code' }),
   });
   const token = await response.json();
   if (!response.ok || !token.refresh_token) return new Response('Google OAuth token exchange failed.', { status: 502 });
@@ -112,7 +129,7 @@ async function calendarAvailability(request, env) {
   if (!refreshToken) return json({ error: 'calendar_not_connected' }, 503);
   const tokenRes = await fetch('https://oauth2.googleapis.com/token', {
     method: 'POST', headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-    body: new URLSearchParams({ client_id: env.GOOGLE_CLIENT_ID, client_secret: env.GOOGLE_CLIENT_SECRET, refresh_token: refreshToken, grant_type: 'refresh_token' }),
+    body: new URLSearchParams({ client_id: googleClientId(env), client_secret: googleClientSecret(env), refresh_token: refreshToken, grant_type: 'refresh_token' }),
   });
   const token = await tokenRes.json();
   if (!tokenRes.ok || !token.access_token) return json({ error: 'calendar_token_refresh_failed' }, 502);
@@ -130,7 +147,7 @@ function formatCalendarReport(date, startTime, endTime, busy) {
   const lines = busy.length
     ? busy.map((event) => `・${event.start?.slice(11, 16) || '終日'}〜${event.end?.slice(11, 16) || '終日'}：${event.summary}`).join('\n')
     : '・重複する予定はありません。';
-  return `【カレンダー確認結果】\n\n対象日時：${formatJapanDate(date)} ${startTime}〜${endTime}\n\n【既存予定】\n${lines}`;
+  return `【カレンダー確認結果】\n\n対象日時：${formatJapanDate(date)} ${startTime}〜${endTime}\n${STORE_SERVICE_HOURS_NOTICE}\n\n【既存予定】\n${lines}`;
 }
 
 function json(value, status = 200, extraHeaders = {}) {
@@ -153,9 +170,17 @@ async function handleEvent(event, env) {
   return admins.has(userId) ? handleAdmin(event, env) : handleCustomer(event, env);
 }
 
+function normalizeManagerCommand(text) {
+  const match = text.match(/^([1-9])\s+(受ける|難しい|確認|制作開始|完成|受渡完了|支払案内済み|支払確認待ち|支払完了|日付変更|お客様へ|顧客送信|指定メッセージ|店長指定メッセージ|電話メモ|紙注文補足)(?:\s+([\s\S]+))?$/u);
+  if (!match) return text;
+  return `${match[2]} ${match[1]}${match[3] ? ` ${match[3]}` : ''}`;
+}
+
 async function handleAdmin(event, env) {
-  if (event.message?.type !== 'text') return reply(event.replyToken, '営業時間の変更は文字でお送りください。', env);
-  const userId = event.source.userId, text = event.message.text.trim(), pendingKey = 'pending:' + userId;
+  if (event.message?.type === 'image') return registerManualOrderFormImage(event, env);
+  if (event.message?.type !== 'text') return reply(event.replyToken, '注文書画像または文字でお送りください。', env);
+  const userId = event.source.userId, text = normalizeManagerCommand(event.message.text.trim()), pendingKey = 'pending:' + userId;
+  const pendingStatusKey = 'pending-status:' + userId;
   const sendReply = text.match(/^送信\s+(review:[^\s]+)(?:\s+([\s\S]+))?$/u);
   if (sendReply) return prepareCustomerReplySend(event.replyToken, userId, sendReply[1], sendReply[2]?.trim() || null, false, env);
   if (text === '送信') {
@@ -188,10 +213,34 @@ async function handleAdmin(event, env) {
   if (/^(?:カルテ|最新カルテ)$/u.test(text)) {
     return replyLatestOrderRecord(event.replyToken, env);
   }
+  const richMenuCommand = text.match(/^(確認待ち一覧|受注判断|日付変更依頼|お客様への返信依頼|制作進捗更新|システム変更依頼)$/u);
+  if (richMenuCommand) {
+    return handleRichMenuCommand(event.replyToken, richMenuCommand[1], env);
+  }
   if (text === '顧客送信確認') {
     return confirmPendingOwnerCustomerMessage(event.replyToken, userId, env);
   }
-  const ownerCustomerMessage = text.match(/^(?:お客様へ|顧客送信)(?:\s+(K[A-Z0-9]+))?\s+([\s\S]+)$/iu);
+  // 自然文で届いた進捗報告も、対象カルテを推定して確認フローへ送ります。
+  const implicitStatus = text.match(/^(?:(K[A-Z0-9]+|[1-9])\s*)?(制作が?完了|完成(?:しました)?|できあが(?:りました|った)|受け渡し(?:が)?完了|受渡完了|お渡し(?:しました|完了)|引き渡し完了)(?:[。！!].*)?$/iu);
+  if (implicitStatus) {
+    const action = /受け渡し|受渡|お渡し|引き渡し/u.test(implicitStatus[2]) ? '受渡完了' : '完成';
+    return proposeOrderLifecycleTransition(event.replyToken, userId, action, implicitStatus[1]?.toUpperCase() || null, env);
+  }
+  const manualSupplement = text.match(/^紙注文補足(?:\s+((?:K[A-Z0-9]+|[1-9])))?\s+([\s\S]+)$/iu);
+  if (manualSupplement) {
+    return recordManualOrderSupplement(
+      event.replyToken,
+      userId,
+      manualSupplement[1]?.toUpperCase() || null,
+      manualSupplement[2].trim(),
+      env,
+    );
+  }
+  const dateChange = text.match(/^日付変更\s+((?:K[A-Z0-9]+|[1-9]))\s+([\s\S]+)$/iu);
+  if (dateChange) {
+    return recordOrderDateChange(event.replyToken, userId, dateChange[1].toUpperCase(), dateChange[2].trim(), env);
+  }
+  const ownerCustomerMessage = text.match(/^(?:お客様へ|顧客送信|指定メッセージ|店長指定メッセージ)(?:\s+((?:K[A-Z0-9]+|[1-9])))?\s+([\s\S]+)$/iu);
   if (ownerCustomerMessage) {
     return prepareOwnerCustomerMessage(
       event.replyToken,
@@ -201,7 +250,7 @@ async function handleAdmin(event, env) {
       env,
     );
   }
-  const phoneMemo = text.match(/^電話メモ(?:\s+(K[A-Z0-9]+))?\s+([\s\S]+)$/iu);
+  const phoneMemo = text.match(/^電話メモ(?:\s+((?:K[A-Z0-9]+|[1-9])))?\s+([\s\S]+)$/iu);
   if (phoneMemo) {
     return recordOwnerPhoneMemo(
       event.replyToken,
@@ -211,7 +260,7 @@ async function handleAdmin(event, env) {
       env,
     );
   }
-  const shortOwnerDecision = text.match(/^(受ける|難しい|確認)(?:\s+(K[A-Z0-9]+))?(?:\s+([\s\S]+))?$/iu);
+  const shortOwnerDecision = text.match(/^(受ける|難しい|確認)(?:\s+((?:K[A-Z0-9]+|[1-9])))?(?:\s+([\s\S]+))?$/iu);
   if (shortOwnerDecision) {
     return handleOwnerShortDecision(
       event.replyToken,
@@ -222,7 +271,7 @@ async function handleAdmin(event, env) {
       env,
     );
   }
-  const lifecycleCommand = text.match(/^(制作開始|完成|受渡完了|支払完了)(?:\s+(K[A-Z0-9]+))?$/iu);
+  const lifecycleCommand = text.match(/^(制作開始|完成|受渡完了|支払案内済み|支払確認待ち|支払完了)(?:\s+((?:K[A-Z0-9]+|[1-9])))?$/iu);
   if (lifecycleCommand) {
     return handleOrderLifecycleCommand(
       event.replyToken,
@@ -243,13 +292,27 @@ async function handleAdmin(event, env) {
       : '確認待ちのフォームが見つからないか、すでに記録済みです。', env);
   }
   if (/^(はい|確定|承認)$/u.test(text)) {
+    const pendingStatus = await env.SECRETARY_KV.get(pendingStatusKey, 'json');
+    if (pendingStatus) {
+      await env.SECRETARY_KV.delete(pendingStatusKey);
+      return applyPendingStatusTransition(event.replyToken, userId, pendingStatus, env);
+    }
     const pending = await env.SECRETARY_KV.get(pendingKey, 'json');
     if (!pending) return reply(event.replyToken, '確認待ちの変更はありません。', env);
     await applyChange(pending, userId, env); await env.SECRETARY_KV.delete(pendingKey);
     return reply(event.replyToken, pending.summary + ' を反映しました。', env);
   }
+  if (/^いいえ$/u.test(text)) {
+    const pendingStatus = await env.SECRETARY_KV.get(pendingStatusKey, 'json');
+    if (pendingStatus) {
+      await env.SECRETARY_KV.delete(pendingStatusKey);
+      return reply(event.replyToken, 'ステータスは変更せず、現在の状態を維持しました。', env);
+    }
+    return reply(event.replyToken, '確認待ちのステータス変更はありません。', env);
+  }
   if (/^(取消|キャンセル)$/u.test(text)) {
     await env.SECRETARY_KV.delete(pendingKey);
+    await env.SECRETARY_KV.delete(pendingStatusKey);
     await env.SECRETARY_KV.delete('pending-customer-send:' + userId);
     return reply(event.replyToken, '確認待ちの変更を取り消しました。', env);
   }
@@ -265,7 +328,7 @@ async function handleAdmin(event, env) {
   }
   const route = routeManagerRequest(text);
   if (route) return reply(event.replyToken, route, env);
-  return reply(event.replyToken, '例:「休業 2026-09-22」または「営業時間 2026-09-23 10:00-18:00」。内容を確認後に「確定」と返信してください。', env);
+  return reply(event.replyToken, '例:「休業 2026-09-22」または「営業時間 2026-09-23 10:00-18:00」。内容を確認後に「確定」と返信してください。\n\n' + STORE_SERVICE_HOURS_NOTICE, env);
 }
 
 async function customerLineWebhook(request, env, ctx) {
@@ -437,17 +500,26 @@ async function recordCustomerMessage(event, env) {
   const customerName = customerNames.confirmedName || customerNames.displayName;
   const customerLabel = formatCustomerLabel(customerName);
   if (confirmedName) {
-    await notifyOwners(`統括マネージャーです。\n\n注文担当から、${customerLabel}のお名前確認が取れたと共有がありました。\n今後の注文・予定候補は、このお名前で管理します。`, env);
+    // 名前の確認は受注判断を要する通知ではないため、統括へ即時通知せず
+    // 注文カルテのイベントとして保存する。最終確認依頼に必要な場合だけ要約する。
+    await recordInternalOrderEvent(threadId, 'customer.name_confirmed', {
+      customerLabel,
+      name: confirmedName,
+    }, now, env);
   }
 
   if (details.productReference) {
     if (catalogProduct) {
       await recordProductCatalogMatch(threadId, details.productReference, catalogProduct, now, env);
-      await notifyOwners(formatProductCatalogMatch(customerLabel, details.productReference, catalogProduct), env, [
-        { type: 'image', originalContentUrl: catalogProduct.image_url, previewImageUrl: catalogProduct.image_url },
-      ]);
+      // 商品画像は基本項目が揃った時点の制作可否確認へまとめて添付する。
+      // 聞き取り途中の別通知にすると、最終確認と画像が離れて見落とされやすい。
     } else {
-      await notifyOwners(`統括マネージャーです。\n\n【商品番号確認】\n${customerLabel}から「${details.productReference}」の指定がありましたが、現在の商品マスターでは一致する商品を確認できませんでした。\n\nHPの商品番号・商品ページURL、または参考画像を確認してからご案内してください。`, env);
+      // 商品番号の未照合も、聞き取り途中の単独通知にはしない。
+      // 最終的な受注判断通知にまとめ、店長が同じ案件を何度も開かなくて済むようにする。
+      await recordInternalOrderEvent(threadId, 'product.reference_unmatched', {
+        reference: details.productReference,
+        customerLabel,
+      }, now, env);
     }
   }
 
@@ -462,21 +534,26 @@ async function recordCustomerMessage(event, env) {
     .bind(candidateId, threadId, candidate.type, candidate.date, candidate.time,
       scheduleConflict ? `【営業日注意】${scheduleConflict}\n${text}` : text, now).run();
   if (scheduleConflict) {
-    await notifyOwners(`統括マネージャーです。\n\n【営業日との競合を検知】\n${customerLabel}の${formatScheduleDate(candidate.date, candidate.time)}の${candidate.typeLabel}希望について、${scheduleConflict}\n\n注文候補は自動確定せず、店長確認待ちで記録しました。`, env);
+    // 営業日との競合は候補と一緒に記録し、基本項目が揃った受注確認へ集約する。
+    await recordInternalOrderEvent(threadId, 'schedule.conflict', {
+      requested: formatScheduleDate(candidate.date, candidate.time),
+      type: candidate.typeLabel,
+      detail: scheduleConflict,
+    }, now, env);
   }
   console.log('schedule candidate created', { type: candidate.type, date: candidate.date });
 }
 
 async function findBusinessScheduleConflict(candidate, env) {
-  const row = await env.DB.prepare(`SELECT status, open_time, close_time, note
+  const row = await env.DB.prepare(`SELECT status, open_time, close_time, delivery_window, note
       FROM business_schedule WHERE date = ?`).bind(candidate.date).first();
   if (!row) return null;
   if (row.status === 'closed') return row.note || 'この日は店休日です。';
   if (row.status === 'special_hours' && candidate.time && row.open_time && row.close_time
       && (candidate.time < row.open_time || candidate.time >= row.close_time)) {
-    return `${row.open_time}〜${row.close_time}のみ営業です（希望時刻は営業時間外）。`;
+    return `${row.open_time}〜${row.close_time}は店頭受取などの店舗対応時間です（希望時刻は営業時間外）。${row.delivery_window ? ` 夜間配達の目安：${row.delivery_window}。` : ' 夜間配達は地域・内容・当日の予定を確認して個別判断します。'}`;
   }
-  if (row.status === 'special_hours' && !candidate.time) return `${row.open_time}〜${row.close_time}のみ営業です（希望時刻の確認が必要）。`;
+  if (row.status === 'special_hours' && !candidate.time) return `${row.open_time}〜${row.close_time}は店頭受取などの店舗対応時間です（希望時刻の確認が必要）。${row.delivery_window ? ` 夜間配達の目安：${row.delivery_window}。` : ' 夜間配達は地域・内容・当日の予定を確認して個別判断します。'}`;
   return null;
 }
 
@@ -538,8 +615,8 @@ async function queueCustomerReplyReview(event, env, ctx) {
     return;
   }
 
-  // 基本5項目が揃った直後は、注文担当が内容を復唱してお客様へ確認する。
-  // この確認段階では統括・店長へは通知せず、追加情報の回答後に引き継ぐ。
+  // 基本8項目が揃った直後は、お客様へ復唱しながら統括へ制作可否確認を引き継ぐ。
+  // 統括通知は顧客向けの自然な待ち時間に依存させず、先に確実に処理する。
   if (result.session.stage === 'review' && wasCollecting) {
     const confirmation = basicOrderConfirmation(event.message?.text?.trim() || '', result.session);
     const names = await getCustomerNames('customer:' + customerId, env);
@@ -554,7 +631,22 @@ async function queueCustomerReplyReview(event, env, ctx) {
       now: new Date().toISOString(),
       env,
     });
-    if (ownerRequest) await notifyOwners(formatOwnerDecisionRequest(ownerRequest), env);
+    if (ownerRequest) {
+      const notificationKey = `owner-decision:${ownerRequest.id}`;
+      if (!(await ownerNotificationSucceeded(notificationKey, env))) {
+        const productReference = result.session.fields.productReference || result.session.fields.productSourceValue;
+        const catalogProduct = productReference ? await findProductCatalogMatch(productReference, env) : null;
+        const productImages = catalogProduct?.image_url
+          ? [{ type: 'image', originalContentUrl: catalogProduct.image_url, previewImageUrl: catalogProduct.image_url }]
+          : [];
+        await notifyOwners(
+          formatOwnerDecisionRequest(ownerRequest, catalogProduct),
+          env,
+          productImages,
+          notificationKey,
+        );
+      }
+    }
     const delivery = deliverCustomerMessagesAfterDelay(
       customerId,
       [confirmation],
@@ -950,7 +1042,144 @@ async function replyLatestOrderRecord(replyToken, env) {
   return reply(replyToken, message, env);
 }
 
+async function handleRichMenuCommand(replyToken, command, env) {
+  if (command === '確認待ち一覧') {
+    return replyPendingOwnerDecisions(replyToken, env, false, '【確認待ち一覧】\n\n受注判断・返信承認・変更確認など、店長の確認が必要な案件を表示します。');
+  }
+  if (command === '受注判断') {
+    return replyPendingOwnerDecisions(replyToken, env, true, '【受注判断】\n\n制作可否の判断が必要な注文だけを表示します。');
+  }
+  return reply(replyToken, richMenuPrompt(command), env);
+}
+
+async function replyPendingOwnerDecisions(replyToken, env, decisionMode = false, heading = '【確認待ち一覧】') {
+  const rows = await env.DB.prepare(`SELECT d.id, d.request_types, d.customer_summary,
+      r.display_code, r.status AS order_status
+      FROM owner_decision_requests d
+      LEFT JOIN customer_order_records r ON r.source_thread_id = d.order_thread_id AND r.is_active = 1
+      WHERE d.status = 'needs_owner_review'
+      ORDER BY d.created_at ASC LIMIT 10`).all();
+  return reply(replyToken, formatPendingOwnerDecisionList(rows.results || [], decisionMode, heading), env);
+}
+
+function formatPendingOwnerDecisionList(rows, decisionMode = false, heading = '【確認待ち一覧】') {
+  if (!rows.length) return `${heading}\n\n該当する確認待ちはありません。`;
+  const lines = rows.map((row, index) => {
+    const code = row.display_code || row.id;
+    const summary = String(row.customer_summary || '').split('\n').slice(0, 4).join('\n');
+    return `【${index + 1}】${code}\n${summary}`;
+  });
+  const suffix = decisionMode
+    ? '\n\n操作番号で返信できます（一覧を表示した時点の番号）。\n・1 受ける\n・1 難しい 理由\n・1 確認\n\n正式カルテ番号（Kから始まる番号）も利用できます。'
+    : '\n\n受注判断を行う場合は「受注判断」を押してください。';
+  return `${heading}\n\n${lines.join('\n\n')}${suffix}`;
+}
+
+function richMenuPrompt(command) {
+  const prompts = {
+    '日付変更依頼': '【日付変更依頼】\n\n注文の操作番号（確認待ち一覧の1〜9）または正式カルテ番号と、変更後の日付・時間を送ってください。\n\n例：1 日付変更 10月5日 14時頃\n\n変更内容を復唱し、カレンダーの重複を確認してから反映します。',
+    'お客様への返信依頼': '【お客様への返信依頼】\n\n注文の操作番号または正式カルテ番号と、送りたい文章を送ってください。\n\n例：1 お客様へ ご希望の日時で対応可能か確認します。\n（店長指定文：1 指定メッセージ 本文）\n\n送信案を表示し、店長が「顧客送信確認」と返信した後に送信します。',
+    '制作進捗更新': '【制作進捗更新】\n\n進捗は統括が注文内容を確認し、変更前に「はい／いいえ」で確認します。\n制作開始・完成・受渡し・支払い確認の内容が分かるメッセージを送ってください。\n\n例：KABC123の制作が完成しました。\n例：1 お渡ししました\n\n遠隔クレジット決済の発行・確認は店長が手動で行います。',
+    'システム変更依頼': '【システム変更依頼】\n\n変更対象・変更内容・希望時期を送ってください。\n\n例：商品ページの画像を差し替えたい\n例：注文ヒアリング文を変更したい\n\n変更案と影響範囲を整理し、店長の承認後に反映します。',
+  };
+  return prompts[command] || `${command}を受け付けました。内容を確認して整理します。`;
+}
+
+async function registerManualOrderFormImage(event, env) {
+  const now = new Date().toISOString();
+  const sourceMessageId = event.webhookEventId || event.message?.id || `image:${Date.now()}`;
+  const safeId = String(sourceMessageId).replace(/[^A-Za-z0-9_-]/g, '').slice(-60) || String(Date.now());
+  const customerId = `manual:${safeId}`;
+  const threadId = `manual-thread:${safeId}`;
+  const orderRecordId = `order:${customerId}`;
+  const orderCardId = `order-card:${threadId}`;
+  const displayCode = createOrderDisplayCode();
+
+  await env.DB.batch([
+    env.DB.prepare(`INSERT OR IGNORE INTO customer_profiles
+      (customer_line_user_id, first_seen_at, last_seen_at, completed_order_count, relationship_override)
+      VALUES (?, ?, ?, 0, 'new')`).bind(customerId, now, now),
+    env.DB.prepare(`INSERT OR IGNORE INTO customer_order_threads
+      (id, customer_line_user_id, status, summary, fulfillment_type, created_at, updated_at)
+      VALUES (?, ?, 'collecting', ?, 'unknown', ?, ?)`).bind(threadId, customerId, '来店・電話受付の紙注文書画像', now, now),
+    env.DB.prepare(`INSERT OR IGNORE INTO customer_order_records
+      (id, customer_line_user_id, source_thread_id, sequence_number, display_code,
+       status, is_active, created_at, updated_at)
+      VALUES (?, ?, ?, 1, ?, 'detail_intake', 1, ?, ?)`).bind(orderRecordId, customerId, threadId, displayCode, now, now),
+    env.DB.prepare(`INSERT OR IGNORE INTO order_cards
+      (id, order_thread_id, status, fulfillment_type, owner_notes, created_at, updated_at)
+      VALUES (?, ?, 'needs_details', 'unknown', ?, ?, ?)`).bind(orderCardId, threadId, `紙注文書画像受領（LINE message_id: ${sourceMessageId}）`, now, now),
+    env.DB.prepare(`INSERT INTO order_card_events
+      (order_card_id, event_type, actor, detail, occurred_at)
+      VALUES (?, 'manual.order_form_image_received', 'owner', ?, ?)`).bind(orderCardId, `店長記入の注文書画像を受領しました。画像参照元：${sourceMessageId}`, now),
+    env.DB.prepare(`INSERT INTO order_messages
+      (webhook_event_id, order_thread_id, direction, message_text, occurred_at)
+      VALUES (?, ?, 'owner_recorded', ?, ?)`).bind(`manual-image:${sourceMessageId}`, threadId, '[紙注文書画像を受領]', now),
+    env.DB.prepare(`INSERT INTO order_record_fields
+      (order_record_id, field_key, phase, value_text, status, source_message_id,
+       source_direction, source_occurred_at, confidence, locked, updated_at)
+      VALUES (?, 'order_form_image', 'product_detail', '紙注文書画像あり', 'answered', ?, 'owner_recorded', ?, 1, 0, ?)\n      ON CONFLICT(order_record_id, field_key) DO UPDATE SET
+       value_text = excluded.value_text, status = 'answered', source_message_id = excluded.source_message_id,
+       source_direction = 'owner_recorded', source_occurred_at = excluded.source_occurred_at,
+       updated_at = excluded.updated_at`).bind(orderRecordId, sourceMessageId, now, now),
+  ]);
+  const persisted = await env.DB.prepare(`SELECT display_code FROM customer_order_records WHERE id = ?`)
+    .bind(orderRecordId).first();
+  const cardCode = persisted?.display_code || displayCode;
+
+  return reply(event.replyToken,
+    `紙の注文書画像を受領し、注文カルテへ登録しました。\n\n注文カルテ番号：${cardCode}\n\n画像だけでは読み取りにくい項目や不明点がある場合は、次の形式で補足してください。\n\n紙注文補足 ${cardCode} お名前：／ご連絡先：／商品：／予算：／配色・雰囲気：／希望日・時間：／受取方法：\n\n補足内容は店長記入としてカルテへ反映します。`, env);
+}
+
+async function recordManualOrderSupplement(replyToken, userId, displayCode, text, env) {
+  if (!displayCode) return reply(replyToken, '紙注文書の補足には注文カルテ番号が必要です。例：紙注文補足 KABC123 お名前：山田／ご連絡先：090-0000-0000', env);
+  displayCode = await resolveManagerDisplayCode(displayCode, env, { manualOnly: true });
+  if (!displayCode) return reply(replyToken, 'その操作番号の紙注文書カルテが見つかりません。まず「確認待ち一覧」またはカルテ番号をご確認ください。', env);
+  const orderRecord = await env.DB.prepare(`SELECT r.*, t.id AS thread_id
+      FROM customer_order_records r JOIN customer_order_threads t ON t.id = r.source_thread_id
+      WHERE r.display_code = ? AND r.is_active = 1 AND r.customer_line_user_id LIKE 'manual:%'`).bind(displayCode).first();
+  if (!orderRecord) return reply(replyToken, `${displayCode}の紙注文書カルテが見つかりません。`, env);
+  const now = new Date().toISOString();
+  const sourceMessageId = `manual-supplement:${Date.now()}`;
+  const updates = extractOrderRecordUpdates(text, false, extractScheduleCandidate(text));
+  if (!updates.length) return reply(replyToken, '補足内容を読み取れませんでした。項目名を付けて入力してください（例：お名前：山田／予算：15000円）。', env);
+  await applyOwnerOrderUpdates(orderRecord.id, updates, sourceMessageId, now, userId, env);
+  await env.DB.batch([
+    env.DB.prepare(`INSERT INTO order_messages
+      (webhook_event_id, order_thread_id, direction, message_text, occurred_at)
+      VALUES (?, ?, 'owner_recorded', ?, ?)`).bind(sourceMessageId, orderRecord.thread_id, text.slice(0, 4900), now),
+    env.DB.prepare(`INSERT INTO order_card_events
+      (order_card_id, event_type, actor, detail, occurred_at)
+      VALUES (?, 'manual.order_form_supplement_recorded', 'owner', ?, ?)`).bind(`order-card:${orderRecord.thread_id}`, text.slice(0, 1500), now),
+  ]);
+  return reply(replyToken, `${displayCode}の補足内容を注文カルテへ反映しました。`, env);
+}
+
+async function recordOrderDateChange(replyToken, userId, reference, text, env) {
+  const selection = await selectActiveOrderForManager(reference, env);
+  if (!selection.candidates.length) return reply(replyToken, `${reference}の進行中カルテが見つかりません。`, env);
+  if (!selection.orderRecord) return reply(replyToken, formatAmbiguousOrderChoices(selection.candidates, '日付変更 カルテ番号 日付 時間'), env);
+  const candidate = extractScheduleCandidate(text);
+  if (!candidate?.date) return reply(replyToken, '変更後の日付を確認できませんでした。例：1 日付変更 10月5日 14時頃', env);
+  const now = new Date().toISOString();
+  const sourceMessageId = `manual-date-change:${Date.now()}`;
+  const updates = [
+    { key: 'receive_date', value: candidate.date, status: 'answered', confidence: 1, phase: 'feasibility' },
+    { key: 'receive_time', value: candidate.time || '未定', status: candidate.time ? 'answered' : 'undecided', confidence: 1, phase: 'feasibility' },
+  ];
+  await applyOwnerOrderUpdates(selection.orderRecord.id, updates, sourceMessageId, now, userId, env);
+  const scheduleConflict = await findBusinessScheduleConflict(candidate, env);
+  await env.DB.prepare(`INSERT INTO order_card_events
+      (order_card_id, event_type, actor, detail, occurred_at)
+      VALUES (?, 'owner.date_changed', 'owner', ?, ?)`)
+    .bind(`order-card:${selection.orderRecord.source_thread_id}`, JSON.stringify({ text, date: candidate.date, time: candidate.time, scheduleConflict }), now).run();
+  return reply(replyToken, `${selection.orderRecord.display_code}の受取希望を${formatScheduleDate(candidate.date, candidate.time)}へ更新しました。${scheduleConflict ? `\n\n【要確認】${scheduleConflict}` : ''}`, env);
+}
+
 async function selectActiveOrderForManager(displayCode, env) {
+  const originalReference = displayCode;
+  displayCode = await resolveManagerDisplayCode(displayCode, env);
+  if (originalReference && !displayCode) return { orderRecord: null, candidates: [] };
   const filter = displayCode ? ' AND r.display_code = ?' : '';
   const statement = env.DB.prepare(`SELECT r.*, t.customer_display_name, t.customer_confirmed_name
       FROM customer_order_records r
@@ -965,6 +1194,22 @@ async function selectActiveOrderForManager(displayCode, env) {
   };
 }
 
+async function resolveManagerDisplayCode(reference, env, options = {}) {
+  if (!reference || !/^[1-9]$/u.test(reference)) return reference || null;
+  const pendingClause = options.pendingOnly ? " AND d.status = 'needs_owner_review'" : '';
+  const manualClause = options.manualOnly ? " AND r.customer_line_user_id LIKE 'manual:%'" : '';
+  const query = options.pendingOnly
+    ? `SELECT r.display_code FROM owner_decision_requests d
+       JOIN customer_order_records r ON r.source_thread_id = d.order_thread_id AND r.is_active = 1
+       WHERE 1 = 1${pendingClause}${manualClause}
+       ORDER BY d.created_at ASC LIMIT 10`
+    : `SELECT r.display_code FROM customer_order_records r
+       WHERE r.is_active = 1${manualClause}
+       ORDER BY r.updated_at DESC LIMIT 10`;
+  const rows = await env.DB.prepare(query).all();
+  return rows.results?.[Number(reference) - 1]?.display_code || null;
+}
+
 async function prepareOwnerCustomerMessage(replyToken, userId, displayCode, message, env) {
   if (!message) return reply(replyToken, '送信する文章を「お客様へ 本文」の形で入力してください。', env);
   const selection = await selectActiveOrderForManager(displayCode, env);
@@ -977,8 +1222,7 @@ async function prepareOwnerCustomerMessage(replyToken, userId, displayCode, mess
   const orderRecord = selection.orderRecord;
   const updates = extractOrderRecordUpdates(message, false, extractScheduleCandidate(message));
   const conflicts = await findOrderUpdateConflicts(orderRecord.id, updates, env);
-  if (conflicts.length) {
-    const pending = {
+  const pending = {
       orderRecordId: orderRecord.id,
       displayCode: orderRecord.display_code,
       customerLineUserId: orderRecord.customer_line_user_id,
@@ -986,18 +1230,12 @@ async function prepareOwnerCustomerMessage(replyToken, userId, displayCode, mess
       message: message.slice(0, 4900),
       updates,
       conflicts,
-    };
-    await env.SECRETARY_KV.put('pending-customer-send:' + userId, JSON.stringify(pending), { expirationTtl: 600 });
-    return reply(replyToken, `送信文に注文カルテの変更が含まれています。\n\n${formatOrderUpdateConflicts(conflicts)}\n\nこの内容でお客様へ送り、カルテも更新する場合：顧客送信確認\n取り消す場合：取消`, env);
-  }
-  return sendOwnerCustomerMessage(replyToken, userId, {
-    orderRecordId: orderRecord.id,
-    displayCode: orderRecord.display_code,
-    customerLineUserId: orderRecord.customer_line_user_id,
-    sourceThreadId: orderRecord.source_thread_id,
-    message: message.slice(0, 4900),
-    updates,
-  }, env);
+  };
+  await env.SECRETARY_KV.put('pending-customer-send:' + userId, JSON.stringify(pending), { expirationTtl: 600 });
+  const conflictNotice = conflicts.length
+    ? `\n\n送信文に注文カルテの変更が含まれています。\n${formatOrderUpdateConflicts(conflicts)}`
+    : '';
+  return reply(replyToken, `【お客様への送信案】\n\n${pending.message}${conflictNotice}\n\n内容を確認し、このまま送信する場合は「顧客送信確認」と返信してください。\n修正する場合は「指定メッセージ ${pending.displayCode} 修正文」、取り消す場合は「取消」と返信してください。`, env);
 }
 
 async function confirmPendingOwnerCustomerMessage(replyToken, userId, env) {
@@ -1127,6 +1365,9 @@ async function applyOwnerOrderUpdates(orderRecordId, updates, sourceMessageId, n
 }
 
 async function handleOwnerShortDecision(replyToken, userId, action, displayCode, note, env) {
+  const originalReference = displayCode;
+  displayCode = await resolveManagerDisplayCode(displayCode, env, { pendingOnly: true });
+  if (originalReference && !displayCode) return reply(replyToken, 'その操作番号の確認待ち案件が見つかりません。最新の「確認待ち一覧」を表示してから、番号を入力してください。', env);
   let filter = '';
   if (displayCode) {
     filter = ' AND r.display_code = ?';
@@ -1166,12 +1407,24 @@ async function handleOwnerShortDecision(replyToken, userId, action, displayCode,
       .bind(decision.order_card_id, accepted ? 'owner.feasibility_accepted' : 'owner.feasibility_declined', ownerResponse, now),
   ]);
   if (accepted) {
-    return reply(replyToken, `${decision.display_code}を「対応可能」として記録しました。\n次は商品別の詳細確認へ進みます。`, env);
+    await env.SECRETARY_KV.put('pending-status:' + userId, JSON.stringify({
+      orderRecordId: decision.order_record_id,
+      displayCode: decision.display_code,
+      currentStatus: 'detail_intake',
+      action: '制作開始',
+      nextStatus: 'production',
+      eventType: 'production.started',
+      createdAt: now,
+    }), { expirationTtl: 600 });
+    return reply(replyToken, `${decision.display_code}を「対応可能」として記録しました。\n\n注文内容を受け付けたため、ステータスを「制作中」に変更してよいですか？\n「はい」または「いいえ」でお答えください。`, env);
   }
   return reply(replyToken, `${decision.display_code}を「対応困難」として記録しました。${note ? '' : '\nお客様へ案内する理由は、続けて確認してください。'}`, env);
 }
 
 async function handleOrderLifecycleCommand(replyToken, userId, action, displayCode, env) {
+  const originalReference = displayCode;
+  displayCode = await resolveManagerDisplayCode(displayCode, env);
+  if (originalReference && !displayCode) return reply(replyToken, 'その操作番号の注文カルテが見つかりません。最新のカルテ一覧を確認してください。', env);
   let filter = '';
   if (displayCode) {
     filter = ' AND r.display_code = ?';
@@ -1194,45 +1447,83 @@ async function handleOrderLifecycleCommand(replyToken, userId, action, displayCo
     制作開始: ['confirmed'],
     完成: ['production'],
     受渡完了: ['ready'],
+    支払案内済み: ['confirmed', 'production', 'ready', 'fulfilled'],
+    支払確認待ち: ['confirmed', 'production', 'ready', 'fulfilled'],
     支払完了: ['confirmed', 'production', 'ready', 'fulfilled'],
   };
   if (!allowedStatuses[action].includes(orderRecord.status)) {
     return reply(replyToken, `${orderRecord.display_code}は現在「${orderRecordStatusLabel(orderRecord.status)}」です。\n「${action}」へ進める前の確認が完了していません。`, env);
   }
-  const now = new Date().toISOString();
-  if (action === '制作開始' || action === '完成') {
-    const nextStatus = action === '制作開始' ? 'production' : 'ready';
-    await env.DB.batch([
-      env.DB.prepare(`UPDATE customer_order_records SET status = ?, updated_at = ? WHERE id = ?`)
-        .bind(nextStatus, now, orderRecord.id),
-      env.DB.prepare(`INSERT INTO order_card_events
-          (order_card_id, event_type, actor, detail, occurred_at)
-          VALUES (?, ?, 'owner', ?, ?)`)
-        .bind(`order-card:${orderRecord.source_thread_id}`, action === '制作開始' ? 'production.started' : 'production.completed', action, now),
-    ]);
-    return reply(replyToken, `${orderRecord.display_code}を「${orderRecordStatusLabel(nextStatus)}」へ更新しました。`, env);
-  }
+  return proposeOrderLifecycleTransition(replyToken, userId, action, orderRecord.display_code, env, orderRecord);
+}
 
-  const fieldKey = action === '受渡完了' ? 'fulfillment_completed' : 'payment_status';
-  const phase = action === '受渡完了' ? 'completion' : 'payment';
-  await env.DB.prepare(`INSERT INTO order_record_fields
-      (order_record_id, field_key, phase, value_text, status, source_direction,
-       source_occurred_at, confidence, locked, updated_at, confirmed_at, confirmed_by)
-      VALUES (?, ?, ?, '完了', 'confirmed', 'owner_recorded', ?, 1, 1, ?, ?, ?)
-      ON CONFLICT(order_record_id, field_key) DO UPDATE SET
-        value_text = '完了', status = 'confirmed', source_direction = 'owner_recorded',
-        source_occurred_at = excluded.source_occurred_at, confidence = 1, locked = 1,
-        updated_at = excluded.updated_at, confirmed_at = excluded.confirmed_at,
-        confirmed_by = excluded.confirmed_by`)
-    .bind(orderRecord.id, fieldKey, phase, now, now, now, userId).run();
-  if (action === '受渡完了') {
-    await env.DB.prepare(`UPDATE customer_order_records SET status = 'fulfilled', updated_at = ? WHERE id = ?`)
-      .bind(now, orderRecord.id).run();
+async function proposeOrderLifecycleTransition(replyToken, userId, action, displayCode, env, selectedOrder = null) {
+  let orderRecord = selectedOrder;
+  if (!orderRecord) {
+    const resolved = await resolveManagerDisplayCode(displayCode, env);
+    const filter = resolved ? ' AND r.display_code = ?' : '';
+    const statement = env.DB.prepare(`SELECT r.*, t.customer_display_name, t.customer_confirmed_name
+        FROM customer_order_records r JOIN customer_order_threads t ON t.id = r.source_thread_id
+        WHERE r.is_active = 1${filter} ORDER BY r.updated_at DESC LIMIT 2`);
+    const rows = resolved ? await statement.bind(resolved).all() : await statement.all();
+    const candidates = rows.results || [];
+    if (!candidates.length) return reply(replyToken, resolved ? `${resolved}の進行中カルテはありません。` : '進行中の注文カルテはありません。', env);
+    if (!resolved && candidates.length > 1) return reply(replyToken, formatAmbiguousOrderChoices(candidates, `${action} カルテ番号`), env);
+    orderRecord = candidates[0];
   }
-  const closed = await closeOrderRecordWhenComplete(orderRecord, now, env);
-  if (closed) return reply(replyToken, `${orderRecord.display_code}は受渡し・支払いともに完了し、注文カルテを完了しました。`, env);
-  const remaining = action === '受渡完了' ? '支払完了' : '受渡完了';
-  return reply(replyToken, `${orderRecord.display_code}へ「${action}」を記録しました。\n残りの確認：${remaining}`, env);
+  const transition = {
+    制作開始: { nextStatus: 'production', eventType: 'production.started', label: '制作中' },
+    完成: { nextStatus: 'ready', eventType: 'production.completed', label: 'お渡し準備完了' },
+    受渡完了: { nextStatus: 'fulfilled', eventType: 'fulfillment.completed', label: '受渡完了・支払確認待ち' },
+    支払案内済み: { fieldKey: 'payment_status', fieldValue: '決済案内済み', label: '決済案内済み' },
+    支払確認待ち: { fieldKey: 'payment_status', fieldValue: '支払い確認待ち', label: '支払い確認待ち' },
+    支払完了: { fieldKey: 'payment_status', fieldValue: '完了', label: '支払完了' },
+  }[action];
+  if (!transition) return reply(replyToken, '変更内容を確認できませんでした。', env);
+  const currentLabel = orderRecordStatusLabel(orderRecord.status);
+  await env.SECRETARY_KV.put('pending-status:' + userId, JSON.stringify({
+    orderRecordId: orderRecord.id, displayCode: orderRecord.display_code,
+    currentStatus: orderRecord.status, action, ...transition, createdAt: new Date().toISOString(),
+  }), { expirationTtl: 600 });
+  const caution = action === '支払完了' ? '\n※決済画面で店長が確認済みの場合のみ「はい」とお答えください。' : '';
+  return reply(replyToken, `【ステータス変更確認】\nカルテ：${orderRecord.display_code}\n現在：${currentLabel}\n変更後：${transition.label}\n\nこの内容で変更してよいですか？\n「はい」または「いいえ」でお答えください。${caution}`, env);
+}
+
+async function applyPendingStatusTransition(replyToken, userId, pending, env) {
+  const row = await env.DB.prepare(`SELECT r.*, t.customer_display_name, t.customer_confirmed_name
+      FROM customer_order_records r JOIN customer_order_threads t ON t.id = r.source_thread_id
+      WHERE r.id = ? AND r.is_active = 1`).bind(pending.orderRecordId).first();
+  if (!row) return reply(replyToken, '対象カルテが見つからないか、すでに完了しています。', env);
+  if (row.status !== pending.currentStatus) return reply(replyToken, `カルテ${row.display_code}はすでに「${orderRecordStatusLabel(row.status)}」へ更新されています。`, env);
+  const now = new Date().toISOString();
+  if (pending.nextStatus) {
+    const statements = [
+      env.DB.prepare(`UPDATE customer_order_records SET status = ?, updated_at = ? WHERE id = ?`).bind(pending.nextStatus, now, row.id),
+      env.DB.prepare(`INSERT INTO order_card_events (order_card_id, event_type, actor, detail, occurred_at) VALUES (?, ?, 'owner', ?, ?)`).bind(`order-card:${row.source_thread_id}`, pending.eventType, pending.action, now),
+    ];
+    if (pending.action === '受渡完了') {
+      statements.push(env.DB.prepare(`INSERT INTO order_record_fields
+          (order_record_id, field_key, phase, value_text, status, source_direction, source_occurred_at, confidence, locked, updated_at, confirmed_at, confirmed_by)
+          VALUES (?, 'fulfillment_completed', 'completion', '完了', 'confirmed', 'owner_recorded', ?, 1, 1, ?, ?, ?)
+          ON CONFLICT(order_record_id, field_key) DO UPDATE SET value_text = '完了', status = 'confirmed', source_direction = 'owner_recorded', source_occurred_at = excluded.source_occurred_at, confidence = 1, locked = 1, updated_at = excluded.updated_at, confirmed_at = excluded.confirmed_at, confirmed_by = excluded.confirmed_by`)
+        .bind(row.id, now, now, now, userId));
+    }
+    await env.DB.batch(statements);
+    if (pending.action === '受渡完了') await closeOrderRecordWhenComplete({ ...row, status: pending.nextStatus }, now, env);
+    return reply(replyToken, `${row.display_code}を「${pending.label}」へ更新しました。`, env);
+  }
+  const fieldKey = pending.fieldKey || (pending.action === '受渡完了' ? 'fulfillment_completed' : null);
+  const phase = fieldKey === 'payment_status' ? 'payment' : 'completion';
+  if (pending.action === '受渡完了') pending.fieldValue = '完了';
+  await env.DB.prepare(`INSERT INTO order_record_fields
+      (order_record_id, field_key, phase, value_text, status, source_direction, source_occurred_at, confidence, locked, updated_at, confirmed_at, confirmed_by)
+      VALUES (?, ?, ?, ?, 'confirmed', 'owner_recorded', ?, 1, 1, ?, ?, ?)
+      ON CONFLICT(order_record_id, field_key) DO UPDATE SET value_text = excluded.value_text, status = 'confirmed', source_direction = 'owner_recorded', source_occurred_at = excluded.source_occurred_at, confidence = 1, locked = 1, updated_at = excluded.updated_at, confirmed_at = excluded.confirmed_at, confirmed_by = excluded.confirmed_by`)
+    .bind(row.id, fieldKey, phase, pending.fieldValue, now, now, now, userId).run();
+  if (pending.action === '受渡完了') await env.DB.prepare(`UPDATE customer_order_records SET status = 'fulfilled', updated_at = ? WHERE id = ?`).bind(now, row.id).run();
+  const closed = await closeOrderRecordWhenComplete(row, now, env);
+  if (closed) return reply(replyToken, `${row.display_code}は受渡し・支払いともに完了し、注文カルテを完了しました。`, env);
+  return reply(replyToken, `${row.display_code}へ「${pending.label}」を記録しました。`, env);
 }
 
 async function closeOrderRecordWhenComplete(orderRecord, now, env) {
@@ -1254,9 +1545,10 @@ async function closeOrderRecordWhenComplete(orderRecord, now, env) {
 function formatAmbiguousOrderChoices(records, commandExample) {
   const choices = records.map((record) => {
     const name = formatCustomerLabel(record.customer_confirmed_name || record.customer_display_name);
-    return `・${record.display_code}：${name}（${orderRecordStatusLabel(record.order_status || record.status)}）`;
+    return `【${records.indexOf(record) + 1}】${record.display_code}：${name}（${orderRecordStatusLabel(record.order_status || record.status)}）`;
   }).join('\n');
-  return `対象の注文が複数あります。カルテ番号を付けてください。\n\n${choices}\n\n例：${commandExample.replace('カルテ番号', records[0].display_code)}`;
+  const normalizedExample = commandExample.replace('カルテ番号', '1');
+  return `対象の注文が複数あります。上の操作番号（1〜${records.length}）または正式カルテ番号を付けてください。\n\n${choices}\n\n例：${normalizedExample.replace(/^(\S+)\s+1/u, '1 $1')}`;
 }
 
 function orderRecordStatusLabel(status) {
@@ -1431,6 +1723,12 @@ async function recordProductCatalogMatch(threadId, reference, product, now, env)
     .bind(`order-card:${threadId}`, JSON.stringify({ reference, productId: product.id, productNumber: product.product_number, name: product.name }), now).run();
 }
 
+async function recordInternalOrderEvent(threadId, eventType, detail, occurredAt, env) {
+  await env.DB.prepare(`INSERT INTO order_card_events
+      (order_card_id, event_type, actor, detail, occurred_at) VALUES (?, ?, 'system', ?, ?)`)
+    .bind(`order-card:${threadId}`, eventType, JSON.stringify(detail), occurredAt).run();
+}
+
 function formatProductCatalogMatch(customerLabel, reference, product) {
   return `統括マネージャーです。\n\n【HP商品番号を照合しました】\n${customerLabel}から指定された商品番号：${reference}\n\n・商品名：${product.name}\n・カテゴリー：${product.category || '未分類'}\n・商品番号：${product.product_number}\n・商品ページ：${product.product_url}\n\nHPに登録されている該当画像を添付します。\n価格・在庫・納期は店長確認後にご案内します。`;
 }
@@ -1457,6 +1755,21 @@ function summarizeOrderDetails(details) {
   });
 }
 
+function detectOrderRiskFlags(text, candidate = null) {
+  const flags = [];
+  if (/(?:今日|本日|明日|あした|至急|急ぎ|すぐ|間に合)/u.test(text)) flags.push('直前・急ぎの依頼：制作時間と在庫を店長確認');
+  if (/配達|配送|お届け/u.test(text)) flags.push('配達案件：住所・不在時対応・配達時間を確認');
+  if (/(?:住所|建物|施設|会場|届け先)/u.test(text)) flags.push('配達先情報：住所・建物名・連絡先を復唱');
+  if (/(?:画像|写真|イメージ|同じ|完全再現)/u.test(text)) flags.push('参考画像案件：仕上がりは在庫により近似となる可能性を説明');
+  if (/(?:予算|安く|大きく|小さく|ボリューム)/u.test(text)) flags.push('予算・ボリューム調整：店長提案が必要');
+  if (/(?:返金|返品|交換|クレーム|苦情|不満|怒)/u.test(text)) flags.push('苦情・返金相談：自動確約せず店長対応');
+  if (/(?:破損|割れ|しぼ|浮かない|不良)/u.test(text)) flags.push('破損・不良：写真と発生状況を確認');
+  if (/(?:支払|決済|領収書|請求)/u.test(text)) flags.push('支払・領収書：方法と宛名を確定');
+  if (/(?:店頭|来店|電話|紙注文|注文書)/u.test(text)) flags.push('店頭・電話受付：注文書画像とカルテを照合');
+  if (candidate?.time && candidate.time >= '16:00') flags.push('16時以降：店舗対応時間外。夜間配達は個別確認');
+  return [...new Set(flags)];
+}
+
 async function createOwnerDecisionRequest({ threadId, sourceEventId, text, candidate, customerLabel, now, env }) {
   const card = await env.DB.prepare(`SELECT * FROM order_cards WHERE order_thread_id = ?`).bind(threadId).first();
   const orderRecord = await env.DB.prepare(`SELECT * FROM customer_order_records
@@ -1464,8 +1777,10 @@ async function createOwnerDecisionRequest({ threadId, sourceEventId, text, candi
   const recordFields = orderRecord ? await loadOrderRecordFields(orderRecord.id, env) : null;
   if (orderRecord && !orderRecordReadyForFeasibilityReview(recordFields)) return null;
   if (!orderRecord && !orderCardReadyForOwnerReview(card)) return null;
+  const scopeMarker = orderRecord ? ownerDecisionScopeMarker(orderRecord) : '%聞き取り内容%';
   const existing = await env.DB.prepare(`SELECT id, request_types, customer_summary FROM owner_decision_requests
-      WHERE order_card_id = ? AND status != 'cancelled' AND customer_summary LIKE '%聞き取り内容%' LIMIT 1`).bind(`order-card:${threadId}`).first();
+      WHERE order_card_id = ? AND status = 'needs_owner_review' AND customer_summary LIKE ? LIMIT 1`)
+    .bind(`order-card:${threadId}`, scopeMarker).first();
   if (existing) {
     return {
       id: existing.id,
@@ -1475,9 +1790,13 @@ async function createOwnerDecisionRequest({ threadId, sourceEventId, text, candi
   }
   const requestTypes = orderRecord ? detectOwnerDecisionTypesFromRecord(recordFields) : detectOwnerDecisionTypesFromCard(card);
   const requestId = `decision:${sourceEventId}`;
-  const customerSummary = orderRecord
+  const baseCustomerSummary = orderRecord
     ? summarizeOwnerReviewFromRecord(customerLabel, orderRecord, recordFields)
     : summarizeOwnerReviewFromCard(customerLabel, card);
+  const reviewEvents = await loadOwnerReviewEvents(threadId, env);
+  const riskFlags = detectOrderRiskFlags(text, candidate);
+  const customerSummary = appendOwnerReviewEvents(baseCustomerSummary, reviewEvents)
+    + (riskFlags.length ? `\n\n【要注意】\n${riskFlags.map((flag) => `・${flag}`).join('\n')}` : '');
   const result = await env.DB.prepare(`INSERT OR IGNORE INTO owner_decision_requests
       (id, source_event_id, order_thread_id, order_card_id, request_types, status, customer_summary, created_at)
       VALUES (?, ?, ?, ?, ?, 'needs_owner_review', ?, ?)`)
@@ -1492,6 +1811,40 @@ async function createOwnerDecisionRequest({ threadId, sourceEventId, text, candi
     ]);
   }
   return result.meta.changes ? { id: requestId, requestTypes, customerSummary } : null;
+}
+
+async function loadOwnerReviewEvents(threadId, env) {
+  const rows = await env.DB.prepare(`SELECT event_type, detail FROM order_card_events
+      WHERE order_card_id = ?
+        AND event_type IN ('customer.name_confirmed', 'product.reference_unmatched', 'schedule.conflict')
+      ORDER BY id ASC`)
+    .bind(`order-card:${threadId}`).all();
+  return rows.results || [];
+}
+
+function appendOwnerReviewEvents(summary, events) {
+  const lines = [];
+  const seen = new Set();
+  for (const event of events || []) {
+    let detail;
+    try { detail = JSON.parse(event.detail || '{}'); } catch { detail = {}; }
+    if (event.event_type === 'product.reference_unmatched') {
+      const key = `product:${detail.reference || ''}`;
+      if (seen.has(key)) continue;
+      seen.add(key);
+      lines.push(`・商品番号「${detail.reference || '未入力'}」はHP商品マスターで照合できていません（商品ページURLまたは参考画像の確認が必要）`);
+    } else if (event.event_type === 'schedule.conflict') {
+      const key = `schedule:${detail.requested || ''}:${detail.detail || ''}`;
+      if (seen.has(key)) continue;
+      seen.add(key);
+      lines.push(`・${detail.requested || '希望日時'}：${detail.detail || '営業日・営業時間との確認が必要'}`);
+    }
+  }
+  return lines.length ? `${summary}\n\n【追加確認事項】\n${lines.join('\n')}` : summary;
+}
+
+function ownerDecisionScopeMarker(orderRecord) {
+  return `%注文カルテ ${orderRecord.display_code || `No.${orderRecord.sequence_number}`}%`;
 }
 
 async function loadOrderRecordFields(orderRecordId, env) {
@@ -1568,7 +1921,7 @@ function summarizeOwnerReviewFromCard(customerLabel, card) {
   return lines.join('\n');
 }
 
-function formatOwnerDecisionRequest(request) {
+function formatOwnerDecisionRequest(request, catalogProduct = null) {
   const labels = {
     schedule: '予約・受取時間の可否',
     delivery: '配達エリア・配達料・対応可否',
@@ -1576,7 +1929,10 @@ function formatOwnerDecisionRequest(request) {
     store_policy: '在庫・休業・キャンセル等の個別判断',
   };
   const checks = request.requestTypes.map((type) => `・${labels[type]}`).join('\n');
-  return `統括マネージャーです。\n\n注文担当から店長確認が必要な内容を受け取りました。AIは価格・在庫・納期・配達可否を確約しません。\n\n【店長確認フォーム】\n${request.customerSummary}\n\n【ご判断をお願いします】\n${checks}\n\n判断内容は「店長確認 ${request.id} （判断内容）」と返信してください。\n例：店長確認 ${request.id} 配達可。配達料は個別見積、16時以降は不可`;
+  const productMatch = catalogProduct
+    ? `\n\n【HP商品照合】\n・商品名：${catalogProduct.name}\n・商品番号：${catalogProduct.product_number}\n・商品ページ：${catalogProduct.product_url}\n※該当する商品画像をこの報告に添付しています。`
+    : '';
+  return `統括マネージャーです。\n\n注文担当から、店長の判断が必要な内容を受け取りました。\nAIは価格・在庫・納期・配達可否を確約しません。\n\n【確認内容】\n${request.customerSummary}${productMatch}\n\n【確認していただきたいこと】\n${checks}\n\n【返信方法】\n確認待ちが1件の場合は、操作番号を先頭にして返信してください。\n\n・1 受ける：この内容で対応可能\n・1 難しい 理由：対応が難しい\n・1 確認：内容を見直す\n\n正式カルテ番号を使う場合は「受ける KABC123」も利用できます。\n\n条件や理由を添える場合\n・1 受ける 配達料は別途、16時以降は不可\n・1 難しい 納期が合わないため`;
 }
 
 async function replyCustomerConversation(event, env) {
@@ -1640,7 +1996,7 @@ function extractScheduleCandidate(text) {
   const typeText = methodAnswer || text;
   const type = /配達|配送/u.test(typeText) ? 'delivery'
     : /発送|郵送/u.test(typeText) ? null
-      : /店頭受取|受取|受け取り|引取/u.test(typeText) ? 'pickup'
+      : /店頭(?:受取)?|受取|受け取り|引取/u.test(typeText) ? 'pickup'
         : /来店/u.test(typeText) ? 'visit' : null;
   if (!type) return null;
   const dateAnswer = labeledAnswer(text, '受取希望日|受け取り希望日|お届け希望日|ご希望日|希望日');
@@ -1673,7 +2029,9 @@ function parseFlexibleCustomerDate(value) {
 
 function parseFlexibleCustomerTime(value) {
   const normalized = String(value || '').normalize('NFKC');
-  let match = normalized.match(/(午前|午後)?\s*(\d{1,2})\s*[:：]\s*(\d{2})/u);
+  let match = normalized.match(/(午前|午後)?\s*(\d{1,2})\s*時\s*半/u);
+  if (match) match[3] = '30';
+  else match = normalized.match(/(午前|午後)?\s*(\d{1,2})\s*[:：]\s*(\d{2})/u);
   if (!match) match = normalized.match(/(午前|午後)?\s*(\d{1,2})\s*時(?:\s*(\d{1,2})\s*分)?/u);
   if (!match) return null;
   let hour = Number(match[2]);
@@ -1745,7 +2103,7 @@ function formatDeliveryPlaceNote(place) {
 function routeManagerRequest(text) {
   const isScheduleCommand = /^(?:休業|休み|営業(?:時間)?|休業解除)\s*(?:\d{4}-\d{2}-\d{2}|\d{4}-\d{2}-\d{2}\s+\d{2}:\d{2}-\d{2}:\d{2})$/u.test(text);
   if (!isScheduleCommand && /(?:営業日|営業(?:時間)?|休業日|休業|休み|休日|臨時休業|営業再開)/u.test(text)) {
-    return '統括マネージャーです。営業日・休業日・営業時間の変更として受け取りました。システム担当へ引き継ぎます。\n\n変更内容を「休業 2026-09-22」「営業 2026-09-23 10:00-18:00」「休業解除 2026-09-22」の形式で送ってください。内容を確認後、反映前に改めて確認します。';
+    return `統括マネージャーです。営業日・休業日・営業時間の変更として受け取りました。システム担当へ引き継ぎます。\n\n変更内容を「休業 2026-09-22」「営業 2026-09-23 10:00-18:00」「休業解除 2026-09-22」の形式で送ってください。内容を確認後、反映前に改めて確認します。\n\n${STORE_SERVICE_HOURS_NOTICE}`;
   }
   if (/(?:配達|受取|引取|制作|納期|進捗|スケジュール|カレンダー)/u.test(text)) {
     return '統括マネージャーです。スケジュール担当への依頼として受け取りました。Googleカレンダーの予定を照会し、重複の有無と近い空き時間を整理して店長へ確認します。対象の注文名・受取または配達日・時間を教えてください。';
@@ -1885,7 +2243,7 @@ function balloonCareKnowledgeReply(text, session) {
 
 function urgentReply(session) { session.stage = 'urgent'; session.fields.urgent = true; return { session, message: 'お急ぎですね。ご相談ありがとうございます☺︎ 当日・翌日のご注文は、制作状況と商品の内容を確認してからのご案内になります。\nご希望日と、①ご用途 ②ご予算 ③お受け取り・配達のどちらか ④参考のお写真または商品番号 をお送りいただけますか？確認でき次第、可能な範囲をお返事します。' }; }
 function heliumReply(session) { session.stage = 'helium'; return { session, message: 'ヘリウムバルーンのご相談ですね😊 バルーンの大きさ・種類・個数で必要量が変わるため、商品パッケージのお写真か、サイズと個数をお送りください。持ち込みの場合も確認してご案内します。\n※在庫状況や対応可能な時間は日によって変わるため、希望日も一緒にお願いします。' }; }
-function deliveryReply(session) { session.stage = 'delivery'; return { session, message: '配達のご相談ありがとうございます😊 お届け地域・ご希望日・ご希望時間・ご予算を確認してご案内します。夏場は高温による破損を防ぐため、発送を控える場合があります。近隣への配達や店頭受け取りも含めて、いちばん良い方法をご提案しますね。' }; }
+function deliveryReply(session) { session.stage = 'delivery'; return { session, message: `配達のご相談ありがとうございます😊 お届け地域・ご希望日・ご希望時間・ご予算を確認してご案内します。${STORE_SERVICE_HOURS_NOTICE} 夏場は高温による破損を防ぐため、発送を控える場合があります。近隣への配達や店頭受け取りも含めて、いちばん良い方法をご提案しますね。` }; }
 function longevityReply(session) { session.stage = 'faq'; return { session, message: 'ご質問ありがとうございます😊 バルーンは種類や飾る環境によって異なります。直射日光・高温・尖った物を避けて室内に飾ると、より長く楽しんでいただけます。お写真を送っていただければ、その商品に合わせた目安と保管方法をご案内します🎈' }; }
 function orderReply(text, session) {
   if (isOrderStartTrigger(text)) {
@@ -1914,7 +2272,7 @@ function recordCustomerContact(text, session) {
   const name = text.match(/(?:お名前|氏名|名前)\s*[：:]?\s*([^\n]+)/u)?.[1]?.trim();
   if (!name || !phone) return { session, message: 'ご回答ありがとうございます😊\n\n注文確定に必要なため、お名前（本名）とお電話番号を以下の形式でお送りください。\n\n・お名前（本名）：\n・お電話番号：' };
   session.stage = 'confirmed'; session.fields.customerName = name; session.fields.phone = phone;
-  return { session, message: 'お名前とお電話番号を確認しました😊\n\nご注文内容と合わせて記録し、制作準備へ進みます。価格・納期・受取日時の最終案内を改めてお送りします。' };
+  return { session, message: 'お名前とお電話番号を確認しました😊\n\nご注文内容と合わせて記録し、店長確認後の制作準備へ進みます。価格・在庫・納期・受取日時は確認後に改めてご案内します。' };
 }
 function unstructuredOrderInquiry(session) {
   session.stage = 'review';
@@ -1942,7 +2300,7 @@ function basicOrderConfirmation(text, session) {
 }
 function intakePrompt(missing, productType, customerKind, hasKnownDetails) {
   const greeting = customerKind === 'returning' ? 'いつもありがとうございます☺︎ お久しぶりです。今回もお問い合わせありがとうございます。' : 'お問い合わせありがとうございます🎈';
-  const guidance = 'ご希望に合う形でご用意できるか確認するため、まずは下の基本項目を教えてください。\n\nまだ決まっていない項目は「未定」で大丈夫です。空欄があると確認を進められないため、お手数ですが、すべての項目へご記入をお願いいたします。\n\nHPの商品番号が分かる場合は番号を、分からない場合はスクリーンショットや参考画像をお送りください。';
+  const guidance = `ご希望に合う形でご用意できるか確認するため、まずは下の基本項目を教えてください。\n\nまだ決まっていない項目は「未定」で大丈夫です。空欄があると確認を進められないため、お手数ですが、すべての項目へご記入をお願いいたします。\n\nHPの商品番号が分かる場合は番号を、分からない場合はスクリーンショットや参考画像をお送りください。\n\n${STORE_SERVICE_HOURS_NOTICE}`;
   const rows = '【ご注文内容】📷\n※そのままコピーしてご記入ください\n※決まっていない項目は「未定」で大丈夫です\n\n・HPの商品番号 または参考画像：\n（例：バルーンアレンジ36番／画像添付済み／未定）\n\n・バルーンのタイプ：\n（ブーケ／置き型アレンジメント／ヘリウム〈浮く〉タイプ／未定）\n\n・ご予算：\n（例：15,000円くらい／未定）\n\n・全体的なお色味と雰囲気：\n（例：ピンク系で可愛い雰囲気／お任せ／未定）\n\n・プレゼント・使用予定日：\n（例：10月3日／未定）\n\n・受取希望日：\n（例：10月2日／未定）\n\n・受取希望時間：\n（例：14時頃／未定）\n\n・受取方法：\n（店頭受取／配達／発送／未定）';
   const closing = '基本項目を確認できましたら、制作内容・在庫・納期・受取方法について確認を進めます。\n\n対応可能な場合は、当店の価格と納期を改めてご案内いたします。\n\n文字入れやメッセージカードなどは、制作可能な場合に商品内容に合わせて必要な項目だけ追加でお伺いします✨';
   return greeting + '\n\n' + guidance + '\n\n' + rows + '\n\n' + closing;
@@ -2146,19 +2504,141 @@ async function pushCustomerMessages(to, messages, env) {
   return response.ok;
 }
 
-async function notifyOwners(message, env, extraMessages = []) {
+async function notifyOwners(message, env, extraMessages = [], notificationKey = null) {
   const owners = (env.ADMIN_LINE_USER_IDS || '').split(',').map((id) => id.trim()).filter(Boolean);
-  console.log('owner notification prepared', { ownerCount: owners.length, hasAccessToken: Boolean(env.LINE_CHANNEL_ACCESS_TOKEN) });
   const messages = [
     { type: 'text', text: message.slice(0, 4900) },
     ...extraMessages.filter((item) => item?.type === 'image' && /^https:\/\//u.test(item.originalContentUrl || '') && /^https:\/\//u.test(item.previewImageUrl || '')),
   ].slice(0, 5);
+  console.log('owner notification prepared', {
+    ownerCount: owners.length,
+    hasAccessToken: Boolean(env.LINE_CHANNEL_ACCESS_TOKEN),
+    notificationKey,
+  });
+  if (!owners.length) {
+    console.error('LINE owner notification skipped: ADMIN_LINE_USER_IDS is missing');
+    await recordOwnerNotificationAudit(env, notificationKey, 'failure', {
+      requested: 0,
+      sent: 0,
+      messageCount: messages.length,
+    }, 'OWNER_IDS_MISSING');
+    return { requested: 0, sent: 0, error: 'OWNER_IDS_MISSING' };
+  }
+  if (!env.LINE_CHANNEL_ACCESS_TOKEN) {
+    console.error('LINE owner notification skipped: LINE_CHANNEL_ACCESS_TOKEN is missing');
+    await recordOwnerNotificationAudit(env, notificationKey, 'failure', {
+      requested: owners.length,
+      sent: 0,
+      messageCount: messages.length,
+    }, 'OWNER_ACCESS_TOKEN_MISSING');
+    return { requested: owners.length, sent: 0, error: 'OWNER_ACCESS_TOKEN_MISSING' };
+  }
+  let sent = 0;
+  const attempts = [];
   for (const to of owners) {
-    const response = await fetch('https://api.line.me/v2/bot/message/push', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json', Authorization: 'Bearer ' + env.LINE_CHANNEL_ACCESS_TOKEN },
-      body: JSON.stringify({ to, messages }),
-    });
-    console.log('LINE owner notification result', response.status, await response.text());
+    try {
+      const response = await fetch('https://api.line.me/v2/bot/message/push', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Authorization: 'Bearer ' + env.LINE_CHANNEL_ACCESS_TOKEN },
+        body: JSON.stringify({ to, messages }),
+      });
+      const responseText = await response.text();
+      console.log('LINE owner notification result', response.status, responseText);
+      attempts.push({ status: response.status, ok: response.ok });
+      if (response.ok) sent += 1;
+    } catch (error) {
+      console.error('LINE owner notification request failed', error);
+      attempts.push({ status: null, ok: false });
+    }
+  }
+  const delivered = sent === owners.length;
+  await recordOwnerNotificationAudit(env, notificationKey, delivered ? 'success' : 'failure', {
+    requested: owners.length,
+    sent,
+    messageCount: messages.length,
+    attempts,
+  }, delivered ? null : 'LINE_PUSH_FAILED');
+  return { requested: owners.length, sent, error: delivered ? null : 'LINE_PUSH_FAILED' };
+}
+
+async function ownerNotificationSucceeded(notificationKey, env) {
+  if (!notificationKey) return false;
+  const row = await env.DB.prepare(`SELECT id FROM audit_log
+      WHERE action = ? AND result = 'success' ORDER BY id DESC LIMIT 1`)
+    .bind(ownerNotificationAction(notificationKey)).first();
+  return Boolean(row);
+}
+
+async function retryPendingOwnerNotifications(env, limit = 10) {
+  const rows = await env.DB.prepare(`SELECT d.* FROM owner_decision_requests d
+      WHERE d.status = 'needs_owner_review'
+        AND NOT EXISTS (
+          SELECT 1 FROM audit_log a
+          WHERE a.action = ('owner.notification:owner-decision:' || d.id)
+            AND a.result = 'success'
+        )
+        AND EXISTS (
+          SELECT 1 FROM audit_log a
+          WHERE a.action = ('owner.notification:owner-decision:' || d.id)
+            AND a.result = 'failure'
+        )
+        AND (
+          SELECT COUNT(*) FROM audit_log a
+          WHERE a.action = ('owner.notification:owner-decision:' || d.id)
+            AND a.result = 'failure'
+        ) < 5
+      ORDER BY d.created_at ASC LIMIT ?`)
+    .bind(limit).all();
+  let delivered = 0;
+  for (const row of rows.results || []) {
+    const request = {
+      id: row.id,
+      requestTypes: JSON.parse(row.request_types || '[]'),
+      customerSummary: row.customer_summary,
+    };
+    const productReference = productReferenceFromOwnerSummary(row.customer_summary);
+    const catalogProduct = productReference ? await findProductCatalogMatch(productReference, env) : null;
+    const productImages = catalogProduct?.image_url
+      ? [{ type: 'image', originalContentUrl: catalogProduct.image_url, previewImageUrl: catalogProduct.image_url }]
+      : [];
+    const result = await notifyOwners(
+      formatOwnerDecisionRequest(request, catalogProduct),
+      env,
+      productImages,
+      `owner-decision:${row.id}`,
+    );
+    if (!result.error) delivered += 1;
+  }
+  console.log('pending owner notification retry finished', {
+    candidates: rows.results?.length || 0,
+    delivered,
+  });
+  return { candidates: rows.results?.length || 0, delivered };
+}
+
+function productReferenceFromOwnerSummary(summary) {
+  const value = String(summary || '').match(/・商品番号・参考画像：([^\n]+)/u)?.[1]?.trim();
+  if (!value || /^(?:未定|参考画像あり|画像添付済み)$/u.test(value)) return null;
+  return value;
+}
+
+function ownerNotificationAction(notificationKey) {
+  return notificationKey ? `owner.notification:${String(notificationKey).slice(0, 180)}` : 'owner.notification';
+}
+
+async function recordOwnerNotificationAudit(env, notificationKey, result, detail, errorCode) {
+  try {
+    await env.DB.prepare(`INSERT INTO audit_log
+        (timestamp, actor_line_user_id, action, before_json, after_json, result, error_code)
+      VALUES (?, 'system', ?, NULL, ?, ?, ?)`)
+      .bind(
+        new Date().toISOString(),
+        ownerNotificationAction(notificationKey),
+        JSON.stringify(detail),
+        result,
+        errorCode,
+      ).run();
+  } catch (error) {
+    console.error('owner notification audit failed', error);
   }
 }
