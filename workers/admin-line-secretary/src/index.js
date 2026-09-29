@@ -158,7 +158,8 @@ async function handleEvent(event, env) {
 }
 
 async function handleAdmin(event, env) {
-  if (event.message?.type !== 'text') return reply(event.replyToken, '営業時間の変更は文字でお送りください。', env);
+  if (event.message?.type === 'image') return registerManualOrderFormImage(event, env);
+  if (event.message?.type !== 'text') return reply(event.replyToken, '注文書画像または文字でお送りください。', env);
   const userId = event.source.userId, text = event.message.text.trim(), pendingKey = 'pending:' + userId;
   const sendReply = text.match(/^送信\s+(review:[^\s]+)(?:\s+([\s\S]+))?$/u);
   if (sendReply) return prepareCustomerReplySend(event.replyToken, userId, sendReply[1], sendReply[2]?.trim() || null, false, env);
@@ -198,6 +199,16 @@ async function handleAdmin(event, env) {
   }
   if (text === '顧客送信確認') {
     return confirmPendingOwnerCustomerMessage(event.replyToken, userId, env);
+  }
+  const manualSupplement = text.match(/^紙注文補足(?:\s+(K[A-Z0-9]+))?\s+([\s\S]+)$/iu);
+  if (manualSupplement) {
+    return recordManualOrderSupplement(
+      event.replyToken,
+      userId,
+      manualSupplement[1]?.toUpperCase() || null,
+      manualSupplement[2].trim(),
+      env,
+    );
   }
   const ownerCustomerMessage = text.match(/^(?:お客様へ|顧客送信|指定メッセージ|店長指定メッセージ)(?:\s+(K[A-Z0-9]+))?\s+([\s\S]+)$/iu);
   if (ownerCustomerMessage) {
@@ -1025,6 +1036,74 @@ function richMenuPrompt(command) {
     'システム変更依頼': '【システム変更依頼】\n\n変更したい対象と内容を送ってください。\n\n例：商品ページの画像を差し替えたい\n例：注文ヒアリング文を変更したい\n\n変更案を整理し、店長確認後に反映します。',
   };
   return prompts[command] || `${command}を受け付けました。内容を確認して整理します。`;
+}
+
+async function registerManualOrderFormImage(event, env) {
+  const now = new Date().toISOString();
+  const sourceMessageId = event.webhookEventId || event.message?.id || `image:${Date.now()}`;
+  const safeId = String(sourceMessageId).replace(/[^A-Za-z0-9_-]/g, '').slice(-60) || String(Date.now());
+  const customerId = `manual:${safeId}`;
+  const threadId = `manual-thread:${safeId}`;
+  const orderRecordId = `order:${customerId}`;
+  const orderCardId = `order-card:${threadId}`;
+  const displayCode = createOrderDisplayCode();
+
+  await env.DB.batch([
+    env.DB.prepare(`INSERT OR IGNORE INTO customer_profiles
+      (customer_line_user_id, first_seen_at, last_seen_at, completed_order_count, relationship_override)
+      VALUES (?, ?, ?, 0, 'new')`).bind(customerId, now, now),
+    env.DB.prepare(`INSERT OR IGNORE INTO customer_order_threads
+      (id, customer_line_user_id, status, summary, fulfillment_type, created_at, updated_at)
+      VALUES (?, ?, 'collecting', ?, 'unknown', ?, ?)`).bind(threadId, customerId, '来店・電話受付の紙注文書画像', now, now),
+    env.DB.prepare(`INSERT OR IGNORE INTO customer_order_records
+      (id, customer_line_user_id, source_thread_id, sequence_number, display_code,
+       status, is_active, created_at, updated_at)
+      VALUES (?, ?, ?, 1, ?, 'detail_intake', 1, ?, ?)`).bind(orderRecordId, customerId, threadId, displayCode, now, now),
+    env.DB.prepare(`INSERT OR IGNORE INTO order_cards
+      (id, order_thread_id, status, fulfillment_type, owner_notes, created_at, updated_at)
+      VALUES (?, ?, 'needs_details', 'unknown', ?, ?, ?)`).bind(orderCardId, threadId, `紙注文書画像受領（LINE message_id: ${sourceMessageId}）`, now, now),
+    env.DB.prepare(`INSERT INTO order_card_events
+      (order_card_id, event_type, actor, detail, occurred_at)
+      VALUES (?, 'manual.order_form_image_received', 'owner', ?, ?)`).bind(orderCardId, `店長記入の注文書画像を受領しました。画像参照元：${sourceMessageId}`, now),
+    env.DB.prepare(`INSERT INTO order_messages
+      (webhook_event_id, order_thread_id, direction, message_text, occurred_at)
+      VALUES (?, ?, 'owner_recorded', ?, ?)`).bind(`manual-image:${sourceMessageId}`, threadId, '[紙注文書画像を受領]', now),
+    env.DB.prepare(`INSERT INTO order_record_fields
+      (order_record_id, field_key, phase, value_text, status, source_message_id,
+       source_direction, source_occurred_at, confidence, locked, updated_at)
+      VALUES (?, 'order_form_image', 'product_detail', '紙注文書画像あり', 'answered', ?, 'owner_recorded', ?, 1, 0, ?)\n      ON CONFLICT(order_record_id, field_key) DO UPDATE SET
+       value_text = excluded.value_text, status = 'answered', source_message_id = excluded.source_message_id,
+       source_direction = 'owner_recorded', source_occurred_at = excluded.source_occurred_at,
+       updated_at = excluded.updated_at`).bind(orderRecordId, sourceMessageId, now, now),
+  ]);
+  const persisted = await env.DB.prepare(`SELECT display_code FROM customer_order_records WHERE id = ?`)
+    .bind(orderRecordId).first();
+  const cardCode = persisted?.display_code || displayCode;
+
+  return reply(event.replyToken,
+    `紙の注文書画像を受領し、注文カルテへ登録しました。\n\n注文カルテ番号：${cardCode}\n\n画像だけでは読み取りにくい項目や不明点がある場合は、次の形式で補足してください。\n\n紙注文補足 ${cardCode} お名前：／ご連絡先：／商品：／予算：／配色・雰囲気：／希望日・時間：／受取方法：\n\n補足内容は店長記入としてカルテへ反映します。`, env);
+}
+
+async function recordManualOrderSupplement(replyToken, userId, displayCode, text, env) {
+  if (!displayCode) return reply(replyToken, '紙注文書の補足には注文カルテ番号が必要です。例：紙注文補足 KABC123 お名前：山田／ご連絡先：090-0000-0000', env);
+  const orderRecord = await env.DB.prepare(`SELECT r.*, t.id AS thread_id
+      FROM customer_order_records r JOIN customer_order_threads t ON t.id = r.source_thread_id
+      WHERE r.display_code = ? AND r.is_active = 1 AND r.customer_line_user_id LIKE 'manual:%'`).bind(displayCode).first();
+  if (!orderRecord) return reply(replyToken, `${displayCode}の紙注文書カルテが見つかりません。`, env);
+  const now = new Date().toISOString();
+  const sourceMessageId = `manual-supplement:${Date.now()}`;
+  const updates = extractOrderRecordUpdates(text, false, extractScheduleCandidate(text));
+  if (!updates.length) return reply(replyToken, '補足内容を読み取れませんでした。項目名を付けて入力してください（例：お名前：山田／予算：15000円）。', env);
+  await applyOwnerOrderUpdates(orderRecord.id, updates, sourceMessageId, now, userId, env);
+  await env.DB.batch([
+    env.DB.prepare(`INSERT INTO order_messages
+      (webhook_event_id, order_thread_id, direction, message_text, occurred_at)
+      VALUES (?, ?, 'owner_recorded', ?, ?)`).bind(sourceMessageId, orderRecord.thread_id, text.slice(0, 4900), now),
+    env.DB.prepare(`INSERT INTO order_card_events
+      (order_card_id, event_type, actor, detail, occurred_at)
+      VALUES (?, 'manual.order_form_supplement_recorded', 'owner', ?, ?)`).bind(`order-card:${orderRecord.thread_id}`, text.slice(0, 1500), now),
+  ]);
+  return reply(replyToken, `${displayCode}の補足内容を注文カルテへ反映しました。`, env);
 }
 
 async function selectActiveOrderForManager(displayCode, env) {
