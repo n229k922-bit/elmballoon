@@ -1667,6 +1667,7 @@ function extractOrderDetails(text, candidate) {
 
 function detectProductType(text) {
   text = stripIntakeTemplateHints(text);
+  if (/(?:バルーンのタイプ|商品タイプ)\s*[：:]?\s*その他|その他\s*(?:のバルーン|の商品|を作りたい)/u.test(text)) return 'other';
   if (/(?:会場装飾|イベント装飾|フォトブース|装飾)/u.test(text)) return 'venue_decoration';
   if (/スタンド/u.test(text)) return 'balloon_stand';
   if (/(?:フロート|ヘリウム|浮[かき]|ガス)/u.test(text)) return 'floating_balloon';
@@ -2266,7 +2267,7 @@ function orderReply(text, session) {
   return { session, message: intakePrompt(missing, session.fields.productType, session.customerKind, Boolean(session.fields.productType || session.fields.purpose)) };
 }
 function orderRoutePrompt() {
-  return 'ご相談ありがとうございます🎈\n\nまず、近いものをお選びください。まだ何も決まっていなくても大丈夫です。\n\n① 商品や参考画像が決まっている\n② 用途やイメージから提案してほしい\n③ 日程や受け取り方法だけ先に相談したい\n\n「①」「②」「③」のいずれかを返信してください。';
+  return 'ご相談ありがとうございます🎈\n\nまだ商品が決まっていなくても大丈夫です。近いものを1つお選びください。\n\n① 商品番号・参考画像がある\n② 商品は未定で、店頭で相談したい\n③ 商品・ご予算がある程度決まっている\n④ 日程・受け取り方法を先に相談したい\n\n番号だけで返信いただけます。';
 }
 function selectOrderRoute(text, session) {
   const normalized = text.trim();
@@ -2276,20 +2277,25 @@ function selectOrderRoute(text, session) {
     markSessionFieldsAsked(session, missing);
     return { session, message: intakePrompt(missing, session.fields.productType, session.customerKind, false) };
   }
-  if (/^(?:2|②|相談|提案|おまかせ|分から|わから)/u.test(normalized)) {
+  if (/^(?:2|②|商品は未定|相談|店頭|お店で|何がある|見て決め)/u.test(normalized)) {
+    session.stage = 'schedule_consulting';
+    session.fields.consultationMode = 'store_visit';
+    return { session, message: scheduleConsultationPrompt(true) };
+  }
+  if (/^(?:3|③|商品.*予算|予算.*商品|ある程度|提案|おまかせ|分から|わから)/u.test(normalized)) {
     session.stage = 'consulting';
     session.fields.consultationMode = 'proposal';
     return { session, message: consultationPrompt() };
   }
-  if (/^(?:3|③|日程|日付|受け取り|受取|スケジュール)/u.test(normalized)) {
+  if (/^(?:4|④|日程|日付|受け取り|受取|スケジュール)/u.test(normalized)) {
     session.stage = 'schedule_consulting';
     session.fields.consultationMode = 'schedule_only';
-    return { session, message: scheduleConsultationPrompt() };
+    return { session, message: scheduleConsultationPrompt(false) };
   }
-  return { session, message: '① 商品や参考画像が決まっている\n② 用途やイメージから提案してほしい\n③ 日程や受け取り方法だけ先に相談したい\n\n番号でお知らせください。' };
+  return { session, message: '① 商品番号・参考画像がある\n② 商品は未定で、店頭で相談したい\n③ 商品・ご予算がある程度決まっている\n④ 日程・受け取り方法を先に相談したい\n\n番号だけでお知らせください。' };
 }
 function consultationPrompt() {
-  return 'ありがとうございます😊\n\n用途やイメージから一緒に考えます。分かる範囲で教えてください。\n\n・ご用途（誕生日、開店祝い、結婚祝い、イベント装飾など）：\n・贈る相手や飾る場所：\n・バルーンの種類（ブーケ、スタンド、置き型、会場装飾、ヘリウムなど）：\n・ご予算：\n・必要な日：\n・その他のご希望・ご質問：\n\nまだ決まっていない項目は「未定」、自由に相談したい内容は「その他」に続けてご記入ください。';
+  return 'ありがとうございます😊\n\n商品が決まっていない場合も、店頭でのご相談や商品のご案内から一緒に進められます。分かる範囲で、次の内容を教えてください。\n\n・ご用途や贈る相手：\n・飾る場所（分かる範囲で）：\n・ご予算：\n・使いたい日：\n・参考画像・気になる商品（あれば）：\n\n画像がなくても大丈夫です。「未定」や「おまかせ」だけでも受け付けています。その他のご希望は自由にご記入ください。';
 }
 function collectConsultationDetail(text, session) {
   session.fields.consultationText = [session.fields.consultationText, stripIntakeTemplateHints(text)].filter(Boolean).join('\n').slice(0, 3000);
@@ -2303,14 +2309,15 @@ function collectConsultationDetail(text, session) {
   }
   return { session, message: consultationPrompt() };
 }
-function scheduleConsultationPrompt() {
+function scheduleConsultationPrompt(storeVisit = false) {
+  if (storeVisit) return '承知しました😊\n\n商品がまだ決まっていない場合は、まず店頭でご相談いただけます。空いている日時を確認するため、次の2点だけ教えてください。\n\n・来店希望日：\n・来店希望時間帯：\n\n分からない場合は「未定」で大丈夫です。ご来店時に相談したい内容や、気になる画像があれば任意で添えてください。確認後、来店可能な日時をご案内します。';
   return '承知しました😊 商品がまだ決まっていなくても、日程の空き状況から確認できます。\n\n分かる範囲で教えてください。\n\n・ご希望日（必須。未定でも可）：\n・希望時間帯：\n・受け取り方法（店頭受取／配達／発送／未定）：\n・用途やイベント（任意）：\n・その他のご希望・ご質問：\n\n確認後、対応可能な日程と、次に決める内容をご案内します。';
 }
 function collectScheduleDetail(text, session) {
   session.fields.scheduleText = [session.fields.scheduleText, stripIntakeTemplateHints(text)].filter(Boolean).join('\n').slice(0, 2000);
-  session.fields.receiveDateValue = session.fields.receiveDateValue || labeledAnswer(text, 'ご希望日|受取希望日|受け取り希望日|必要な日');
-  session.fields.receiveTimeValue = session.fields.receiveTimeValue || labeledAnswer(text, '希望時間帯|受取希望時間|受け取り希望時間');
-  session.fields.methodValue = session.fields.methodValue || labeledAnswer(text, '受け取り方法|受取方法');
+  session.fields.receiveDateValue = session.fields.receiveDateValue || labeledAnswer(text, '来店希望日|ご希望日|受取希望日|受け取り希望日|必要な日');
+  session.fields.receiveTimeValue = session.fields.receiveTimeValue || labeledAnswer(text, '来店希望時間帯|希望時間帯|受取希望時間|受け取り希望時間');
+  session.fields.methodValue = session.fields.methodValue || labeledAnswer(text, '受け取り方法|受取方法') || (session.fields.consultationMode === 'store_visit' ? '店頭相談' : null);
   if (/(?:ご希望日|受取希望日|受け取り希望日|必要な日)/u.test(text) || session.fields.scheduleText.length > 10) {
     session.stage = 'review';
     return { session, message: 'ありがとうございます😊\n\n日程相談として注文カルテに記録しました。\n\n・ご希望日：' + (session.fields.receiveDateValue || '未定') + '\n・希望時間帯：' + (session.fields.receiveTimeValue || '未定') + '\n・受け取り方法：' + (session.fields.methodValue || '未定') + '\n\n空き状況と対応可能な受け取り方法を確認し、統括からご案内します。商品内容は後から追加でご相談いただけます。' };
@@ -2357,14 +2364,14 @@ function basicOrderConfirmation(text, session) {
 function intakePrompt(missing, productType, customerKind, hasKnownDetails) {
   const greeting = customerKind === 'returning' ? 'いつもありがとうございます☺︎ お久しぶりです。今回もお問い合わせありがとうございます。' : 'お問い合わせありがとうございます🎈';
   const guidance = `ご希望に合う形でご用意できるか確認するため、まずは下の基本項目を教えてください。\n\nまだ決まっていない項目は「未定」で大丈夫です。空欄があると確認を進められないため、お手数ですが、すべての項目へご記入をお願いいたします。\n\nHPの商品番号が分かる場合は番号を、分からない場合はスクリーンショットや参考画像をお送りください。\n\n${STORE_SERVICE_HOURS_NOTICE}`;
-  const rows = '【ご注文内容】📷\n※そのままコピーしてご記入ください\n※決まっていない項目は「未定」で大丈夫です\n\n・HPの商品番号 または参考画像：\n（例：バルーンアレンジ36番／画像添付済み／未定）\n\n・バルーンのタイプ：\n（ブーケ／置き型アレンジメント／ヘリウム〈浮く〉タイプ／未定）\n\n・ご予算：\n（例：15,000円くらい／未定）\n\n・全体的なお色味と雰囲気：\n（例：ピンク系で可愛い雰囲気／お任せ／未定）\n\n・プレゼント・使用予定日：\n（例：10月3日／未定）\n\n・受取希望日：\n（例：10月2日／未定）\n\n・受取希望時間：\n（例：14時頃／未定）\n\n・受取方法：\n（店頭受取／配達／発送／未定）';
+  const rows = '【ご注文内容】📷\n※そのままコピーしてご記入ください\n※決まっていない項目は「未定」で大丈夫です\n\n・HPの商品番号 または参考画像：\n（例：バルーンアレンジ36番／画像添付済み／未定）\n\n・バルーンのタイプ：\n（ブーケ／置き型アレンジメント／バルーンスタンド／ヘリウム〈浮く〉タイプ／会場装飾／その他／未定）\n※「その他」の場合は、どのようなものか・飾る場所・参考画像など分かる範囲でご記入ください。\n\n・ご予算：\n（例：15,000円くらい／未定）\n\n・全体的なお色味と雰囲気：\n（例：ピンク系で可愛い雰囲気／お任せ／未定）\n\n・プレゼント・使用予定日：\n（例：10月3日／未定）\n\n・受取希望日：\n（例：10月2日／未定）\n\n・受取希望時間：\n（例：14時頃／未定）\n\n・受取方法：\n（店頭受取／配達／発送／未定）';
   const closing = '基本項目を確認できましたら、制作内容・在庫・納期・受取方法について確認を進めます。\n\n対応可能な場合は、当店の価格と納期を改めてご案内いたします。\n\n文字入れやメッセージカードなどは、制作可能な場合に商品内容に合わせて必要な項目だけ追加でお伺いします✨';
   return greeting + '\n\n' + guidance + '\n\n' + rows + '\n\n' + closing;
 }
 function intakeRows(items) {
   const choices = {
     'HPの商品番号 または参考画像': '（例：バルーンアレンジ36番／画像添付済み／未定）',
-    'バルーンのタイプ': '（ブーケ／置き型アレンジメント／ヘリウム〈浮く〉タイプ／未定）',
+    'バルーンのタイプ': '（ブーケ／置き型アレンジメント／バルーンスタンド／ヘリウム〈浮く〉タイプ／会場装飾／その他／未定）',
     'ご予算': '（例：5,000円くらい／未定）',
     '全体的なお色味と雰囲気': '（例：ピンク系で可愛い雰囲気／お任せ／未定）',
     'プレゼント・使用予定日': '（例：10月3日／未定）',

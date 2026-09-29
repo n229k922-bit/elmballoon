@@ -16,7 +16,7 @@ const source = fs.readFileSync(sourcePath, 'utf8')
     ownerDecisionScopeMarker, ownerNotificationAction, formatOwnerDecisionRequest,
     appendOwnerReviewEvents, formatPendingOwnerDecisionList, richMenuPrompt,
     notifyOwners, productReferenceFromOwnerSummary, formatCalendarReport,
-    normalizeManagerCommand, detectOrderRiskFlags, googleClientId, googleClientSecret
+    normalizeManagerCommand, detectOrderRiskFlags, detectProductType, googleClientId, googleClientSecret
   };`;
 
 const context = vm.createContext({
@@ -69,6 +69,7 @@ const {
   formatCalendarReport,
   normalizeManagerCommand,
   detectOrderRiskFlags,
+  detectProductType,
   googleClientId,
   googleClientSecret,
 } = context.__orderTests;
@@ -76,8 +77,10 @@ const {
 const session = { stage: 'new', fields: {}, customerKind: 'new' };
 const start = orderReply('注文担当を呼び出します', session);
 assert.equal(start.session.stage, 'awaiting_order_route');
-assert.match(start.message, /① 商品や参考画像が決まっている/);
-assert.match(start.message, /② 用途やイメージから提案してほしい/);
+assert.match(start.message, /① 商品番号・参考画像がある/);
+assert.match(start.message, /② 商品は未定で、店頭で相談したい/);
+assert.match(start.message, /③ 商品・ご予算がある程度決まっている/);
+assert.match(start.message, /④ 日程・受け取り方法を先に相談したい/);
 const routed = orderReply('①', start.session);
 assert.equal(routed.session.stage, 'collecting');
 assert.equal(missingIntakeFields(routed.session.fields).length, 8);
@@ -88,7 +91,19 @@ assert.doesNotMatch(routed.message, /メッセージカードの有無/);
 assert.equal(splitCustomerReply(routed.message).length, 3);
 
 const scheduleStart = orderReply('注文担当を呼び出します', { stage: 'new', fields: {}, customerKind: 'new' });
-const scheduleRoute = selectOrderRoute('③', scheduleStart.session);
+const storeVisitRoute = selectOrderRoute('②', scheduleStart.session);
+assert.equal(storeVisitRoute.session.stage, 'schedule_consulting');
+assert.match(storeVisitRoute.message, /来店希望日/);
+assert.doesNotMatch(storeVisitRoute.message, /店長へ/);
+const storeVisitResult = collectScheduleDetail('・来店希望日：10月10日\n・来店希望時間帯：午後2時', storeVisitRoute.session);
+assert.equal(storeVisitResult.session.stage, 'review');
+assert.equal(storeVisitResult.session.fields.receiveDateValue, '10月10日');
+assert.equal(storeVisitResult.session.fields.methodValue, '店頭相談');
+
+const proposalRoute = selectOrderRoute('③', { stage: 'awaiting_order_route', fields: {}, customerKind: 'new' });
+assert.equal(proposalRoute.session.stage, 'consulting');
+assert.match(proposalRoute.message, /ご予算/);
+const scheduleRoute = selectOrderRoute('④', { stage: 'awaiting_order_route', fields: {}, customerKind: 'new' });
 assert.equal(scheduleRoute.session.stage, 'schedule_consulting');
 assert.match(scheduleRoute.message, /ご希望日/);
 const scheduleResult = collectScheduleDetail('・ご希望日：10月10日\n・希望時間帯：午後2時\n・受け取り方法：店頭受取', scheduleRoute.session);
@@ -96,6 +111,8 @@ assert.equal(scheduleResult.session.stage, 'review');
 assert.equal(scheduleResult.session.fields.receiveDateValue, '10月10日');
 assert.equal(scheduleResult.session.fields.receiveTimeValue, '午後2時');
 assert.equal(scheduleResult.session.fields.methodValue, '店頭受取');
+assert.equal(detectProductType('・バルーンのタイプ：バルーンスタンド'), 'balloon_stand');
+assert.equal(detectProductType('・バルーンのタイプ：その他（オリジナル装飾）'), 'other');
 
 const answer = `【ご注文内容】
 ・HPの商品番号 または参考画像：バルーンアレンジ36番
