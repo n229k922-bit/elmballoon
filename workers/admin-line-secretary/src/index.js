@@ -200,7 +200,7 @@ async function handleAdmin(event, env) {
   if (text === '顧客送信確認') {
     return confirmPendingOwnerCustomerMessage(event.replyToken, userId, env);
   }
-  const manualSupplement = text.match(/^紙注文補足(?:\s+(K[A-Z0-9]+))?\s+([\s\S]+)$/iu);
+  const manualSupplement = text.match(/^紙注文補足(?:\s+((?:K[A-Z0-9]+|[1-9])))?\s+([\s\S]+)$/iu);
   if (manualSupplement) {
     return recordManualOrderSupplement(
       event.replyToken,
@@ -210,7 +210,7 @@ async function handleAdmin(event, env) {
       env,
     );
   }
-  const ownerCustomerMessage = text.match(/^(?:お客様へ|顧客送信|指定メッセージ|店長指定メッセージ)(?:\s+(K[A-Z0-9]+))?\s+([\s\S]+)$/iu);
+  const ownerCustomerMessage = text.match(/^(?:お客様へ|顧客送信|指定メッセージ|店長指定メッセージ)(?:\s+((?:K[A-Z0-9]+|[1-9])))?\s+([\s\S]+)$/iu);
   if (ownerCustomerMessage) {
     return prepareOwnerCustomerMessage(
       event.replyToken,
@@ -220,7 +220,7 @@ async function handleAdmin(event, env) {
       env,
     );
   }
-  const phoneMemo = text.match(/^電話メモ(?:\s+(K[A-Z0-9]+))?\s+([\s\S]+)$/iu);
+  const phoneMemo = text.match(/^電話メモ(?:\s+((?:K[A-Z0-9]+|[1-9])))?\s+([\s\S]+)$/iu);
   if (phoneMemo) {
     return recordOwnerPhoneMemo(
       event.replyToken,
@@ -230,7 +230,7 @@ async function handleAdmin(event, env) {
       env,
     );
   }
-  const shortOwnerDecision = text.match(/^(受ける|難しい|確認)(?:\s+(K[A-Z0-9]+))?(?:\s+([\s\S]+))?$/iu);
+  const shortOwnerDecision = text.match(/^(受ける|難しい|確認)(?:\s+((?:K[A-Z0-9]+|[1-9])))?(?:\s+([\s\S]+))?$/iu);
   if (shortOwnerDecision) {
     return handleOwnerShortDecision(
       event.replyToken,
@@ -241,7 +241,7 @@ async function handleAdmin(event, env) {
       env,
     );
   }
-  const lifecycleCommand = text.match(/^(制作開始|完成|受渡完了|支払完了)(?:\s+(K[A-Z0-9]+))?$/iu);
+  const lifecycleCommand = text.match(/^(制作開始|完成|受渡完了|支払完了)(?:\s+((?:K[A-Z0-9]+|[1-9])))?$/iu);
   if (lifecycleCommand) {
     return handleOrderLifecycleCommand(
       event.replyToken,
@@ -1023,16 +1023,16 @@ function formatPendingOwnerDecisionList(rows, decisionMode = false) {
     return `【${index + 1}】${code}\n${summary}`;
   });
   const suffix = decisionMode
-    ? '\n\n返信例：\n・受ける KABC123\n・難しい KABC123 理由\n・確認 KABC123'
+    ? '\n\n操作番号で返信できます（一覧を表示した時点の番号）。\n・受ける 1\n・難しい 1 理由\n・確認 1\n\n正式カルテ番号（Kから始まる番号）も利用できます。'
     : '\n\n受注判断を行う場合は「受注判断」を押してください。';
   return `【確認待ち一覧】\n\n${lines.join('\n\n')}${suffix}`;
 }
 
 function richMenuPrompt(command) {
   const prompts = {
-    '日付変更依頼': '【日付変更依頼】\n\n変更する注文のカルテ番号、変更後の日付、希望時間を送ってください。\n\n例：日付変更 KABC123 2026年10月5日 14時頃\n\n変更前と変更後を確認し、店長の確定後に反映します。',
-    'お客様への返信依頼': '【お客様への返信依頼】\n\n返信する注文のカルテ番号と、送りたい内容を送ってください。\n\n例：お客様へ KABC123 ご希望の日時で対応可能か確認します。\n（店長指定文は「指定メッセージ KABC123 本文」でも入力できます）\n\n送信前に内容を表示し、店長の確認後にお客様へ送信します。',
-    '制作進捗更新': '【制作進捗更新】\n\n更新する注文のカルテ番号と進捗を送ってください。\n\n例：制作開始 KABC123\n完成 KABC123\n受渡完了 KABC123\n支払完了 KABC123',
+    '日付変更依頼': '【日付変更依頼】\n\n変更する注文の操作番号（確認待ち一覧の1〜9）またはカルテ番号、変更後の日付、希望時間を送ってください。\n\n例：日付変更 1 10月5日 14時頃\n\n変更前と変更後を確認し、店長の確定後に反映します。',
+    'お客様への返信依頼': '【お客様への返信依頼】\n\n返信する注文の操作番号（確認待ち一覧の1〜9）またはカルテ番号と、送りたい内容を送ってください。\n\n例：お客様へ 1 ご希望の日時で対応可能か確認します。\n（店長指定文は「指定メッセージ 1 本文」でも入力できます）\n\n送信前に内容を表示し、店長の確認後にお客様へ送信します。',
+    '制作進捗更新': '【制作進捗更新】\n\n更新する注文の操作番号（1〜9）またはカルテ番号と進捗を送ってください。\n\n例：制作開始 1\n完成 1\n受渡完了 1\n支払完了 1',
     'システム変更依頼': '【システム変更依頼】\n\n変更したい対象と内容を送ってください。\n\n例：商品ページの画像を差し替えたい\n例：注文ヒアリング文を変更したい\n\n変更案を整理し、店長確認後に反映します。',
   };
   return prompts[command] || `${command}を受け付けました。内容を確認して整理します。`;
@@ -1086,6 +1086,8 @@ async function registerManualOrderFormImage(event, env) {
 
 async function recordManualOrderSupplement(replyToken, userId, displayCode, text, env) {
   if (!displayCode) return reply(replyToken, '紙注文書の補足には注文カルテ番号が必要です。例：紙注文補足 KABC123 お名前：山田／ご連絡先：090-0000-0000', env);
+  displayCode = await resolveManagerDisplayCode(displayCode, env, { manualOnly: true });
+  if (!displayCode) return reply(replyToken, 'その操作番号の紙注文書カルテが見つかりません。まず「確認待ち一覧」またはカルテ番号をご確認ください。', env);
   const orderRecord = await env.DB.prepare(`SELECT r.*, t.id AS thread_id
       FROM customer_order_records r JOIN customer_order_threads t ON t.id = r.source_thread_id
       WHERE r.display_code = ? AND r.is_active = 1 AND r.customer_line_user_id LIKE 'manual:%'`).bind(displayCode).first();
@@ -1107,6 +1109,9 @@ async function recordManualOrderSupplement(replyToken, userId, displayCode, text
 }
 
 async function selectActiveOrderForManager(displayCode, env) {
+  const originalReference = displayCode;
+  displayCode = await resolveManagerDisplayCode(displayCode, env);
+  if (originalReference && !displayCode) return { orderRecord: null, candidates: [] };
   const filter = displayCode ? ' AND r.display_code = ?' : '';
   const statement = env.DB.prepare(`SELECT r.*, t.customer_display_name, t.customer_confirmed_name
       FROM customer_order_records r
@@ -1119,6 +1124,22 @@ async function selectActiveOrderForManager(displayCode, env) {
     orderRecord: candidates.length === 1 ? candidates[0] : null,
     candidates,
   };
+}
+
+async function resolveManagerDisplayCode(reference, env, options = {}) {
+  if (!reference || !/^[1-9]$/u.test(reference)) return reference || null;
+  const pendingClause = options.pendingOnly ? " AND d.status = 'needs_owner_review'" : '';
+  const manualClause = options.manualOnly ? " AND r.customer_line_user_id LIKE 'manual:%'" : '';
+  const query = options.pendingOnly
+    ? `SELECT r.display_code FROM owner_decision_requests d
+       JOIN customer_order_records r ON r.source_thread_id = d.order_thread_id AND r.is_active = 1
+       WHERE 1 = 1${pendingClause}${manualClause}
+       ORDER BY d.created_at ASC LIMIT 10`
+    : `SELECT r.display_code FROM customer_order_records r
+       WHERE r.is_active = 1${manualClause}
+       ORDER BY r.updated_at DESC LIMIT 10`;
+  const rows = await env.DB.prepare(query).all();
+  return rows.results?.[Number(reference) - 1]?.display_code || null;
 }
 
 async function prepareOwnerCustomerMessage(replyToken, userId, displayCode, message, env) {
@@ -1276,6 +1297,9 @@ async function applyOwnerOrderUpdates(orderRecordId, updates, sourceMessageId, n
 }
 
 async function handleOwnerShortDecision(replyToken, userId, action, displayCode, note, env) {
+  const originalReference = displayCode;
+  displayCode = await resolveManagerDisplayCode(displayCode, env, { pendingOnly: true });
+  if (originalReference && !displayCode) return reply(replyToken, 'その操作番号の確認待ち案件が見つかりません。最新の「確認待ち一覧」を表示してから、番号を入力してください。', env);
   let filter = '';
   if (displayCode) {
     filter = ' AND r.display_code = ?';
@@ -1321,6 +1345,9 @@ async function handleOwnerShortDecision(replyToken, userId, action, displayCode,
 }
 
 async function handleOrderLifecycleCommand(replyToken, userId, action, displayCode, env) {
+  const originalReference = displayCode;
+  displayCode = await resolveManagerDisplayCode(displayCode, env);
+  if (originalReference && !displayCode) return reply(replyToken, 'その操作番号の注文カルテが見つかりません。最新のカルテ一覧を確認してください。', env);
   let filter = '';
   if (displayCode) {
     filter = ' AND r.display_code = ?';
@@ -1403,9 +1430,9 @@ async function closeOrderRecordWhenComplete(orderRecord, now, env) {
 function formatAmbiguousOrderChoices(records, commandExample) {
   const choices = records.map((record) => {
     const name = formatCustomerLabel(record.customer_confirmed_name || record.customer_display_name);
-    return `・${record.display_code}：${name}（${orderRecordStatusLabel(record.order_status || record.status)}）`;
+    return `【${records.indexOf(record) + 1}】${record.display_code}：${name}（${orderRecordStatusLabel(record.order_status || record.status)}）`;
   }).join('\n');
-  return `対象の注文が複数あります。カルテ番号を付けてください。\n\n${choices}\n\n例：${commandExample.replace('カルテ番号', records[0].display_code)}`;
+  return `対象の注文が複数あります。上の操作番号（1〜${records.length}）または正式カルテ番号を付けてください。\n\n${choices}\n\n例：${commandExample.replace('カルテ番号', '1')}`;
 }
 
 function orderRecordStatusLabel(status) {
