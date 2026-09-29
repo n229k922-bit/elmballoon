@@ -216,6 +216,10 @@ async function handleAdmin(event, env) {
       env,
     );
   }
+  const dateChange = text.match(/^日付変更\s+((?:K[A-Z0-9]+|[1-9]))\s+([\s\S]+)$/iu);
+  if (dateChange) {
+    return recordOrderDateChange(event.replyToken, userId, dateChange[1].toUpperCase(), dateChange[2].trim(), env);
+  }
   const ownerCustomerMessage = text.match(/^(?:お客様へ|顧客送信|指定メッセージ|店長指定メッセージ)(?:\s+((?:K[A-Z0-9]+|[1-9])))?\s+([\s\S]+)$/iu);
   if (ownerCustomerMessage) {
     return prepareOwnerCustomerMessage(
@@ -1112,6 +1116,27 @@ async function recordManualOrderSupplement(replyToken, userId, displayCode, text
       VALUES (?, 'manual.order_form_supplement_recorded', 'owner', ?, ?)`).bind(`order-card:${orderRecord.thread_id}`, text.slice(0, 1500), now),
   ]);
   return reply(replyToken, `${displayCode}の補足内容を注文カルテへ反映しました。`, env);
+}
+
+async function recordOrderDateChange(replyToken, userId, reference, text, env) {
+  const selection = await selectActiveOrderForManager(reference, env);
+  if (!selection.candidates.length) return reply(replyToken, `${reference}の進行中カルテが見つかりません。`, env);
+  if (!selection.orderRecord) return reply(replyToken, formatAmbiguousOrderChoices(selection.candidates, '日付変更 カルテ番号 日付 時間'), env);
+  const candidate = extractScheduleCandidate(text);
+  if (!candidate?.date) return reply(replyToken, '変更後の日付を確認できませんでした。例：1 日付変更 10月5日 14時頃', env);
+  const now = new Date().toISOString();
+  const sourceMessageId = `manual-date-change:${Date.now()}`;
+  const updates = [
+    { key: 'receive_date', value: candidate.date, status: 'answered', confidence: 1, phase: 'feasibility' },
+    { key: 'receive_time', value: candidate.time || '未定', status: candidate.time ? 'answered' : 'undecided', confidence: 1, phase: 'feasibility' },
+  ];
+  await applyOwnerOrderUpdates(selection.orderRecord.id, updates, sourceMessageId, now, userId, env);
+  const scheduleConflict = await findBusinessScheduleConflict(candidate, env);
+  await env.DB.prepare(`INSERT INTO order_card_events
+      (order_card_id, event_type, actor, detail, occurred_at)
+      VALUES (?, 'owner.date_changed', 'owner', ?, ?)`)
+    .bind(`order-card:${selection.orderRecord.source_thread_id}`, JSON.stringify({ text, date: candidate.date, time: candidate.time, scheduleConflict }), now).run();
+  return reply(replyToken, `${selection.orderRecord.display_code}の受取希望を${formatScheduleDate(candidate.date, candidate.time)}へ更新しました。${scheduleConflict ? `\n\n【要確認】${scheduleConflict}` : ''}`, env);
 }
 
 async function selectActiveOrderForManager(displayCode, env) {
