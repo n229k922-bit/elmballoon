@@ -22,8 +22,8 @@ enabled = true
 crons = ["*/5 * * * *"]
 
 # Set these with `wrangler secret put`; never commit their values:
-# LINE_CHANNEL_SECRET
-# LINE_CHANNEL_ACCESS_TOKEN
-# ADMIN_LINE_USER_IDS (set in the Cloudflare dashboard; do not commit)
+# LINE_CHANNEL_SECRET (バルーン統括のWebhook署名検証)
+# LINE_CHANNEL_ACCESS_TOKEN (バルーン統括への店長通知)
+# ADMIN_LINE_USER_IDS (バルーン統括で受信する店長のLINE userId。Cloudflare dashboardで設定)
 # CUSTOMER_LINE_CHANNEL_SECRET
 # CUSTOMER_LINE_CHANNEL_ACCESS_TOKEN

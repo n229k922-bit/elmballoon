@@ -14,6 +14,7 @@ const source = fs.readFileSync(sourcePath, 'utf8')
     processCustomerMessageBundleAfterWait, createOrderDisplayCode,
     formatAmbiguousOrderChoices, orderRecordStatusLabel, formatOrderUpdateConflicts,
     ownerDecisionScopeMarker, ownerNotificationAction, formatOwnerDecisionRequest,
+    appendOwnerReviewEvents,
     notifyOwners, productReferenceFromOwnerSummary
   };`;
 
@@ -57,6 +58,7 @@ const {
   ownerDecisionScopeMarker,
   ownerNotificationAction,
   formatOwnerDecisionRequest,
+  appendOwnerReviewEvents,
   notifyOwners,
   productReferenceFromOwnerSummary,
 } = context.__orderTests;
@@ -237,6 +239,16 @@ const ownerReport = formatOwnerDecisionRequest({
 });
 assert.match(ownerReport, /商品名：バルーンアレンジ㊱/);
 assert.match(ownerReport, /該当する商品画像をこの報告に添付/);
+const consolidatedOwnerSummary = appendOwnerReviewEvents('テスト様からの聞き取り内容', [
+  { event_type: 'customer.name_confirmed', detail: JSON.stringify({ name: '山田花子' }) },
+  { event_type: 'product.reference_unmatched', detail: JSON.stringify({ reference: '36' }) },
+  { event_type: 'product.reference_unmatched', detail: JSON.stringify({ reference: '36' }) },
+  { event_type: 'schedule.conflict', detail: JSON.stringify({ requested: '2026年10月2日 14:00', detail: 'この日は店休日です。' }) },
+]);
+assert.match(consolidatedOwnerSummary, /【追加確認事項】/);
+assert.match(consolidatedOwnerSummary, /商品番号「36」/);
+assert.match(consolidatedOwnerSummary, /この日は店休日です/);
+assert.equal((consolidatedOwnerSummary.match(/商品番号「36」/g) || []).length, 1);
 
 const ownerNotificationAudits = [];
 const notificationEnv = {
@@ -329,4 +341,4 @@ const conflictText = formatOrderUpdateConflicts([
 assert.match(conflictText, /受取希望時間[\s\S]*変更前：14時頃[\s\S]*変更後：15時頃/);
 assert.match(conflictText, /ご予算[\s\S]*変更前：15,000円[\s\S]*変更後：18,000円/);
 
-console.log('order record workflow tests: 86 assertions passed');
+console.log('order record workflow tests: 91 assertions passed');

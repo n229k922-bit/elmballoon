@@ -440,7 +440,12 @@ async function recordCustomerMessage(event, env) {
   const customerName = customerNames.confirmedName || customerNames.displayName;
   const customerLabel = formatCustomerLabel(customerName);
   if (confirmedName) {
-    await notifyOwners(`統括マネージャーです。\n\n注文担当から、${customerLabel}のお名前確認が取れたと共有がありました。\n今後の注文・予定候補は、このお名前で管理します。`, env);
+    // 名前の確認は受注判断を要する通知ではないため、統括へ即時通知せず
+    // 注文カルテのイベントとして保存する。最終確認依頼に必要な場合だけ要約する。
+    await recordInternalOrderEvent(threadId, 'customer.name_confirmed', {
+      customerLabel,
+      name: confirmedName,
+    }, now, env);
   }
 
   if (details.productReference) {
@@ -449,7 +454,12 @@ async function recordCustomerMessage(event, env) {
       // 商品画像は基本項目が揃った時点の制作可否確認へまとめて添付する。
       // 聞き取り途中の別通知にすると、最終確認と画像が離れて見落とされやすい。
     } else {
-      await notifyOwners(`統括マネージャーです。\n\n【商品番号確認】\n${customerLabel}から「${details.productReference}」の指定がありましたが、現在の商品マスターでは一致する商品を確認できませんでした。\n\nHPの商品番号・商品ページURL、または参考画像を確認してからご案内してください。`, env);
+      // 商品番号の未照合も、聞き取り途中の単独通知にはしない。
+      // 最終的な受注判断通知にまとめ、店長が同じ案件を何度も開かなくて済むようにする。
+      await recordInternalOrderEvent(threadId, 'product.reference_unmatched', {
+        reference: details.productReference,
+        customerLabel,
+      }, now, env);
     }
   }
 
@@ -464,7 +474,12 @@ async function recordCustomerMessage(event, env) {
     .bind(candidateId, threadId, candidate.type, candidate.date, candidate.time,
       scheduleConflict ? `【営業日注意】${scheduleConflict}\n${text}` : text, now).run();
   if (scheduleConflict) {
-    await notifyOwners(`統括マネージャーです。\n\n【営業日との競合を検知】\n${customerLabel}の${formatScheduleDate(candidate.date, candidate.time)}の${candidate.typeLabel}希望について、${scheduleConflict}\n\n注文候補は自動確定せず、店長確認待ちで記録しました。`, env);
+    // 営業日との競合は候補と一緒に記録し、基本項目が揃った受注確認へ集約する。
+    await recordInternalOrderEvent(threadId, 'schedule.conflict', {
+      requested: formatScheduleDate(candidate.date, candidate.time),
+      type: candidate.typeLabel,
+      detail: scheduleConflict,
+    }, now, env);
   }
   console.log('schedule candidate created', { type: candidate.type, date: candidate.date });
 }
@@ -1448,6 +1463,12 @@ async function recordProductCatalogMatch(threadId, reference, product, now, env)
     .bind(`order-card:${threadId}`, JSON.stringify({ reference, productId: product.id, productNumber: product.product_number, name: product.name }), now).run();
 }
 
+async function recordInternalOrderEvent(threadId, eventType, detail, occurredAt, env) {
+  await env.DB.prepare(`INSERT INTO order_card_events
+      (order_card_id, event_type, actor, detail, occurred_at) VALUES (?, ?, 'system', ?, ?)`)
+    .bind(`order-card:${threadId}`, eventType, JSON.stringify(detail), occurredAt).run();
+}
+
 function formatProductCatalogMatch(customerLabel, reference, product) {
   return `統括マネージャーです。\n\n【HP商品番号を照合しました】\n${customerLabel}から指定された商品番号：${reference}\n\n・商品名：${product.name}\n・カテゴリー：${product.category || '未分類'}\n・商品番号：${product.product_number}\n・商品ページ：${product.product_url}\n\nHPに登録されている該当画像を添付します。\n価格・在庫・納期は店長確認後にご案内します。`;
 }
@@ -1494,9 +1515,11 @@ async function createOwnerDecisionRequest({ threadId, sourceEventId, text, candi
   }
   const requestTypes = orderRecord ? detectOwnerDecisionTypesFromRecord(recordFields) : detectOwnerDecisionTypesFromCard(card);
   const requestId = `decision:${sourceEventId}`;
-  const customerSummary = orderRecord
+  const baseCustomerSummary = orderRecord
     ? summarizeOwnerReviewFromRecord(customerLabel, orderRecord, recordFields)
     : summarizeOwnerReviewFromCard(customerLabel, card);
+  const reviewEvents = await loadOwnerReviewEvents(threadId, env);
+  const customerSummary = appendOwnerReviewEvents(baseCustomerSummary, reviewEvents);
   const result = await env.DB.prepare(`INSERT OR IGNORE INTO owner_decision_requests
       (id, source_event_id, order_thread_id, order_card_id, request_types, status, customer_summary, created_at)
       VALUES (?, ?, ?, ?, ?, 'needs_owner_review', ?, ?)`)
@@ -1511,6 +1534,36 @@ async function createOwnerDecisionRequest({ threadId, sourceEventId, text, candi
     ]);
   }
   return result.meta.changes ? { id: requestId, requestTypes, customerSummary } : null;
+}
+
+async function loadOwnerReviewEvents(threadId, env) {
+  const rows = await env.DB.prepare(`SELECT event_type, detail FROM order_card_events
+      WHERE order_card_id = ?
+        AND event_type IN ('customer.name_confirmed', 'product.reference_unmatched', 'schedule.conflict')
+      ORDER BY id ASC`)
+    .bind(`order-card:${threadId}`).all();
+  return rows.results || [];
+}
+
+function appendOwnerReviewEvents(summary, events) {
+  const lines = [];
+  const seen = new Set();
+  for (const event of events || []) {
+    let detail;
+    try { detail = JSON.parse(event.detail || '{}'); } catch { detail = {}; }
+    if (event.event_type === 'product.reference_unmatched') {
+      const key = `product:${detail.reference || ''}`;
+      if (seen.has(key)) continue;
+      seen.add(key);
+      lines.push(`・商品番号「${detail.reference || '未入力'}」はHP商品マスターで照合できていません（商品ページURLまたは参考画像の確認が必要）`);
+    } else if (event.event_type === 'schedule.conflict') {
+      const key = `schedule:${detail.requested || ''}:${detail.detail || ''}`;
+      if (seen.has(key)) continue;
+      seen.add(key);
+      lines.push(`・${detail.requested || '希望日時'}：${detail.detail || '営業日・営業時間との確認が必要'}`);
+    }
+  }
+  return lines.length ? `${summary}\n\n【追加確認事項】\n${lines.join('\n')}` : summary;
 }
 
 function ownerDecisionScopeMarker(orderRecord) {
