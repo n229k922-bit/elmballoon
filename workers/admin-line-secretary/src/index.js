@@ -1646,6 +1646,21 @@ function summarizeOrderDetails(details) {
   });
 }
 
+function detectOrderRiskFlags(text, candidate = null) {
+  const flags = [];
+  if (/(?:今日|本日|明日|あした|至急|急ぎ|すぐ|間に合)/u.test(text)) flags.push('直前・急ぎの依頼：制作時間と在庫を店長確認');
+  if (/配達|配送|お届け/u.test(text)) flags.push('配達案件：住所・不在時対応・配達時間を確認');
+  if (/(?:住所|建物|施設|会場|届け先)/u.test(text)) flags.push('配達先情報：住所・建物名・連絡先を復唱');
+  if (/(?:画像|写真|イメージ|同じ|完全再現)/u.test(text)) flags.push('参考画像案件：仕上がりは在庫により近似となる可能性を説明');
+  if (/(?:予算|安く|大きく|小さく|ボリューム)/u.test(text)) flags.push('予算・ボリューム調整：店長提案が必要');
+  if (/(?:返金|返品|交換|クレーム|苦情|不満|怒)/u.test(text)) flags.push('苦情・返金相談：自動確約せず店長対応');
+  if (/(?:破損|割れ|しぼ|浮かない|不良)/u.test(text)) flags.push('破損・不良：写真と発生状況を確認');
+  if (/(?:支払|決済|領収書|請求)/u.test(text)) flags.push('支払・領収書：方法と宛名を確定');
+  if (/(?:店頭|来店|電話|紙注文|注文書)/u.test(text)) flags.push('店頭・電話受付：注文書画像とカルテを照合');
+  if (candidate?.time && candidate.time >= '16:00') flags.push('16時以降：店舗対応時間外。夜間配達は個別確認');
+  return [...new Set(flags)];
+}
+
 async function createOwnerDecisionRequest({ threadId, sourceEventId, text, candidate, customerLabel, now, env }) {
   const card = await env.DB.prepare(`SELECT * FROM order_cards WHERE order_thread_id = ?`).bind(threadId).first();
   const orderRecord = await env.DB.prepare(`SELECT * FROM customer_order_records
@@ -1670,7 +1685,9 @@ async function createOwnerDecisionRequest({ threadId, sourceEventId, text, candi
     ? summarizeOwnerReviewFromRecord(customerLabel, orderRecord, recordFields)
     : summarizeOwnerReviewFromCard(customerLabel, card);
   const reviewEvents = await loadOwnerReviewEvents(threadId, env);
-  const customerSummary = appendOwnerReviewEvents(baseCustomerSummary, reviewEvents);
+  const riskFlags = detectOrderRiskFlags(text, candidate);
+  const customerSummary = appendOwnerReviewEvents(baseCustomerSummary, reviewEvents)
+    + (riskFlags.length ? `\n\n【要注意】\n${riskFlags.map((flag) => `・${flag}`).join('\n')}` : '');
   const result = await env.DB.prepare(`INSERT OR IGNORE INTO owner_decision_requests
       (id, source_event_id, order_thread_id, order_card_id, request_types, status, customer_summary, created_at)
       VALUES (?, ?, ?, ?, ?, 'needs_owner_review', ?, ?)`)
@@ -2146,7 +2163,7 @@ function recordCustomerContact(text, session) {
   const name = text.match(/(?:お名前|氏名|名前)\s*[：:]?\s*([^\n]+)/u)?.[1]?.trim();
   if (!name || !phone) return { session, message: 'ご回答ありがとうございます😊\n\n注文確定に必要なため、お名前（本名）とお電話番号を以下の形式でお送りください。\n\n・お名前（本名）：\n・お電話番号：' };
   session.stage = 'confirmed'; session.fields.customerName = name; session.fields.phone = phone;
-  return { session, message: 'お名前とお電話番号を確認しました😊\n\nご注文内容と合わせて記録し、制作準備へ進みます。価格・納期・受取日時の最終案内を改めてお送りします。' };
+  return { session, message: 'お名前とお電話番号を確認しました😊\n\nご注文内容と合わせて記録し、店長確認後の制作準備へ進みます。価格・在庫・納期・受取日時は確認後に改めてご案内します。' };
 }
 function unstructuredOrderInquiry(session) {
   session.stage = 'review';

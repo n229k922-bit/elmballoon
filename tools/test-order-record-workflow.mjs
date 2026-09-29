@@ -16,7 +16,7 @@ const source = fs.readFileSync(sourcePath, 'utf8')
     ownerDecisionScopeMarker, ownerNotificationAction, formatOwnerDecisionRequest,
     appendOwnerReviewEvents, formatPendingOwnerDecisionList, richMenuPrompt,
     notifyOwners, productReferenceFromOwnerSummary, formatCalendarReport,
-    normalizeManagerCommand
+    normalizeManagerCommand, detectOrderRiskFlags
   };`;
 
 const context = vm.createContext({
@@ -66,6 +66,7 @@ const {
   productReferenceFromOwnerSummary,
   formatCalendarReport,
   normalizeManagerCommand,
+  detectOrderRiskFlags,
 } = context.__orderTests;
 
 const session = { stage: 'new', fields: {}, customerKind: 'new' };
@@ -359,6 +360,8 @@ assert.match(ambiguous, /KABC123：山田花子さん（注文確定）/);
 assert.match(ambiguous, /例：1 制作開始/);
 assert.equal(normalizeManagerCommand('1 受ける'), '受ける 1');
 assert.equal(normalizeManagerCommand('2 難しい 納期が合わない'), '難しい 2 納期が合わない');
+assert.match(detectOrderRiskFlags('明日の夜に配達、画像と同じ仕上がり、返金の相談', { time: '20:00' }).join('\n'), /直前・急ぎ/);
+assert.match(detectOrderRiskFlags('明日の夜に配達、画像と同じ仕上がり、返金の相談', { time: '20:00' }).join('\n'), /夜間配達/);
 const conflictText = formatOrderUpdateConflicts([
   { fieldKey: 'receive_time', oldValue: '14時頃', newValue: '15時頃' },
   { fieldKey: 'budget', oldValue: '15,000円', newValue: '18,000円' },
