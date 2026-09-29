@@ -262,6 +262,7 @@ assert.match(richMenuPrompt('お客様への返信依頼'), /1 お客様へ/);
 assert.match(richMenuPrompt('お客様への返信依頼'), /1 指定メッセージ/);
 assert.match(formatCalendarReport('2026-10-05', '20:00', '21:00', []), /夜間の配達は.*個別にご案内/);
 assert.match(richMenuPrompt('制作進捗更新'), /1 制作開始/);
+assert.match(richMenuPrompt('制作進捗更新'), /遠隔クレジット決済.*手動/);
 assert.match(richMenuPrompt('システム変更依頼'), /変更案を整理/);
 const consolidatedOwnerSummary = appendOwnerReviewEvents('テスト様からの聞き取り内容', [
   { event_type: 'customer.name_confirmed', detail: JSON.stringify({ name: '山田花子' }) },
@@ -360,6 +361,7 @@ assert.match(ambiguous, /KABC123：山田花子さん（注文確定）/);
 assert.match(ambiguous, /例：1 制作開始/);
 assert.equal(normalizeManagerCommand('1 受ける'), '受ける 1');
 assert.equal(normalizeManagerCommand('2 難しい 納期が合わない'), '難しい 2 納期が合わない');
+assert.equal(normalizeManagerCommand('1 支払案内済み'), '支払案内済み 1');
 assert.match(detectOrderRiskFlags('明日の夜に配達、画像と同じ仕上がり、返金の相談', { time: '20:00' }).join('\n'), /直前・急ぎ/);
 assert.match(detectOrderRiskFlags('明日の夜に配達、画像と同じ仕上がり、返金の相談', { time: '20:00' }).join('\n'), /夜間配達/);
 const conflictText = formatOrderUpdateConflicts([

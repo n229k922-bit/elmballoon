@@ -158,7 +158,7 @@ async function handleEvent(event, env) {
 }
 
 function normalizeManagerCommand(text) {
-  const match = text.match(/^([1-9])\s+(受ける|難しい|確認|制作開始|完成|受渡完了|支払完了|日付変更|お客様へ|顧客送信|指定メッセージ|店長指定メッセージ|電話メモ|紙注文補足)(?:\s+([\s\S]+))?$/u);
+  const match = text.match(/^([1-9])\s+(受ける|難しい|確認|制作開始|完成|受渡完了|支払案内済み|支払確認待ち|支払完了|日付変更|お客様へ|顧客送信|指定メッセージ|店長指定メッセージ|電話メモ|紙注文補足)(?:\s+([\s\S]+))?$/u);
   if (!match) return text;
   return `${match[2]} ${match[1]}${match[3] ? ` ${match[3]}` : ''}`;
 }
@@ -247,7 +247,7 @@ async function handleAdmin(event, env) {
       env,
     );
   }
-  const lifecycleCommand = text.match(/^(制作開始|完成|受渡完了|支払完了)(?:\s+((?:K[A-Z0-9]+|[1-9])))?$/iu);
+  const lifecycleCommand = text.match(/^(制作開始|完成|受渡完了|支払案内済み|支払確認待ち|支払完了)(?:\s+((?:K[A-Z0-9]+|[1-9])))?$/iu);
   if (lifecycleCommand) {
     return handleOrderLifecycleCommand(
       event.replyToken,
@@ -1038,7 +1038,7 @@ function richMenuPrompt(command) {
   const prompts = {
     '日付変更依頼': '【日付変更依頼】\n\n変更する注文の操作番号（確認待ち一覧の1〜9）またはカルテ番号、変更後の日付、希望時間を送ってください。\n\n例：1 日付変更 10月5日 14時頃\n\n変更前と変更後を確認し、店長の確定後に反映します。',
     'お客様への返信依頼': '【お客様への返信依頼】\n\n返信する注文の操作番号（確認待ち一覧の1〜9）またはカルテ番号と、送りたい内容を送ってください。\n\n例：1 お客様へ ご希望の日時で対応可能か確認します。\n（店長指定文は「1 指定メッセージ 本文」でも入力できます）\n\n送信前に内容を表示し、店長の確認後にお客様へ送信します。',
-    '制作進捗更新': '【制作進捗更新】\n\n更新する注文の操作番号（1〜9）またはカルテ番号と進捗を送ってください。\n\n例：1 制作開始\n1 完成\n1 受渡完了\n1 支払完了',
+    '制作進捗更新': '【制作進捗更新】\n\n更新する注文の操作番号（1〜9）またはカルテ番号と進捗を送ってください。\n\n例：1 制作開始\n1 完成\n1 受渡完了\n1 支払案内済み\n1 支払確認待ち\n1 支払完了\n\n遠隔クレジット決済の発行・確認は店長が手動で行います。',
     'システム変更依頼': '【システム変更依頼】\n\n変更したい対象と内容を送ってください。\n\n例：商品ページの画像を差し替えたい\n例：注文ヒアリング文を変更したい\n\n変更案を整理し、店長確認後に反映します。',
   };
   return prompts[command] || `${command}を受け付けました。内容を確認して整理します。`;
@@ -1376,6 +1376,8 @@ async function handleOrderLifecycleCommand(replyToken, userId, action, displayCo
     制作開始: ['confirmed'],
     完成: ['production'],
     受渡完了: ['ready'],
+    支払案内済み: ['confirmed', 'production', 'ready', 'fulfilled'],
+    支払確認待ち: ['confirmed', 'production', 'ready', 'fulfilled'],
     支払完了: ['confirmed', 'production', 'ready', 'fulfilled'],
   };
   if (!allowedStatuses[action].includes(orderRecord.status)) {
@@ -1397,16 +1399,20 @@ async function handleOrderLifecycleCommand(replyToken, userId, action, displayCo
 
   const fieldKey = action === '受渡完了' ? 'fulfillment_completed' : 'payment_status';
   const phase = action === '受渡完了' ? 'completion' : 'payment';
+  const paymentValue = action === '支払案内済み' ? '決済案内済み' : action === '支払確認待ち' ? '支払い確認待ち' : '完了';
   await env.DB.prepare(`INSERT INTO order_record_fields
       (order_record_id, field_key, phase, value_text, status, source_direction,
        source_occurred_at, confidence, locked, updated_at, confirmed_at, confirmed_by)
-      VALUES (?, ?, ?, '完了', 'confirmed', 'owner_recorded', ?, 1, 1, ?, ?, ?)
+      VALUES (?, ?, ?, ?, 'confirmed', 'owner_recorded', ?, 1, 1, ?, ?, ?)
       ON CONFLICT(order_record_id, field_key) DO UPDATE SET
-        value_text = '完了', status = 'confirmed', source_direction = 'owner_recorded',
+        value_text = excluded.value_text, status = 'confirmed', source_direction = 'owner_recorded',
         source_occurred_at = excluded.source_occurred_at, confidence = 1, locked = 1,
         updated_at = excluded.updated_at, confirmed_at = excluded.confirmed_at,
         confirmed_by = excluded.confirmed_by`)
-    .bind(orderRecord.id, fieldKey, phase, now, now, now, userId).run();
+    .bind(orderRecord.id, fieldKey, phase, action === '受渡完了' ? '完了' : paymentValue, now, now, now, userId).run();
+  if (action === '支払案内済み' || action === '支払確認待ち') {
+    return reply(replyToken, `${orderRecord.display_code}へ「${paymentValue}」を記録しました。決済操作と支払い済みの確認は店長が手動で行ってください。`, env);
+  }
   if (action === '受渡完了') {
     await env.DB.prepare(`UPDATE customer_order_records SET status = 'fulfilled', updated_at = ? WHERE id = ?`)
       .bind(now, orderRecord.id).run();
