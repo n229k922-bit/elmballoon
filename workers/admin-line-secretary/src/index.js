@@ -1829,7 +1829,7 @@ function formatOwnerDecisionRequest(request, catalogProduct = null) {
   const productMatch = catalogProduct
     ? `\n\n【HP商品照合】\n・商品名：${catalogProduct.name}\n・商品番号：${catalogProduct.product_number}\n・商品ページ：${catalogProduct.product_url}\n※該当する商品画像をこの報告に添付しています。`
     : '';
-  return `統括マネージャーです。\n\n注文担当から、店長の判断が必要な内容を受け取りました。\nAIは価格・在庫・納期・配達可否を確約しません。\n\n【確認内容】\n${request.customerSummary}${productMatch}\n\n【確認していただきたいこと】\n${checks}\n\n【返信方法】\n確認待ちが1件の場合は、次のいずれかをそのまま返信してください。\n\n・受ける：この内容で対応可能\n・難しい：対応が難しい\n・確認：内容を見直す\n\n条件や理由を添える場合\n・受ける 配達料は別途、16時以降は不可\n・難しい 納期が合わないため\n\n確認待ちが複数ある場合は、カルテ番号を付けてください。\n例：受ける KABC123`;
+  return `統括マネージャーです。\n\n注文担当から、店長の判断が必要な内容を受け取りました。\nAIは価格・在庫・納期・配達可否を確約しません。\n\n【確認内容】\n${request.customerSummary}${productMatch}\n\n【確認していただきたいこと】\n${checks}\n\n【返信方法】\n確認待ちが1件の場合は、操作番号を先頭にして返信してください。\n\n・1 受ける：この内容で対応可能\n・1 難しい 理由：対応が難しい\n・1 確認：内容を見直す\n\n正式カルテ番号を使う場合は「受ける KABC123」も利用できます。\n\n条件や理由を添える場合\n・1 受ける 配達料は別途、16時以降は不可\n・1 難しい 納期が合わないため`;
 }
 
 async function replyCustomerConversation(event, env) {

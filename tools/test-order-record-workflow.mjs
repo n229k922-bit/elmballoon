@@ -247,9 +247,9 @@ const ownerReport = formatOwnerDecisionRequest({
 assert.match(ownerReport, /商品名：バルーンアレンジ㊱/);
 assert.match(ownerReport, /該当する商品画像をこの報告に添付/);
 assert.match(ownerReport, /【返信方法】/);
-assert.match(ownerReport, /・受ける：この内容で対応可能/);
-assert.match(ownerReport, /・難しい：対応が難しい/);
-assert.match(ownerReport, /例：受ける KABC123/);
+assert.match(ownerReport, /・1 受ける：この内容で対応可能/);
+assert.match(ownerReport, /・1 難しい 理由：対応が難しい/);
+assert.match(ownerReport, /1 受ける/);
 assert.doesNotMatch(ownerReport, /店長確認 decision:/);
 const pendingMenuReport = formatPendingOwnerDecisionList([
   { display_code: 'KABC123', customer_summary: '山田花子さんからの聞き取り内容\n\n【制作可否の確認項目】\n・ご予算：15,000円' },
