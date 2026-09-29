@@ -956,7 +956,6 @@ function formatPendingOrderChanges(customerLabel, changes) {
     `・${ORDER_FIELD_LABELS[change.fieldKey] || change.fieldKey}`,
     `  変更前：${change.oldValue || '未入力'}`,
     `  変更後：${change.newValue || '未入力'}`,
-    `  識別番号：${change.id}`,
   ].join('\n')).join('\n\n');
   return `統括マネージャーです。\n\n【注文カルテの変更確認】\n${customerLabel}から、確定済み内容の変更と思われる連絡がありました。\n\n${lines}\n\n反映する場合：変更OK\n元の内容を残す場合：変更しない`;
 }
