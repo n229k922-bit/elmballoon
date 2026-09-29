@@ -157,10 +157,16 @@ async function handleEvent(event, env) {
   return admins.has(userId) ? handleAdmin(event, env) : handleCustomer(event, env);
 }
 
+function normalizeManagerCommand(text) {
+  const match = text.match(/^([1-9])\s+(受ける|難しい|確認|制作開始|完成|受渡完了|支払完了|日付変更|お客様へ|顧客送信|指定メッセージ|店長指定メッセージ|電話メモ|紙注文補足)(?:\s+([\s\S]+))?$/u);
+  if (!match) return text;
+  return `${match[2]} ${match[1]}${match[3] ? ` ${match[3]}` : ''}`;
+}
+
 async function handleAdmin(event, env) {
   if (event.message?.type === 'image') return registerManualOrderFormImage(event, env);
   if (event.message?.type !== 'text') return reply(event.replyToken, '注文書画像または文字でお送りください。', env);
-  const userId = event.source.userId, text = event.message.text.trim(), pendingKey = 'pending:' + userId;
+  const userId = event.source.userId, text = normalizeManagerCommand(event.message.text.trim()), pendingKey = 'pending:' + userId;
   const sendReply = text.match(/^送信\s+(review:[^\s]+)(?:\s+([\s\S]+))?$/u);
   if (sendReply) return prepareCustomerReplySend(event.replyToken, userId, sendReply[1], sendReply[2]?.trim() || null, false, env);
   if (text === '送信') {
@@ -1023,16 +1029,16 @@ function formatPendingOwnerDecisionList(rows, decisionMode = false) {
     return `【${index + 1}】${code}\n${summary}`;
   });
   const suffix = decisionMode
-    ? '\n\n操作番号で返信できます（一覧を表示した時点の番号）。\n・受ける 1\n・難しい 1 理由\n・確認 1\n\n正式カルテ番号（Kから始まる番号）も利用できます。'
+    ? '\n\n操作番号で返信できます（一覧を表示した時点の番号）。\n・1 受ける\n・1 難しい 理由\n・1 確認\n\n正式カルテ番号（Kから始まる番号）も利用できます。'
     : '\n\n受注判断を行う場合は「受注判断」を押してください。';
   return `【確認待ち一覧】\n\n${lines.join('\n\n')}${suffix}`;
 }
 
 function richMenuPrompt(command) {
   const prompts = {
-    '日付変更依頼': '【日付変更依頼】\n\n変更する注文の操作番号（確認待ち一覧の1〜9）またはカルテ番号、変更後の日付、希望時間を送ってください。\n\n例：日付変更 1 10月5日 14時頃\n\n変更前と変更後を確認し、店長の確定後に反映します。',
-    'お客様への返信依頼': '【お客様への返信依頼】\n\n返信する注文の操作番号（確認待ち一覧の1〜9）またはカルテ番号と、送りたい内容を送ってください。\n\n例：お客様へ 1 ご希望の日時で対応可能か確認します。\n（店長指定文は「指定メッセージ 1 本文」でも入力できます）\n\n送信前に内容を表示し、店長の確認後にお客様へ送信します。',
-    '制作進捗更新': '【制作進捗更新】\n\n更新する注文の操作番号（1〜9）またはカルテ番号と進捗を送ってください。\n\n例：制作開始 1\n完成 1\n受渡完了 1\n支払完了 1',
+    '日付変更依頼': '【日付変更依頼】\n\n変更する注文の操作番号（確認待ち一覧の1〜9）またはカルテ番号、変更後の日付、希望時間を送ってください。\n\n例：1 日付変更 10月5日 14時頃\n\n変更前と変更後を確認し、店長の確定後に反映します。',
+    'お客様への返信依頼': '【お客様への返信依頼】\n\n返信する注文の操作番号（確認待ち一覧の1〜9）またはカルテ番号と、送りたい内容を送ってください。\n\n例：1 お客様へ ご希望の日時で対応可能か確認します。\n（店長指定文は「1 指定メッセージ 本文」でも入力できます）\n\n送信前に内容を表示し、店長の確認後にお客様へ送信します。',
+    '制作進捗更新': '【制作進捗更新】\n\n更新する注文の操作番号（1〜9）またはカルテ番号と進捗を送ってください。\n\n例：1 制作開始\n1 完成\n1 受渡完了\n1 支払完了',
     'システム変更依頼': '【システム変更依頼】\n\n変更したい対象と内容を送ってください。\n\n例：商品ページの画像を差し替えたい\n例：注文ヒアリング文を変更したい\n\n変更案を整理し、店長確認後に反映します。',
   };
   return prompts[command] || `${command}を受け付けました。内容を確認して整理します。`;
@@ -1432,7 +1438,8 @@ function formatAmbiguousOrderChoices(records, commandExample) {
     const name = formatCustomerLabel(record.customer_confirmed_name || record.customer_display_name);
     return `【${records.indexOf(record) + 1}】${record.display_code}：${name}（${orderRecordStatusLabel(record.order_status || record.status)}）`;
   }).join('\n');
-  return `対象の注文が複数あります。上の操作番号（1〜${records.length}）または正式カルテ番号を付けてください。\n\n${choices}\n\n例：${commandExample.replace('カルテ番号', '1')}`;
+  const normalizedExample = commandExample.replace('カルテ番号', '1');
+  return `対象の注文が複数あります。上の操作番号（1〜${records.length}）または正式カルテ番号を付けてください。\n\n${choices}\n\n例：${normalizedExample.replace(/^(\S+)\s+1/u, '1 $1')}`;
 }
 
 function orderRecordStatusLabel(status) {

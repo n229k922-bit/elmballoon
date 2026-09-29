@@ -15,7 +15,8 @@ const source = fs.readFileSync(sourcePath, 'utf8')
     formatAmbiguousOrderChoices, orderRecordStatusLabel, formatOrderUpdateConflicts,
     ownerDecisionScopeMarker, ownerNotificationAction, formatOwnerDecisionRequest,
     appendOwnerReviewEvents, formatPendingOwnerDecisionList, richMenuPrompt,
-    notifyOwners, productReferenceFromOwnerSummary, formatCalendarReport
+    notifyOwners, productReferenceFromOwnerSummary, formatCalendarReport,
+    normalizeManagerCommand
   };`;
 
 const context = vm.createContext({
@@ -64,6 +65,7 @@ const {
   notifyOwners,
   productReferenceFromOwnerSummary,
   formatCalendarReport,
+  normalizeManagerCommand,
 } = context.__orderTests;
 
 const session = { stage: 'new', fields: {}, customerKind: 'new' };
@@ -252,13 +254,13 @@ const pendingMenuReport = formatPendingOwnerDecisionList([
   { display_code: 'KABC123', customer_summary: '山田花子さんからの聞き取り内容\n\n【制作可否の確認項目】\n・ご予算：15,000円' },
 ], true);
 assert.match(pendingMenuReport, /【確認待ち一覧】/);
-assert.match(pendingMenuReport, /受ける 1/);
+assert.match(pendingMenuReport, /1 受ける/);
 assert.match(pendingMenuReport, /正式カルテ番号/);
 assert.match(richMenuPrompt('日付変更依頼'), /変更前と変更後を確認/);
-assert.match(richMenuPrompt('お客様への返信依頼'), /お客様へ 1/);
-assert.match(richMenuPrompt('お客様への返信依頼'), /指定メッセージ 1/);
+assert.match(richMenuPrompt('お客様への返信依頼'), /1 お客様へ/);
+assert.match(richMenuPrompt('お客様への返信依頼'), /1 指定メッセージ/);
 assert.match(formatCalendarReport('2026-10-05', '20:00', '21:00', []), /夜間の配達は.*個別にご案内/);
-assert.match(richMenuPrompt('制作進捗更新'), /制作開始 1/);
+assert.match(richMenuPrompt('制作進捗更新'), /1 制作開始/);
 assert.match(richMenuPrompt('システム変更依頼'), /変更案を整理/);
 const consolidatedOwnerSummary = appendOwnerReviewEvents('テスト様からの聞き取り内容', [
   { event_type: 'customer.name_confirmed', detail: JSON.stringify({ name: '山田花子' }) },
@@ -354,7 +356,9 @@ const ambiguous = formatAmbiguousOrderChoices([
   { display_code: 'KDEF456', customer_display_name: '田中', status: 'production' },
 ], '制作開始 カルテ番号');
 assert.match(ambiguous, /KABC123：山田花子さん（注文確定）/);
-assert.match(ambiguous, /例：制作開始 1/);
+assert.match(ambiguous, /例：1 制作開始/);
+assert.equal(normalizeManagerCommand('1 受ける'), '受ける 1');
+assert.equal(normalizeManagerCommand('2 難しい 納期が合わない'), '難しい 2 納期が合わない');
 const conflictText = formatOrderUpdateConflicts([
   { fieldKey: 'receive_time', oldValue: '14時頃', newValue: '15時頃' },
   { fieldKey: 'budget', oldValue: '15,000円', newValue: '18,000円' },
