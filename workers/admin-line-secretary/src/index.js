@@ -2244,6 +2244,11 @@ async function getCustomerKind(customerId, text, env) {
 
 function buildCustomerReply(text, session) {
   if (/^(こんにちは|こんばんは|はじめまして|お世話になります)[！!。]*$/u.test(text)) return { session, message: 'こんにちは😊 ご連絡ありがとうございます。気になるお写真やご希望の内容がありましたら、そのままお送りください。ご用途・ご希望日・ご予算が分かるとスムーズにご案内できます🎈' };
+  if (/^(?:戻る|やり直す|選び直す|最初から)$/u.test(text.trim())) {
+    session.fields = { questionCounts: {} };
+    session.stage = 'awaiting_order_route';
+    return { session, message: orderRoutePrompt() };
+  }
   if (isOrderStartTrigger(text)) return orderReply(text, session);
   const careReply = balloonCareKnowledgeReply(text, session);
   if (careReply) return careReply;
