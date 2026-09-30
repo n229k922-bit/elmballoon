@@ -377,6 +377,17 @@ async function customerLineWebhook(request, env, ctx) {
   for (const event of payload.events || []) {
     console.log('customer webhook event', { type: event.type, messageType: event.message?.type || null });
     if (event.type !== 'message' || !['text', 'image'].includes(event.message?.type)) continue;
+    // LINEの再送やネットワーク再試行で同じイベントが届いても、
+    // お客様への返信や店長通知を二重に発生させない。
+    const eventId = event.webhookEventId || event.message?.id;
+    if (eventId) {
+      const alreadyRecorded = await env.DB.prepare(`SELECT 1 AS found FROM order_messages WHERE webhook_event_id = ? LIMIT 1`)
+        .bind(eventId).first();
+      if (alreadyRecorded) {
+        console.log('customer webhook duplicate skipped', { eventId });
+        continue;
+      }
+    }
     await recordCustomerMessage(event, env);
     if (shouldBypassCustomerMessageBundle(event)) {
       if (event.message?.type === 'text' && isOrderStartTrigger((event.message.text || '').trim())) {
