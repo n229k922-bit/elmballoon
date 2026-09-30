@@ -78,10 +78,11 @@ const {
 const session = { stage: 'new', fields: {}, customerKind: 'new' };
 const start = orderReply('注文担当を呼び出します', session);
 assert.equal(start.session.stage, 'awaiting_order_route');
-assert.match(start.message, /① 商品番号・参考画像がある/);
-assert.match(start.message, /② 商品は未定で、店頭で相談したい/);
-assert.match(start.message, /③ 商品・ご予算がある程度決まっている/);
-assert.match(start.message, /④ 日程・受け取り方法を先に相談したい/);
+assert.match(start.message, /1：商品番号・参考画像がある/);
+assert.match(start.message, /2：商品は未定で、店頭で相談したい/);
+assert.match(start.message, /3：商品・ご予算がある程度決まっている/);
+assert.match(start.message, /4：日程・受け取り方法を先に相談したい/);
+assert.match(start.message, /①.*丸数字でも受け付けています/u);
 const routed = orderReply('①', start.session);
 assert.equal(routed.session.stage, 'collecting');
 assert.equal(missingIntakeFields(routed.session.fields).length, 8);

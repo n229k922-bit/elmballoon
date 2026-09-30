@@ -2267,7 +2267,7 @@ function orderReply(text, session) {
   return { session, message: intakePrompt(missing, session.fields.productType, session.customerKind, Boolean(session.fields.productType || session.fields.purpose)) };
 }
 function orderRoutePrompt() {
-  return 'ご相談ありがとうございます🎈\n\nまだ商品が決まっていなくても大丈夫です。近いものを1つお選びください。\n\n① 商品番号・参考画像がある\n② 商品は未定で、店頭で相談したい\n③ 商品・ご予算がある程度決まっている\n④ 日程・受け取り方法を先に相談したい\n\n番号だけで返信いただけます。';
+  return 'ご相談ありがとうございます🎈\n\nまだ商品が決まっていなくても大丈夫です。近いものを1つお選びください。\n\n1：商品番号・参考画像がある\n2：商品は未定で、店頭で相談したい\n3：商品・ご予算がある程度決まっている\n4：日程・受け取り方法を先に相談したい\n\n1〜4の番号だけで返信いただけます。\n※「①」のような丸数字でも受け付けています。';
 }
 function selectOrderRoute(text, session) {
   const normalized = text.trim();
@@ -2292,7 +2292,7 @@ function selectOrderRoute(text, session) {
     session.fields.consultationMode = 'schedule_only';
     return { session, message: scheduleConsultationPrompt(false) };
   }
-  return { session, message: '① 商品番号・参考画像がある\n② 商品は未定で、店頭で相談したい\n③ 商品・ご予算がある程度決まっている\n④ 日程・受け取り方法を先に相談したい\n\n番号だけでお知らせください。' };
+  return { session, message: '1：商品番号・参考画像がある\n2：商品は未定で、店頭で相談したい\n3：商品・ご予算がある程度決まっている\n4：日程・受け取り方法を先に相談したい\n\n1〜4の番号だけでお知らせください。\n※「①」のような丸数字でも受け付けています。' };
 }
 function consultationPrompt() {
   return 'ありがとうございます😊\n\n商品が決まっていない場合も、店頭でのご相談や商品のご案内から一緒に進められます。分かる範囲で、次の内容を教えてください。\n\n・ご用途や贈る相手：\n・飾る場所（分かる範囲で）：\n・ご予算：\n・使いたい日：\n・参考画像・気になる商品（あれば）：\n\n画像がなくても大丈夫です。「未定」や「おまかせ」だけでも受け付けています。その他のご希望は自由にご記入ください。';
