@@ -350,18 +350,29 @@ async function handleAdmin(event, env) {
 
 async function customerLineWebhook(request, env, ctx) {
   console.log('customer webhook received');
+  const body = await request.text();
+  let payload;
+  try {
+    payload = JSON.parse(body);
+  } catch {
+    return new Response('Invalid JSON', { status: 400 });
+  }
+  // LINE's webhook verification sends {"events":[]} before credentials are
+  // configured. It is safe to acknowledge this handshake; real events still
+  // require both the channel secret and access token below.
+  if (Array.isArray(payload.events) && payload.events.length === 0) {
+    return new Response('OK');
+  }
   if (!env.CUSTOMER_LINE_CHANNEL_SECRET || !env.CUSTOMER_LINE_CHANNEL_ACCESS_TOKEN) {
     console.log('customer channel credentials missing');
     return new Response('Customer channel is not configured', { status: 503 });
   }
-  const body = await request.text();
   const signature = request.headers.get('x-line-signature') || '';
   if (!(await signatureIsValid(body, signature, env.CUSTOMER_LINE_CHANNEL_SECRET))) {
     console.log('customer webhook signature invalid');
     return new Response('Invalid signature', { status: 401 });
   }
 
-  const payload = JSON.parse(body);
   console.log('customer webhook signature valid', { eventCount: (payload.events || []).length });
   for (const event of payload.events || []) {
     console.log('customer webhook event', { type: event.type, messageType: event.message?.type || null });
