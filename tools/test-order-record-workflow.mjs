@@ -16,7 +16,7 @@ const source = fs.readFileSync(sourcePath, 'utf8')
     ownerDecisionScopeMarker, ownerNotificationAction, formatOwnerDecisionRequest,
     appendOwnerReviewEvents, formatPendingOwnerDecisionList, richMenuPrompt,
     notifyOwners, productReferenceFromOwnerSummary, formatCalendarReport,
-    normalizeManagerCommand, detectOrderRiskFlags, detectProductType, googleClientId, googleClientSecret
+    normalizeManagerCommand, detectOrderRiskFlags, detectProductType, productTypeLabel, googleClientId, googleClientSecret
   };`;
 
 const context = vm.createContext({
@@ -70,6 +70,7 @@ const {
   normalizeManagerCommand,
   detectOrderRiskFlags,
   detectProductType,
+  productTypeLabel,
   googleClientId,
   googleClientSecret,
 } = context.__orderTests;
@@ -113,6 +114,7 @@ assert.equal(scheduleResult.session.fields.receiveTimeValue, '午後2時');
 assert.equal(scheduleResult.session.fields.methodValue, '店頭受取');
 assert.equal(detectProductType('・バルーンのタイプ：バルーンスタンド'), 'balloon_stand');
 assert.equal(detectProductType('・バルーンのタイプ：その他（オリジナル装飾）'), 'other');
+assert.equal(productTypeLabel('other'), 'その他（自由記載）');
 
 const answer = `【ご注文内容】
 ・HPの商品番号 または参考画像：バルーンアレンジ36番
