@@ -2341,7 +2341,7 @@ function selectOrderRoute(text, session) {
   return { session, message: '1：商品番号・参考画像がある\n2：商品は未定で、店頭で相談したい\n3：商品・ご予算がある程度決まっている\n4：日程・受け取り方法を先に相談したい\n\n1〜4の番号だけでお知らせください。\n※「①」のような丸数字でも受け付けています。' };
 }
 function consultationPrompt() {
-  return 'ありがとうございます😊\n\n商品が決まっていない場合も、店頭でのご相談や商品のご案内から一緒に進められます。分かる範囲で、次の内容を教えてください。\n\n・ご用途や贈る相手：\n・飾る場所（分かる範囲で）：\n・ご予算：\n・使いたい日：\n・参考画像・気になる商品（あれば）：\n\n画像がなくても大丈夫です。「未定」や「おまかせ」だけでも受け付けています。その他のご希望は自由にご記入ください。';
+  return 'ご回答ありがとうございます😊\n\n商品が決まっていない場合も、店頭でのご相談や商品のご案内から一緒に進められます。分かる範囲で、次の内容を教えてください。\n\n・ご用途や贈る相手：\n・飾る場所（分かる範囲で）：\n・ご予算：\n・使いたい日：\n・参考画像・気になる商品（あれば）：\n\n画像がなくても大丈夫です。「未定」や「おまかせ」だけでも受け付けています。その他のご希望は自由にご記入ください。';
 }
 function collectConsultationDetail(text, session) {
   session.fields.consultationText = [session.fields.consultationText, stripIntakeTemplateHints(text)].filter(Boolean).join('\n').slice(0, 3000);
@@ -2351,13 +2351,13 @@ function collectConsultationDetail(text, session) {
   session.fields.useDateValue = session.fields.useDateValue || labeledAnswer(text, '必要な日|使用予定日');
   if (/(?:ご予算|必要な日|使用予定日|その他|相談|提案)/u.test(text) || session.fields.consultationText.length > 20) {
     session.stage = 'review';
-    return { session, message: 'ありがとうございます😊\n\nご相談内容を注文カルテへ記録しました。\n\n・用途・イメージ：確認中\n・バルーンの種類：' + (productTypeLabel(session.fields.productType) || '未定') + '\n・ご予算：' + (session.fields.budgetValue || '未定') + '\n・必要な日：' + (session.fields.useDateValue || '未定') + '\n・その他のご希望：受け付けました\n\n内容に合う商品や装飾案を整理して、統括からご提案します。' };
+    return { session, message: 'ご回答ありがとうございます😊\n\nご相談内容を注文カルテへ記録しました。\n\n・用途・イメージ：確認中\n・バルーンの種類：' + (productTypeLabel(session.fields.productType) || '未定') + '\n・ご予算：' + (session.fields.budgetValue || '未定') + '\n・必要な日：' + (session.fields.useDateValue || '未定') + '\n・その他のご希望：受け付けました\n\n内容に合う商品や装飾案を整理して、統括からご提案します。' };
   }
   return { session, message: consultationPrompt() };
 }
 function scheduleConsultationPrompt(storeVisit = false) {
-  if (storeVisit) return '承知しました😊\n\n商品がまだ決まっていない場合は、まず店頭でご相談いただけます。空いている日時を確認するため、次の2点だけ教えてください。\n\n・来店希望日：\n・来店希望時間帯：\n\n分からない場合は「未定」で大丈夫です。ご来店時に相談したい内容や、気になる画像があれば任意で添えてください。確認後、来店可能な日時をご案内します。';
-  return '承知しました😊 商品がまだ決まっていなくても、日程の空き状況から確認できます。\n\n分かる範囲で教えてください。\n\n・ご希望日（必須。未定でも可）：\n・希望時間帯：\n・受け取り方法（店頭受取／配達／発送／未定）：\n・用途やイベント（任意）：\n・その他のご希望・ご質問：\n\n確認後、対応可能な日程と、次に決める内容をご案内します。';
+  if (storeVisit) return 'ご回答ありがとうございます😊\n\n商品がまだ決まっていない場合は、まず店頭でご相談いただけます。空いている日時を確認するため、次の2点だけ教えてください。\n\n・来店希望日：\n・来店希望時間帯：\n\n分からない場合は「未定」で大丈夫です。ご来店時に相談したい内容や、気になる画像があれば任意で添えてください。確認後、来店可能な日時をご案内します。';
+  return 'ご回答ありがとうございます😊 商品がまだ決まっていなくても、日程の空き状況から確認できます。\n\n分かる範囲で教えてください。\n\n・ご希望日（必須。未定でも可）：\n・希望時間帯：\n・受け取り方法（店頭受取／配達／発送／未定）：\n・用途やイベント（任意）：\n・その他のご希望・ご質問：\n\n確認後、対応可能な日程と、次に決める内容をご案内します。';
 }
 function collectScheduleDetail(text, session) {
   session.fields.scheduleText = [session.fields.scheduleText, stripIntakeTemplateHints(text)].filter(Boolean).join('\n').slice(0, 2000);
@@ -2366,7 +2366,7 @@ function collectScheduleDetail(text, session) {
   session.fields.methodValue = session.fields.methodValue || labeledAnswer(text, '受け取り方法|受取方法') || (session.fields.consultationMode === 'store_visit' ? '店頭相談' : null);
   if (/(?:ご希望日|受取希望日|受け取り希望日|必要な日)/u.test(text) || session.fields.scheduleText.length > 10) {
     session.stage = 'review';
-    return { session, message: 'ありがとうございます😊\n\n日程相談として注文カルテに記録しました。\n\n・ご希望日：' + (session.fields.receiveDateValue || '未定') + '\n・希望時間帯：' + (session.fields.receiveTimeValue || '未定') + '\n・受け取り方法：' + (session.fields.methodValue || '未定') + '\n\n空き状況と対応可能な受け取り方法を確認し、統括からご案内します。商品内容は後から追加でご相談いただけます。' };
+    return { session, message: 'ご回答ありがとうございます😊\n\n日程相談として注文カルテに記録しました。\n\n・ご希望日：' + (session.fields.receiveDateValue || '未定') + '\n・希望時間帯：' + (session.fields.receiveTimeValue || '未定') + '\n・受け取り方法：' + (session.fields.methodValue || '未定') + '\n\n空き状況と対応可能な受け取り方法を確認し、統括からご案内します。商品内容は後から追加でご相談いただけます。' };
   }
   return { session, message: scheduleConsultationPrompt() };
 }
