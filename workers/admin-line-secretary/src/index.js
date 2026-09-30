@@ -2238,6 +2238,12 @@ function buildCustomerReply(text, session) {
   if (careReply) return careReply;
   if (session.stage === 'review' && /(?:注文お願いします|注文をお願いします|この内容で注文|お願いします)/u.test(text)) return requestCustomerContact(session);
   if (session.stage === 'awaiting_contact') return recordCustomerContact(text, session);
+  // 初回分岐直後でまだ回答内容がない場合は、番号だけで選択をやり直せる。
+  // お客様に「注文担当を呼び出します」から再入力していただかないための救済処理。
+  if (session.stage === 'collecting' && isBareOrderRouteNumber(text) && !hasCollectedIntakeAnswer(session)) {
+    session.stage = 'awaiting_order_route';
+    return selectOrderRoute(text, session);
+  }
   if (session.stage === 'awaiting_order_route') return selectOrderRoute(text, session);
   if (session.stage === 'consulting') return collectConsultationDetail(text, session);
   if (session.stage === 'schedule_consulting') return collectScheduleDetail(text, session);
@@ -2248,6 +2254,19 @@ function buildCustomerReply(text, session) {
   if (/(しぼ|どのくらい持|日持ち|持ちます)/u.test(text)) return longevityReply(session);
   if (/(注文|お願い|作れ|作って|欲しい|ほしい|祝い|誕生日|開店|結婚|出産|発表会|卒業|退職)/u.test(text)) return unstructuredOrderInquiry(session);
   return { session, message: 'ご連絡ありがとうございます😊 内容を確認して、できるだけご希望に沿えるようご案内します。差し支えなければ、①ご用途 ②ご希望日 ③ご予算 ④お受け取り・配達のどちらか を教えてください。参考のお写真があれば一緒に送っていただいて大丈夫です🎈' };
+}
+
+function isBareOrderRouteNumber(text) {
+  return /^(?:1|2|3|4|①|②|③|④)$/u.test(text.trim());
+}
+
+function hasCollectedIntakeAnswer(session) {
+  const fields = session?.fields || {};
+  return Object.entries(fields).some(([key, value]) => {
+    if (key === 'questionCounts') return false;
+    if (Array.isArray(value)) return value.length > 0;
+    return value !== null && value !== undefined && value !== '' && value !== false;
+  });
 }
 
 function isOrderStartTrigger(text) {
