@@ -70,8 +70,7 @@ function googleClientSecret(env) {
 }
 
 async function publicSchedule(request, env) {
-  const rows = await env.DB.prepare(`SELECT date, status, open_time, close_time, delivery_window, note, updated_at
-      FROM business_schedule ORDER BY date ASC`).all();
+  const rows = await readBusinessSchedule(env);
   const exceptions = (rows.results || []).map((row) => {
     if (row.status === 'special_hours') {
       return { date: row.date, status: row.status, start: row.open_time, end: row.close_time, delivery_window: row.delivery_window || null, label: row.note || '営業時間変更' };
@@ -86,6 +85,24 @@ async function publicSchedule(request, env) {
   const headers = { 'Cache-Control': 'no-store' };
   if (allowedOrigins.includes(origin)) headers['Access-Control-Allow-Origin'] = origin;
   return json(body, 200, headers);
+}
+
+// Older production databases may not yet have delivery_window. Keep the
+// public schedule API available while the schema is being upgraded.
+async function readBusinessSchedule(env, date = null) {
+  const where = date ? ' WHERE date = ?' : '';
+  const query = `SELECT date, status, open_time, close_time, delivery_window, note, updated_at
+      FROM business_schedule${where}${date ? '' : ' ORDER BY date ASC'}`;
+  try {
+    const statement = env.DB.prepare(query);
+    return date ? await statement.bind(date).first() : await statement.all();
+  } catch (error) {
+    console.warn('business schedule schema compatibility fallback', error?.message || error);
+    const fallbackQuery = `SELECT date, status, open_time, close_time, note, updated_at
+      FROM business_schedule${where}${date ? '' : ' ORDER BY date ASC'}`;
+    const statement = env.DB.prepare(fallbackQuery);
+    return date ? await statement.bind(date).first() : await statement.all();
+  }
 }
 
 function googleOAuthStart(env) {
@@ -545,8 +562,7 @@ async function recordCustomerMessage(event, env) {
 }
 
 async function findBusinessScheduleConflict(candidate, env) {
-  const row = await env.DB.prepare(`SELECT status, open_time, close_time, delivery_window, note
-      FROM business_schedule WHERE date = ?`).bind(candidate.date).first();
+  const row = await readBusinessSchedule(env, candidate.date);
   if (!row) return null;
   if (row.status === 'closed') return row.note || 'この日は店休日です。';
   if (row.status === 'special_hours' && candidate.time && row.open_time && row.close_time
