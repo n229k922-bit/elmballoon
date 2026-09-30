@@ -21,6 +21,24 @@ enabled = true
 [triggers]
 crons = ["*/5 * * * *"]
 
+# Test environment: isolated Worker/DB/KV. LINE secrets are intentionally
+# not copied from production; set test-channel secrets separately.
+[env.test]
+name = "elm-balloon-admin-line-secretary-test"
+
+[env.test.vars]
+ALLOWED_ORIGINS = ""
+
+[[env.test.d1_databases]]
+binding = "DB"
+database_name = "elm-balloon-schedule-test"
+database_id = "1ef1462b-c917-4894-8ccd-194b7b46ca9a"
+migrations_dir = "migrations"
+
+[[env.test.kv_namespaces]]
+binding = "SECRETARY_KV"
+id = "f14e95ea09e64e069cebcf8531832306"
+
 # Set these with `wrangler secret put`; never commit their values:
 # LINE_CHANNEL_SECRET (バルーン統括のWebhook署名検証)
 # LINE_CHANNEL_ACCESS_TOKEN (バルーン統括への店長通知)
