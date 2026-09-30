@@ -620,6 +620,25 @@ async function queueCustomerReplyReview(event, env, ctx) {
     return;
   }
 
+  // 注文フォームの入口（「注文担当を呼び出します」）では、
+  // まず注文ルートの選択肢をお客様へ返す。ここを返信確認キューへ
+  // 回すと、初回案内が店長側にだけ保存され、お客様には届かない。
+  if (result.session.stage === 'awaiting_order_route') {
+    const delivery = deliverCustomerMessagesAfterDelay(
+      customerId,
+      splitCustomerReply(result.message),
+      event.__bundled ? 'bundled_reply' : 'initial_intake',
+      env,
+      async () => {
+        const sentAt = new Date().toISOString();
+        await env.DB.prepare(`INSERT INTO order_messages (order_thread_id, direction, message_text, occurred_at) VALUES (?, 'assistant_outbound', ?, ?)`)
+          .bind('customer:' + customerId, result.message.slice(0, 4900), sentAt).run();
+      },
+    );
+    await continueCustomerDelivery(delivery, ctx);
+    return;
+  }
+
   // 初回の注文相談だけは自動で基本ヒアリングを返し、統括への通知は行わない。
   // お客様の回答が届いた次の段階で、内容を確認待ちとして統括へ回す。
   const missingFields = missingIntakeFields(result.session.fields);
