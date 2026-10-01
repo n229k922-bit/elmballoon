@@ -4,6 +4,7 @@ import vm from 'node:vm';
 
 const sourcePath = new URL('../workers/admin-line-secretary/src/index.js', import.meta.url);
 const source = fs.readFileSync(sourcePath, 'utf8')
+  .replace(/^import .*;\r?\n/gm, '')
   .replace('export default {', 'const workerDefault = {')
   + `\nglobalThis.__orderTests = {
     orderReply, selectOrderRoute, collectScheduleDetail, collectOrderDetail, missingIntakeFields, splitCustomerReply,

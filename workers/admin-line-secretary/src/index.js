@@ -1,3 +1,9 @@
+import { googleOAuthStart, googleOAuthCallback, calendarAvailability } from './calendar.js';
+import { managerV2Enabled, receiveManagerEvents, runManagerMaintenance, handleManagerCommand, flushManagerOutbox } from './manager-runtime.js';
+import { managerApi, managerConsole } from './manager-console.js';
+import { createManagerLoginLink, managerSessionEndpoint } from './manager-auth.js';
+import { managerPwaAsset } from './manager-pwa.js';
+
 const encoder = new TextEncoder();
 const CUSTOMER_SESSION_TTL = 60 * 60 * 24 * 14;
 const CUSTOMER_MESSAGE_BUNDLE_WAIT_MS = 12_000;
@@ -37,8 +43,13 @@ const ORDER_FIELD_LABELS = Object.fromEntries([
 export default {
   async fetch(request, env, ctx) {
     const url = new URL(request.url);
-    if (request.method === 'GET' && url.pathname === '/oauth/google/start') return googleOAuthStart(env);
-    if (request.method === 'GET' && url.pathname === '/oauth/google/callback') return googleOAuthCallback(url, env);
+    const appAsset = request.method === 'GET' ? managerPwaAsset(url.pathname) : null;
+    if(appAsset)return appAsset;
+    if (request.method === 'GET' && url.pathname === '/manager') return managerConsole();
+    if (url.pathname === '/api/manager/session' || url.pathname === '/api/manager/logout') return managerSessionEndpoint(request, env);
+    if (url.pathname.startsWith('/api/manager/')) return managerApi(request, env);
+    if (request.method === 'GET' && url.pathname === '/oauth/google/start') return googleOAuthStart(request, env);
+    if (request.method === 'GET' && url.pathname === '/oauth/google/callback') return googleOAuthCallback(request, env);
     if (request.method === 'GET' && url.pathname === '/api/business-schedule') {
       return publicSchedule(request, env);
     }
@@ -54,11 +65,13 @@ export default {
     return new Response('Not found', { status: 404 });
   },
   async scheduled(_controller, env, ctx) {
+    if (managerV2Enabled(env)) {
+      ctx.waitUntil(runManagerMaintenance(env));
+      return;
+    }
     ctx.waitUntil(retryPendingOwnerNotifications(env));
   },
 };
-
-const GOOGLE_REDIRECT_URI = 'https://elm-balloon-admin-line-secretary.n229k922.workers.dev/oauth/google/callback';
 
 // Secret名は旧環境と現行環境の両方を許容する。
 function googleClientId(env) {
@@ -105,61 +118,6 @@ async function readBusinessSchedule(env, date = null) {
   }
 }
 
-function googleOAuthStart(env) {
-  const clientId = googleClientId(env);
-  if (!clientId) return new Response('Google OAuth client is not configured', { status: 503 });
-  const auth = new URL('https://accounts.google.com/o/oauth2/v2/auth');
-  auth.search = new URLSearchParams({
-    client_id: clientId,
-    redirect_uri: GOOGLE_REDIRECT_URI,
-    response_type: 'code',
-    access_type: 'offline',
-    prompt: 'consent',
-    scope: 'https://www.googleapis.com/auth/calendar.readonly',
-  });
-  return Response.redirect(auth.toString(), 302);
-}
-
-async function googleOAuthCallback(url, env) {
-  const code = url.searchParams.get('code');
-  if (!code) return new Response('Google OAuth was cancelled or failed.', { status: 400 });
-  const clientId = googleClientId(env);
-  const clientSecret = googleClientSecret(env);
-  if (!clientId || !clientSecret) return new Response('Google OAuth client is not configured', { status: 503 });
-  const response = await fetch('https://oauth2.googleapis.com/token', {
-    method: 'POST', headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-    body: new URLSearchParams({ code, client_id: clientId, client_secret: clientSecret, redirect_uri: GOOGLE_REDIRECT_URI, grant_type: 'authorization_code' }),
-  });
-  const token = await response.json();
-  if (!response.ok || !token.refresh_token) return new Response('Google OAuth token exchange failed.', { status: 502 });
-  await env.SECRETARY_KV.put('google-calendar-refresh-token', token.refresh_token);
-  return new Response('Googleカレンダーの読み取り接続が完了しました。この画面は閉じて大丈夫です。', { headers: { 'Content-Type': 'text/plain; charset=utf-8' } });
-}
-
-async function calendarAvailability(request, env) {
-  const url = new URL(request.url);
-  const date = url.searchParams.get('date');
-  const startTime = url.searchParams.get('start') || '00:00';
-  const endTime = url.searchParams.get('end') || '23:59';
-  if (!/^\d{4}-\d{2}-\d{2}$/.test(date || '')) return json({ error: 'date must be YYYY-MM-DD' }, 400);
-  const refreshToken = await env.SECRETARY_KV.get('google-calendar-refresh-token');
-  if (!refreshToken) return json({ error: 'calendar_not_connected' }, 503);
-  const tokenRes = await fetch('https://oauth2.googleapis.com/token', {
-    method: 'POST', headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-    body: new URLSearchParams({ client_id: googleClientId(env), client_secret: googleClientSecret(env), refresh_token: refreshToken, grant_type: 'refresh_token' }),
-  });
-  const token = await tokenRes.json();
-  if (!tokenRes.ok || !token.access_token) return json({ error: 'calendar_token_refresh_failed' }, 502);
-  const timeMin = `${date}T${startTime}:00+09:00`, timeMax = `${date}T${endTime}:00+09:00`;
-  const eventsUrl = new URL('https://www.googleapis.com/calendar/v3/calendars/primary/events');
-  eventsUrl.search = new URLSearchParams({ timeMin, timeMax, singleEvents: 'true', orderBy: 'startTime', maxResults: '50' });
-  const eventsRes = await fetch(eventsUrl, { headers: { Authorization: `Bearer ${token.access_token}` } });
-  const events = await eventsRes.json();
-  if (!eventsRes.ok) return json({ error: 'calendar_events_failed', detail: events.error || null }, 502);
-  const busy = (events.items || []).filter((event) => event.status !== 'cancelled').map((event) => ({ id: event.id, summary: event.summary || '(予定名なし)', start: event.start?.dateTime || event.start?.date, end: event.end?.dateTime || event.end?.date }));
-  return json({ date, timeMin, timeMax, busy, report: formatCalendarReport(date, startTime, endTime, busy) });
-}
-
 function formatCalendarReport(date, startTime, endTime, busy) {
   const lines = busy.length
     ? busy.map((event) => `・${event.start?.slice(11, 16) || '終日'}〜${event.end?.slice(11, 16) || '終日'}：${event.summary}`).join('\n')
@@ -194,6 +152,22 @@ function normalizeManagerCommand(text) {
 }
 
 async function handleAdmin(event, env) {
+  if (managerV2Enabled(env)) {
+    if (/^(?:統括アプリ|アプリ|注文管理)$/u.test(event.message?.text?.trim() || '')) {
+      const link=await createManagerLoginLink(event.source.userId,env);
+      return reply(event.replyToken,link?`こちらから統括ノートを開けます。10分以内に一度だけ使える店長専用リンクです。\n${link}\nスマートフォンのブラウザで開き、ホーム画面へ追加するとアプリとして使えます。`:'アプリの接続先がまだ設定されていません。',env);
+    }
+    const response = await handleManagerCommand(event.message?.text?.trim() || '', event.source.userId, env);
+    if (response !== null) {
+      await reply(event.replyToken, response, env);
+      await flushManagerOutbox(env);
+      return;
+    }
+    // Keep only explicit business-hours commands on the legacy system route.
+    if (!/^(?:休業 |営業時間 |休業解除 )/u.test(event.message?.text || '')) {
+      return reply(event.replyToken, '案件一覧／統括状況／カルテ M番号\n返信作成 M番号 本文／承認送信 D番号\n明細 M番号 お名前：仕様\n電話メモ M番号 内容', env);
+    }
+  }
   if (event.message?.type === 'image') return registerManualOrderFormImage(event, env);
   if (event.message?.type !== 'text') return reply(event.replyToken, '注文書画像または文字でお送りください。', env);
   const userId = event.source.userId, text = normalizeManagerCommand(event.message.text.trim()), pendingKey = 'pending:' + userId;
@@ -371,6 +345,17 @@ async function customerLineWebhook(request, env, ctx) {
   if (!(await signatureIsValid(body, signature, env.CUSTOMER_LINE_CHANNEL_SECRET))) {
     console.log('customer webhook signature invalid');
     return new Response('Invalid signature', { status: 401 });
+  }
+
+  if (managerV2Enabled(env)) {
+    await receiveManagerEvents(payload.events || [], env);
+    const process = async () => {
+      await new Promise(resolve => setTimeout(resolve, 12500));
+      await runManagerMaintenance(env);
+    };
+    if (ctx?.waitUntil) ctx.waitUntil(process());
+    else await runManagerMaintenance(env);
+    return new Response('OK');
   }
 
   console.log('customer webhook signature valid', { eventCount: (payload.events || []).length });

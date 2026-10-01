@@ -18,9 +18,17 @@ jobs:
       - name: Set up Node.js
         uses: actions/setup-node@v4
         with:
-          node-version: 22
+          node-version: 24
       - name: Check Worker syntax
         run: node --check workers/admin-line-secretary/src/index.js
+      - name: Validate manager and legacy behavior
+        run: |
+          node tools/test-order-record-workflow.mjs
+          node tools/test-conversation-planner.mjs
+          node tools/test-calendar-security.mjs
+          node tools/test-manager-mobile.mjs
+          node tools/test-manager-intake.mjs
+          node --test tools/test-manager-runtime.mjs tools/test-order-knowledge-import.mjs
       - name: Check required integration routes
         shell: bash
         run: |

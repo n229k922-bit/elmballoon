@@ -14,6 +14,7 @@ id = "99cd9bb041214e5a90a7ddf908d4d516"
 
 [vars]
 ALLOWED_ORIGINS = ""
+ORDER_ENGINE = "legacy"
 
 [observability]
 enabled = true
@@ -28,6 +29,12 @@ name = "elm-balloon-admin-line-secretary-test"
 
 [env.test.vars]
 ALLOWED_ORIGINS = ""
+ORDER_ENGINE = "v2"
+MANAGER_SEND_PAUSED = "true"
+MANAGER_REVIEW_WORK_HOURS = "8"
+MANAGER_APP_ORIGIN = "https://elm-balloon-admin-line-secretary-test.n229k922.workers.dev"
+MANAGER_APP_USER_IDS = "mobile-owner"
+GOOGLE_REDIRECT_URI = "https://elm-balloon-admin-line-secretary-test.n229k922.workers.dev/oauth/google/callback"
 
 [[env.test.d1_databases]]
 binding = "DB"

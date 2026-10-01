@@ -1,2 +1,4 @@
 workers/admin-line-secretary/.wrangler/
 .wrangler/
+CUSTOMER_ORDER_CARDS_PRIVATE.md
+*.private.json

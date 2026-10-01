@@ -1,0 +1,63 @@
+import assert from 'node:assert/strict';
+import fs from 'node:fs';
+import { webcrypto } from 'node:crypto';
+globalThis.crypto ||= webcrypto;
+const source = fs.readFileSync(new URL('../workers/admin-line-secretary/src/calendar.js', import.meta.url), 'utf8');
+const api = await import(`data:text/javascript;base64,${Buffer.from(source).toString('base64')}`);
+const values = new Map();
+const env = { ADMIN_API_TOKEN: 'test-admin-token', GOOGLE_CLIENT_ID: 'client', GOOGLE_CLIENT_SECRET: 'secret', GOOGLE_REDIRECT_URI: 'https://test.example/oauth/google/callback', GOOGLE_CALENDAR_IDS: 'work-calendar', SECRETARY_KV: { async get(k) { return values.get(k) || null; }, async put(k,v) { values.set(k,v); }, async delete(k) { values.delete(k); } } };
+const request = (path, auth = true, extra = {}) => new Request(`https://test.example${path}`, { headers: { ...(auth ? { Authorization: 'Bearer test-admin-token' } : {}), ...extra } });
+let checks = 0;
+async function status(promise, expected) { assert.equal((await promise).status, expected); checks++; }
+await status(api.googleOAuthStart(request('/oauth/google/start', false), env), 401);
+await status(api.calendarAvailability(request('/api/calendar/availability?date=2026-09-30', false), env), 401);
+await status(api.calendarAvailability(request('/api/calendar/availability'), { ...env, ADMIN_API_TOKEN: '' }), 503);
+await status(api.googleOAuthStart(request('/oauth/google/start'), { ...env, GOOGLE_REDIRECT_URI: 'https://production.example/oauth/google/callback' }), 503);
+await status(api.calendarAvailability(request('/api/calendar/availability'), { ...env, GOOGLE_CALENDAR_IDS: '' }), 503);
+for (const query of ['date=2026-02-30', 'date=2026-09-30&start=24:00', 'date=2026-09-30&start=15:00&end=10:00']) await status(api.calendarAvailability(request(`/api/calendar/availability?${query}`), env), 400);
+const start = await api.googleOAuthStart(request('/oauth/google/start'), env);
+assert.equal(start.status, 302);
+const authUrl = new URL(start.headers.get('Location'));
+assert.equal(authUrl.searchParams.get('code_challenge_method'), 'S256');
+assert.equal(authUrl.searchParams.get('scope'), 'https://www.googleapis.com/auth/calendar.freebusy');
+const cookie = start.headers.get('Set-Cookie').split(';')[0];
+const state = authUrl.searchParams.get('state');
+const callback = `/oauth/google/callback?code=valid-code&state=${state}`;
+await status(api.googleOAuthCallback(request(callback, false), env), 400);
+await status(api.googleOAuthCallback(request('/oauth/google/callback?code=forged', false, { Cookie: cookie }), env), 400);
+let calls = [];
+globalThis.fetch = async (url, options) => {
+  calls.push({ url, options });
+  return Response.json({ refresh_token: 'refresh-test' });
+};
+await status(api.googleOAuthCallback(request(callback, false, { Cookie: cookie }), env), 200);
+assert.equal(values.get('google-calendar-refresh-token'), 'refresh-test');
+assert.ok(calls[0].options.body.get('code_verifier'));
+assert.equal(calls[0].options.body.get('redirect_uri'), env.GOOGLE_REDIRECT_URI);
+await status(api.googleOAuthCallback(request(callback, false, { Cookie: cookie }), env), 400);
+assert.equal(calls.length, 1);
+calls = [];
+globalThis.fetch = async (url, options) => {
+  calls.push({ url, options });
+  return url.includes('/token') ? Response.json({ access_token: 'access-test' }) : Response.json({ calendars: { 'work-calendar': { busy: [{ start: '2026-09-30T10:00:00+09:00', end: '2026-09-30T11:00:00+09:00', summary: 'PRIVATE CUSTOMER', id: 'PRIVATE ID' }] } } });
+};
+const available = await api.calendarAvailability(request('/api/calendar/availability?date=2026-09-30'), env);
+assert.equal(available.status, 200);
+const body = await available.json();
+assert.equal(body.availability, 'busy');
+assert.equal(body.requires_manager_confirmation, true);
+assert.deepEqual(Object.keys(body.busy[0]), ['start', 'end']);
+assert.ok(!JSON.stringify(body).includes('PRIVATE'));
+assert.equal(calls[1].url, 'https://www.googleapis.com/calendar/v3/freeBusy');
+assert.deepEqual(JSON.parse(calls[1].options.body).items, [{ id: 'work-calendar' }]);
+checks++;
+for (const calendars of [{}, { 'work-calendar': { errors: [{ reason: 'notFound' }] } }, { 'work-calendar': { busy: [{ start: 'invalid', end: 'invalid' }] } }]) {
+  globalThis.fetch = async url => url.includes('/token') ? Response.json({ access_token: 'access-test' }) : Response.json({ calendars });
+  const res = await api.calendarAvailability(request('/api/calendar/availability?date=2026-09-30'), env);
+  assert.equal(res.status, 502);
+  assert.equal((await res.json()).availability, 'unknown');
+  checks++;
+}
+globalThis.fetch = async () => { throw new Error('private upstream details'); };
+await status(api.calendarAvailability(request('/api/calendar/availability?date=2026-09-30'), env), 502);
+console.log(`Calendar security: ${checks} checks passed.`);
