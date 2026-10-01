@@ -1248,6 +1248,19 @@ https://www.facebook.com/elmballoon/⠀
     if (!grid || !title || !details) return;
     var state = new Date();
     state = new Date(state.getFullYear(), state.getMonth(), 1);
+    var calendarParams = new URLSearchParams(window.location.search);
+    var calendarTestMode = calendarParams.get('schedule') === 'test';
+    var focusDate = calendarParams.get('schedule_date') || '';
+    if (/^\d{4}-\d{2}-\d{2}$/.test(focusDate)) {
+      var focusParts = focusDate.split('-').map(Number);
+      state = new Date(focusParts[0], focusParts[1] - 1, 1);
+    }
+    var scheduleApi = 'https://elm-balloon-admin-line-secretary' + (calendarTestMode ? '-test' : '') + '.n229k922.workers.dev/api/business-schedule';
+    if (calendarTestMode) {
+      var testNotice = document.createElement('p');
+      testNotice.textContent = 'テスト用の営業日表示です。実店舗の営業予定ではありません。';
+      title.parentNode.parentNode.insertBefore(testNotice, title.parentNode);
+    }
 
     function iso(year, month, day) {
       return year + '-' + String(month + 1).padStart(2, '0') + '-' + String(day).padStart(2, '0');
@@ -1298,6 +1311,7 @@ https://www.facebook.com/elmballoon/⠀
       }
 
       grid.querySelectorAll('button[data-date]').forEach(function (button) {
+        if (button.dataset.date === focusDate) details.textContent = button.dataset.date + '：' + button.dataset.label;
         button.addEventListener('click', function () {
           details.textContent = button.dataset.date + '：' + button.dataset.label;
         });
@@ -1318,7 +1332,7 @@ https://www.facebook.com/elmballoon/⠀
         if (!response.ok) throw new Error('fallback calendar');
         return response.json();
       }),
-      fetch('https://elm-balloon-admin-line-secretary.n229k922.workers.dev/api/business-schedule', {
+      fetch(scheduleApi, {
         cache: 'no-store', headers: { Accept: 'application/json' }
       }).then(function (response) {
         if (!response.ok) throw new Error('remote calendar');
@@ -1326,6 +1340,7 @@ https://www.facebook.com/elmballoon/⠀
       }).catch(function () { return null; })
     ]).then(function (values) {
       var data = mergeRemote(values[0], values[1]);
+      document.querySelector('.elm-calendar').setAttribute('data-schedule-source', values[1] ? scheduleApi : 'fallback');
       var syncNotice = document.getElementById('calendar-sync-notice');
       if (!values[1] && syncNotice) {
         syncNotice.textContent = '最新情報を取得できないため、保存済みの営業日情報を表示しています。';
