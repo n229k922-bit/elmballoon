@@ -3,6 +3,7 @@ import { managerV2Enabled, receiveManagerEvents, runManagerMaintenance, handleMa
 import { managerApi, managerConsole } from './manager-console.js';
 import { createManagerLoginLink, managerSessionEndpoint } from './manager-auth.js';
 import { managerPwaAsset } from './manager-pwa.js';
+import { scheduleProofAsset, scheduleProofMessages } from './schedule-proof.js';
 
 const encoder = new TextEncoder();
 const CUSTOMER_SESSION_TTL = 60 * 60 * 24 * 14;
@@ -43,6 +44,7 @@ const ORDER_FIELD_LABELS = Object.fromEntries([
 export default {
   async fetch(request, env, ctx) {
     const url = new URL(request.url);
+    if (request.method==='GET' && url.pathname.startsWith('/schedule-proof/')) return (await scheduleProofAsset(url.pathname,env)) || new Response('Not found',{status:404});
     const appAsset = request.method === 'GET' ? managerPwaAsset(url.pathname) : null;
     if(appAsset)return appAsset;
     if (request.method === 'GET' && url.pathname === '/manager') return managerConsole();
@@ -130,6 +132,7 @@ function json(value, status = 200, extraHeaders = {}) {
 }
 
 async function lineWebhook(request, env) {
+  if(managerV2Enabled(env)&&(!env.LINE_CHANNEL_SECRET||!env.LINE_CHANNEL_ACCESS_TOKEN))return new Response('Manager channel is not configured',{status:503});
   const body = await request.text();
   const signature = request.headers.get('x-line-signature') || '';
   if (!(await signatureIsValid(body, signature, env.LINE_CHANNEL_SECRET))) return new Response('Invalid signature', { status: 401 });
@@ -142,6 +145,7 @@ async function handleEvent(event, env) {
   const userId = event.source?.userId;
   if (!userId || !event.replyToken) return;
   const admins = new Set((env.ADMIN_LINE_USER_IDS || '').split(',').map((id) => id.trim()).filter(Boolean));
+  if(managerV2Enabled(env)&&!admins.has(userId))return;
   return admins.has(userId) ? handleAdmin(event, env) : handleCustomer(event, env);
 }
 
@@ -153,6 +157,28 @@ function normalizeManagerCommand(text) {
 
 async function handleAdmin(event, env) {
   if (managerV2Enabled(env)) {
+    const businessText = event.message?.text?.trim() || '';
+    if (/^(?:日付変更依頼|店休日変更依頼)$/u.test(businessText)) {
+      return reply(event.replyToken, '【店休日・営業時間の変更】\nホームページに表示する営業日設定を変更します。お客様の注文日時は変更しません。\n\n・全日休み：休業 2026-10-10\n・休みを解除：休業解除 2026-10-10\n・午後から営業：営業時間 2026-10-10 13:00-18:00\n・午後から休み：営業時間 2026-10-10 10:00-12:00\n\n日付・時間は例です。変更したい日時を送ってください。内容を確認し「確定」後に反映します。お客様へ自動送信はしません。', env);
+    }
+    const businessChange = parseCommand(businessText);
+    if (businessChange) {
+      await env.SECRETARY_KV.put('pending:' + event.source.userId, JSON.stringify(businessChange), {expirationTtl:600});
+      return reply(event.replyToken, `【店休日・営業時間の変更確認】\n${businessChange.summary}\nお客様の注文日時は変更しません。\n10分以内に「確定」で営業日設定へ反映、「取消」で取り消します。`, env);
+    }
+    if (/^(確定|承認|はい|取消|キャンセル)$/u.test(businessText)) {
+      const key = 'pending:' + event.source.userId;
+      const pending = await env.SECRETARY_KV.get(key,'json');
+      if (pending) {
+        if (/^(取消|キャンセル)$/u.test(businessText)) {
+          await env.SECRETARY_KV.delete(key);
+          return reply(event.replyToken,'店休日・営業時間の変更を取り消しました。',env);
+        }
+        await applyChange(pending,event.source.userId,env);
+        await env.SECRETARY_KV.delete(key);
+        return replyMessages(event.replyToken,await scheduleProofMessages(pending,env),env);
+      }
+    }
     if (/^(?:統括アプリ|アプリ|注文管理)$/u.test(event.message?.text?.trim() || '')) {
       const link=await createManagerLoginLink(event.source.userId,env);
       return reply(event.replyToken,link?`こちらから統括ノートを開けます。10分以内に一度だけ使える店長専用リンクです。\n${link}\nスマートフォンのブラウザで開き、ホーム画面へ追加するとアプリとして使えます。`:'アプリの接続先がまだ設定されていません。',env);
@@ -165,7 +191,7 @@ async function handleAdmin(event, env) {
     }
     // Keep only explicit business-hours commands on the legacy system route.
     if (!/^(?:休業 |営業時間 |休業解除 )/u.test(event.message?.text || '')) {
-      return reply(event.replyToken, '案件一覧／統括状況／カルテ M番号\n返信作成 M番号 本文／承認送信 D番号\n明細 M番号 お名前：仕様\n電話メモ M番号 内容', env);
+      return reply(event.replyToken, '案件一覧／統括状況／カルテ M番号\n過去注文 お名前／○○さんの過去の注文を確認したい\n過去情報 M番号\n返信作成 M番号 本文／承認送信 D番号\n明細 M番号 お名前：仕様\n電話メモ M番号 内容', env);
     }
   }
   if (event.message?.type === 'image') return registerManualOrderFormImage(event, env);
@@ -1118,7 +1144,7 @@ function formatPendingOwnerDecisionList(rows, decisionMode = false, heading = '�
 
 function richMenuPrompt(command) {
   const prompts = {
-    '日付変更依頼': '【日付変更依頼】\n\n注文の操作番号（確認待ち一覧の1〜9）または正式カルテ番号と、変更後の日付・時間を送ってください。\n\n例：1 日付変更 10月5日 14時頃\n\n変更内容を復唱し、カレンダーの重複を確認してから反映します。',
+    '日付変更依頼': '【店休日・営業時間の変更】\nホームページの営業日設定を変更します。お客様の注文日時の変更ではありません。\n例：休業 2026-10-10\n例：営業時間 2026-10-10 13:00-18:00\n例：休業解除 2026-10-10\n内容の確認後、「確定」で反映します。',
     'お客様への返信依頼': '【お客様への返信依頼】\n\n注文の操作番号または正式カルテ番号と、送りたい文章を送ってください。\n\n例：1 お客様へ ご希望の日時で対応可能か確認します。\n（店長指定文：1 指定メッセージ 本文）\n\n送信案を表示し、店長が「顧客送信確認」と返信した後に送信します。',
     '制作進捗更新': '【制作進捗更新】\n\n進捗は統括が注文内容を確認し、変更前に「はい／いいえ」で確認します。\n制作開始・完成・受渡し・支払い確認の内容が分かるメッセージを送ってください。\n\n例：KABC123の制作が完成しました。\n例：1 お渡ししました\n\n遠隔クレジット決済の発行・確認は店長が手動で行います。',
     'システム変更依頼': '【システム変更依頼】\n\n変更対象・変更内容・希望時期を送ってください。\n\n例：商品ページの画像を差し替えたい\n例：注文ヒアリング文を変更したい\n\n変更案と影響範囲を整理し、店長の承認後に反映します。',
@@ -2526,6 +2552,10 @@ function timingSafeEqual(left, right) {
 }
 
 async function reply(replyToken, message, env) {
+  return replyMessages(replyToken,[{type:'text',text:message}],env);
+}
+
+async function replyMessages(replyToken,messages,env) {
   if (!env.LINE_CHANNEL_ACCESS_TOKEN) {
     console.log('LINE reply skipped: access token missing');
     return;
@@ -2533,7 +2563,7 @@ async function reply(replyToken, message, env) {
   const response = await fetch('https://api.line.me/v2/bot/message/reply', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json', Authorization: 'Bearer ' + env.LINE_CHANNEL_ACCESS_TOKEN },
-    body: JSON.stringify({ replyToken, messages: [{ type: 'text', text: message }] }),
+    body: JSON.stringify({ replyToken, messages }),
   });
   console.log('LINE reply result', response.status, await response.text());
 }

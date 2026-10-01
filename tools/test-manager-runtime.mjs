@@ -42,6 +42,7 @@ test('all migrations apply and ordinary natural messages create persistent cards
   assert.equal(f.get("SELECT value_text FROM manager_fields WHERE field_key='quantity'").value_text,'3');
   const draft=f.get('SELECT * FROM manager_drafts');
   assert.equal(draft.status,'pending');
+  if (JSON.parse(draft.reasons_json).length) assert.match(draft.message,/店休日・営業時間外/);
   assert.ok(f.all('SELECT * FROM manager_questions').length<=2);
   assert.equal(f.get("SELECT COUNT(*) n FROM manager_outbox WHERE channel='customer'").n,0);
   const command=await handleManagerCommand(`承認送信 ${draft.id}`,'OWNER',f.env,f.later);
@@ -52,6 +53,68 @@ test('all migrations apply and ordinary natural messages create persistent cards
   assert.equal(f.get('SELECT status FROM manager_drafts').status,'sent');
   assert.ok(f.all('SELECT * FROM manager_questions').every(q=>q.sent_at));
   assert.equal(f.get("SELECT COUNT(*) n FROM manager_events WHERE direction='assistant'").n,1);
+});
+
+test('manager numbers revise, hold and approve only one valid draft', async () => {
+  const f=fixture(); await f.receive('10月10日にブーケ3個、3000円で店頭受取');
+  assert.match(await handleManagerCommand('2','OWNER',f.env,f.later),/全文/);
+  assert.match(await handleManagerCommand('２ ご希望の色を教えてください。','OWNER',f.env,f.later),/まだ送信していません/);
+  assert.equal(f.get('SELECT message FROM manager_drafts').message,'ご希望の色を教えてください。');
+  await handleManagerCommand('3','OWNER',f.env,f.later);
+  assert.equal(f.get('SELECT status FROM manager_drafts').status,'held');
+  assert.equal(await handleManagerCommand('1','STRANGER',f.env,f.later),null);
+  assert.match(await handleManagerCommand('１','OWNER',f.env,f.later),/送信待ち/);
+  assert.match(await handleManagerCommand('1','OWNER',f.env,f.later),/処理済み/);
+  assert.equal(f.get("SELECT COUNT(*) n FROM manager_outbox WHERE channel='customer'").n,1);
+  const g=fixture(); await g.receive('ブーケ希望','A','CUSTOMER_A'); await g.receive('スタンド希望','B','CUSTOMER_B');
+  assert.match(await handleManagerCommand('1','OWNER',g.env,g.later),/どの注文/);
+  assert.equal(g.get("SELECT COUNT(*) n FROM manager_outbox WHERE channel='customer'").n,0);
+  assert.match(await handleManagerCommand('1','OWNER',g.env,g.later),/選んだ注文/);
+  assert.equal(g.get("SELECT COUNT(*) n FROM manager_outbox WHERE channel='customer'").n,0);
+  assert.match(await handleManagerCommand('1','OWNER',g.env,g.later),/送信待ち/);
+  await handleManagerCommand('1','OWNER',g.env,g.later);
+  assert.equal(g.get("SELECT COUNT(*) n FROM manager_outbox WHERE channel='customer'").n,1);
+  assert.match(await handleManagerCommand('返信待ち','OWNER',g.env,g.later),/どの注文/);
+  assert.match(await handleManagerCommand('1','OWNER',g.env,'2026-09-30T02:00:00.000Z'),/有効時間/);
+  assert.equal(g.get("SELECT COUNT(*) n FROM manager_outbox WHERE channel='customer'").n,1);
+});
+
+test('number selection is actor scoped and rejects a draft updated after selection', async () => {
+  const f=fixture(); f.env.ADMIN_LINE_USER_IDS='OWNER,OTHER';
+  await f.receive('ブーケ希望','A','CUSTOMER_A'); await f.receive('スタンド希望','B','CUSTOMER_B');
+  await handleManagerCommand('返信待ち','OWNER',f.env,f.later);
+  assert.match(await handleManagerCommand('1','OTHER',f.env,f.later),/どの注文/);
+  const ids=JSON.parse(f.get("SELECT draft_ids_json FROM manager_reply_selection WHERE actor='OWNER'").draft_ids_json);
+  f.db.prepare("UPDATE manager_drafts SET status='stale' WHERE id=?").run(ids[0]);
+  assert.match(await handleManagerCommand('1','OWNER',f.env,f.later),/更新または処理/);
+  assert.equal(f.get("SELECT COUNT(*) n FROM manager_outbox WHERE channel='customer'").n,0);
+});
+
+test('manager accepts attached reply text without normalizing or sending it', async () => {
+  const f=fixture(); await f.receive('ブーケ希望');
+  for (const input of ['2かしこまりました。','２かしこまりました。','2\nかしこまりました。']) {
+    assert.match(await handleManagerCommand(input,'OWNER',f.env,f.later),/まだ送信していません/);
+    assert.equal(f.get('SELECT message FROM manager_drafts').message,'かしこまりました。');
+  }
+  await handleManagerCommand('２ＡＢＣ①の仕様で確認します。','OWNER',f.env,f.later);
+  assert.equal(f.get('SELECT message FROM manager_drafts').message,'ＡＢＣ①の仕様で確認します。');
+  assert.match(await handleManagerCommand('1かしこまりました。','OWNER',f.env,f.later),/まだ送信しません/);
+  assert.equal(f.get("SELECT COUNT(*) n FROM manager_outbox WHERE channel='customer'").n,0);
+});
+
+test('manager waiting lists show actionable Japanese content without internal states or samples', async () => {
+  const f=fixture(); await f.receive('10月10日にブーケ3個、3000円で店頭受取','REAL');
+  await f.receive('スタンド希望','DEMO','DEMO');
+  f.db.prepare("UPDATE manager_orders SET title='【架空サンプル】テスト' WHERE customer_id='DEMO'").run();
+  for (const command of ['確認待ち一覧','受注判断','返信待ち']) {
+    const result=await handleManagerCommand(command,'OWNER',f.env,f.later);
+    assert.match(result,/1：.*ブーケ.*3個.*10月10日.*店頭受取/);
+    assert.match(result,/確認：/);
+    assert.doesNotMatch(result,/consulting|pending|unconfirmed|架空サンプル|M[A-F0-9]{16}|review_collected_details/);
+  }
+  assert.match(await handleManagerCommand('1','OWNER',f.env,f.later),/選んだ注文/);
+  assert.equal(f.get("SELECT COUNT(*) n FROM manager_outbox WHERE channel='customer'").n,0);
+  assert.doesNotMatch(await handleManagerCommand('案件一覧','OWNER',f.env,f.later),/consulting|pending|unconfirmed|架空サンプル|M[A-F0-9]{16}/);
 });
 
 test('duplicate events do not duplicate cards and processing failures leave a recoverable inbox', async () => {
@@ -267,6 +330,37 @@ test('manual cards cannot approve or transmit a customer LINE reply',async()=>{
   f.db.prepare("INSERT INTO manager_outbox(id,recipient,channel,text,retry_key,next_attempt_at,created_at) VALUES ('MAL','manual:sample','customer','test','retry',?,?)").run(f.now,f.now);
   await flushManagerOutbox(f.env,f.later,()=>{throw new Error('must not send')});
   assert.equal(f.get("SELECT status FROM manager_outbox WHERE id='MAL'").status,'cancelled');
+});
+
+test('manager can ask for history, while repeat-customer facts stay out of customer messages',async()=>{
+  const f=fixture();f.env.ADMIN_API_TOKEN='test';
+  const insert=f.db.prepare("INSERT INTO manager_imports(id,source_hash,source_file,source_heading,source_line,raw_text,review_status,linked_customer_id,created_at) VALUES (?,?,?,?,?,?,?,?,?)");
+  insert.run('legacy_'+'a'.repeat(32),'hash','CUSTOMER_ORDER_CARDS_PRIVATE.md','山田さん','1','本人の過去文字：HISTORY-PRIVATE 800円','verified','CUSTOMER',f.now);
+  insert.run('legacy_'+'b'.repeat(32),'hash','CUSTOMER_ORDER_CARDS_PRIVATE.md','山田さん同姓','2','OTHER-PRIVATE','verified','OTHER',f.now);
+  const answer=await handleManagerCommand('山田さんの過去の注文を確認したい','OWNER',f.env,f.later);assert.match(answer,/検索候補/);assert.match(answer,/本人はまだ断定/);
+  assert.equal(await handleManagerCommand('山田さんの過去の注文を確認したい','OTHER',f.env,f.later),null);
+  await f.receive('こんにちは、ブーケをお願いします');
+  const order=f.get('SELECT id FROM manager_orders');
+  const note=await handleManagerCommand(`過去情報 ${order.id}`,'OWNER',f.env,f.later);assert.match(note,/HISTORY-PRIVATE/);assert.doesNotMatch(note,/OTHER-PRIVATE/);
+  assert.match(f.get("SELECT text FROM manager_outbox WHERE channel='owner'").text,/HISTORY-PRIVATE/);
+  assert.doesNotMatch(f.get('SELECT message FROM manager_drafts').message,/HISTORY-PRIVATE|OTHER-PRIVATE/);
+  assert.equal(f.get("SELECT COUNT(*) n FROM manager_fields WHERE value_text LIKE '%HISTORY-PRIVATE%'").n,0);
+  const req=token=>new Request('https://shop.example/api/manager/history?q='+encodeURIComponent('山田'),{headers:{Authorization:'Bearer '+token}});
+  assert.equal((await managerApi(req('wrong'),f.env)).status,401);
+  assert.equal((await (await managerApi(req('test'),f.env)).json()).records.length,2);
+});
+
+test('test sends require explicit recipients and never release old queued messages',async()=>{
+  const f=fixture();f.env.MANAGER_TEST_MODE='true';f.env.MANAGER_TEST_CUSTOMER_IDS='CUSTOMER';f.env.MANAGER_SEND_NOT_BEFORE=f.now;
+  await receiveManagerEvents([f.event('ブーケ','OUTSIDE','OTHER')],f.env,f.now);assert.equal(f.get('SELECT COUNT(*) n FROM manager_events').n,0);
+  await f.receive('ブーケ');const d=f.get('SELECT id FROM manager_drafts');await handleManagerCommand(`承認送信 ${d.id}`,'OWNER',f.env,f.later);
+  f.db.prepare("INSERT INTO manager_outbox(id,recipient,channel,text,retry_key,next_attempt_at,created_at) VALUES ('OLD','CUSTOMER','customer','old','retry-old',?,?)").run(f.now,'2026-09-01T00:00:00Z');
+  f.db.prepare("INSERT INTO manager_outbox(id,recipient,channel,text,retry_key,next_attempt_at,created_at) VALUES ('OTHER','OTHER','customer','other','retry-other',?,?)").run(f.now,f.now);
+  const recipients=[];await flushManagerOutbox(f.env,f.later,async(_url,options)=>{recipients.push(JSON.parse(options.body).to);return new Response('{}')});
+  assert.equal(f.get("SELECT last_error FROM manager_outbox WHERE id='OLD'").last_error,'before_test_cutover');
+  assert.equal(f.get("SELECT last_error FROM manager_outbox WHERE id='OTHER'").last_error,'outside_test_allowlist');
+  assert.deepEqual(recipients.sort(),['CUSTOMER','OWNER']);
+  const g=fixture();g.env.MANAGER_TEST_MODE='true';await g.receive('ブーケ');assert.equal(g.get('SELECT COUNT(*) n FROM manager_events').n,0);
 });
 
 test('mobile login links are owner-only, single-use and create a private cookie session',async()=>{

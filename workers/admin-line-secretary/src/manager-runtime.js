@@ -1,4 +1,5 @@
 import { planConversation, extractConversationFacts, resolveConversationDate } from './conversation.js';
+import { parseHistoryRequest, searchHistory, getHistoryDetail, formatCustomerHistory } from './manager-history.js';
 
 const iso = (value = Date.now()) => new Date(value).toISOString();
 const statement = (env, sql, ...args) => env.DB.prepare(sql).bind(...args);
@@ -8,8 +9,15 @@ const id = (prefix) => prefix + crypto.randomUUID().replaceAll('-', '').slice(0,
 const owners = (env) => [...new Set((env.ADMIN_LINE_USER_IDS || '').split(',').map(x => x.trim()).filter(Boolean))];
 const fieldValue = (fields, key) => fields[key]?.value_text || '';
 const LABELS = { purpose:'用途', product_type:'商品', product_source:'参考商品', receive_date:'受取希望日', use_date:'使用日', receive_time:'受取時間', fulfillment_method:'受取方法', delivery_area:'配達地域', delivery_address:'お届け先', quantity:'数量', budget:'予算', budget_scope:'予算の単位', color_vibe:'色・雰囲気', customer_name:'お名前', phone:'電話番号', balloon_message:'文字入れ', card_message:'カード' };
+const REASON_LABELS = { delivery_feasibility:'配達・発送できるか確認', urgent_capacity:'直近の日程で対応できるか確認', past_date:'希望日が過去の日付になっています', verify_previous_order:'前回の注文内容を確認', order_exception:'変更・キャンセルなどの対応確認', per_item_specifications:'商品ごとの仕様を確認', review_collected_details:'注文内容で対応できるか確認' };
+const replyActions = '\n1：この内容で送信\n2：修正（「2 修正した文章」）\n3：保留';
 
 export function managerV2Enabled(env) { return env.ORDER_ENGINE === 'v2'; }
+export function managerTestRecipientAllowed(customerId,channel,env) {
+  if(env.MANAGER_TEST_MODE!=='true')return true;
+  const list=(channel==='owner'?env.ADMIN_LINE_USER_IDS:env.MANAGER_TEST_CUSTOMER_IDS)||'';
+  return list.split(',').map(x=>x.trim()).filter(Boolean).includes(customerId);
+}
 
 export function eventTime(event, receivedAt = iso()) {
   const timestamp = Number(event.timestamp);
@@ -22,6 +30,7 @@ export async function receiveManagerEvents(events, env, now = iso()) {
   const statements = [];
   for (const event of events) {
     if (event.type !== 'message' || !event.source?.userId || !['text', 'image'].includes(event.message?.type)) continue;
+    if(!managerTestRecipientAllowed(event.source.userId,'customer',env))continue;
     const eventId = event.webhookEventId || event.message.id;
     if (!eventId) continue;
     statements.push(statement(env, `INSERT OR IGNORE INTO manager_events
@@ -148,8 +157,9 @@ async function processInboxGroup(events, env, now) {
     if (events.some(e => e.media_message_id)) reasons.push('参考画像の内容は未判読。原トークで確認が必要');
     if (customerHistory) reasons.push(customerHistory.imported.length || customerHistory.previous.length
       ? '本人に紐付く過去記録あり。今回の仕様は再確認が必要' : '過去注文の確認済み記録なし。昨年と同じ仕様を推測しない');
-    const message = changes.length ? 'ご変更の内容を確認しています。対応できるか確認のうえ、改めてご案内いたします。'
+    const baseMessage = changes.length ? 'ご変更の内容を確認しています。対応できるか確認のうえ、改めてご案内いたします。'
       : String(plan.message || 'ご連絡ありがとうございます。内容を確認してご案内いたします。');
+    const message = reasons.length ? `${baseMessage}\n\n確認が取れ次第、ご返信いたします。店休日・営業時間外は、次の営業時間内のご返信となる場合がございます。` : baseMessage;
     const title = [fieldValue(proposed, 'purpose'), fieldValue(proposed, 'product_type')].filter(Boolean).join('・').slice(0, 100) || order.title;
     for (let index=0; index<(plan.facts?.items || []).length; index++) {
       const item = plan.facts.items[index];
@@ -170,13 +180,17 @@ async function processInboxGroup(events, env, now) {
     const dueAt = businessDeadline(now, urgent, schedule, Number(env.MANAGER_REVIEW_WORK_HOURS) || 8);
     batch.push(statement(env, `INSERT INTO manager_tasks(id,order_id,kind,detail,due_at,created_at)
       VALUES (?,?,'reply',?,?,?)`, `reply:${draftId}`, order.id, `返信・判断待ち ${draftId}`, dueAt, now));
-    const summary = Object.entries(proposed).map(([key, value]) => `${LABELS[key] || key}：${value.value_text}`).join('\n');
-    const historyNote = customerHistory?.imported.map(x => `${x.source_heading}\n${x.raw_text.slice(0, 600)}`).join('\n') || '';
-    const ownerText = `【判断・返信案】${order.id} ${title}\n期限：${dueAt}\n${summary.slice(0, 1200)}\n`
-      + (reasons.length ? `確認点：${reasons.join('／')}\n` : '')
+    const summary = Object.entries(proposed).filter(([key]) => key !== 'budget_scope' && Object.hasOwn(LABELS, key)).map(([key, value]) => {
+      let display = value.value_text;
+      if (key === 'receive_date' || key === 'use_date') display = String(display).replace(/^\d{4}-(\d{2})-(\d{2})$/u, (_, month, day) => `${Number(month)}月${Number(day)}日`);
+      return `${LABELS[key]}：${display}`;
+    }).join('\n');
+    const historyNote = await formatCustomerHistory(customerId,env,order.id);
+    const ownerText = `【返信の確認】${title}\n${urgent ? '急ぎの対応が必要です\n' : ''}${summary.slice(0, 1200)}\n`
+      + (reasons.length ? `確認点：${reasons.map(reason => REASON_LABELS[reason] || (/^[a-z_]+$/u.test(reason) ? '注文内容の確認が必要です' : reason)).join('／')}\n` : '')
       + changes.map(c => `${c.id} ${c.key}：${c.old} → ${c.value}\n変更承認 ${c.id}`).join('\n')
       + (historyNote ? `\n【本人の過去記録・今回未確定】\n${historyNote}\n` : '')
-      + `\n【送信案】\n${message}\n\n承認送信 ${draftId}\n返信修正 ${draftId} 本文\nカルテ ${order.id}`;
+      + `\n【返信案】\n${message}\n\n番号でご回答ください\n1：この内容で送信\n2：修正（「2 修正した文章」）\n3：保留\n複数案件がある場合は対象を確認します。`;
     batch.push(...ownerMessages(env, `draft:${draftId}`, ownerText, now));
     for (const event of events) batch.push(statement(env, `UPDATE manager_events SET order_id=? WHERE id=?`, order.id, event.id));
   }
@@ -227,6 +241,14 @@ export async function flushManagerOutbox(env, now = iso(), fetcher = fetch) {
     ORDER BY created_at LIMIT 20`, now, now);
   for (const item of pending) {
     await withInboxLock(env, now, async () => {
+    if(!managerTestRecipientAllowed(item.recipient,item.channel,env)) {
+      await statement(env,`UPDATE manager_outbox SET status='cancelled',last_error='outside_test_allowlist' WHERE id=?`,item.id).run();
+      return;
+    }
+    if(env.MANAGER_SEND_NOT_BEFORE&&(!Number.isFinite(Date.parse(env.MANAGER_SEND_NOT_BEFORE))||Date.parse(item.created_at)<Date.parse(env.MANAGER_SEND_NOT_BEFORE))) {
+      await statement(env,`UPDATE manager_outbox SET status='cancelled',last_error='before_test_cutover' WHERE id=?`,item.id).run();
+      return;
+    }
     if(item.channel==='customer'&&item.recipient.startsWith('manual:')) {
       await statement(env,`UPDATE manager_outbox SET status='cancelled',last_error='manual_order_no_line_recipient' WHERE id=?`,item.id).run();
       return;
@@ -290,7 +312,7 @@ export async function flushManagerOutbox(env, now = iso(), fetcher = fetch) {
 export async function monitorManagerTasks(env, now = iso()) {
   const overdue = await rows(env, `SELECT t.*,o.title FROM manager_tasks t LEFT JOIN manager_orders o ON o.id=t.order_id
     WHERE t.status='open' AND t.due_at<=? AND (t.last_notified_at IS NULL OR t.last_notified_at<?)
-    ORDER BY t.due_at LIMIT 20`, now, iso(Date.parse(now) - 4 * 3600_000));
+    AND (?='' OR t.created_at>=?) ORDER BY t.due_at LIMIT 20`, now, iso(Date.parse(now) - 4 * 3600_000),env.MANAGER_SEND_NOT_BEFORE||'',env.MANAGER_SEND_NOT_BEFORE||'');
   if (!overdue.length || !owners(env).length) return;
   const text = '【対応期限の確認】\n' + overdue.map(t => `${t.order_id || '振分待ち'} ${t.title || ''}\n${t.detail}\n期限：${t.due_at}`).join('\n\n');
   await env.DB.batch([
@@ -315,10 +337,76 @@ export async function handleManagerCommand(text, actor, env, now = iso()) {
 }
 
 async function executeManagerCommand(text, actor, env, now) {
-  if (/^(?:案件一覧|確認待ち一覧|受注判断)$/u.test(text)) {
+  const numericInput = String(text).trim().match(/^([0-9０-９]{1,2})([\s\S]*)$/u);
+  // Normalize only the operation number; preserve the customer's proposed reply verbatim.
+  const numbered = numericInput ? [numericInput[0], numericInput[1].normalize('NFKC'), numericInput[2].trim()] : null;
+  if (numbered) {
+    const selection = await first(env, 'SELECT * FROM manager_reply_selection WHERE actor=?', actor);
+    if (selection && selection.expires_at <= now) {
+      await statement(env, 'DELETE FROM manager_reply_selection WHERE actor=?', actor).run();
+      return '選択の有効時間が切れました。まだ送信していません。「返信待ち」で選び直してください。';
+    }
+    if (selection?.stage === 'choose') {
+      const selectedId = JSON.parse(selection.draft_ids_json)[Number(numbered[1])-1];
+      if (!selectedId || numbered[2]) return '一覧にある注文の番号だけで選んでください。まだ送信しません。';
+      const draft = await first(env, `SELECT d.*,o.revision,o.title FROM manager_drafts d LEFT JOIN manager_orders o ON o.id=d.order_id WHERE d.id=?`, selectedId);
+      if (!draft || !['pending','held'].includes(draft.status) || (draft.order_id && draft.revision !== draft.base_revision)) {
+        await statement(env, 'DELETE FROM manager_reply_selection WHERE actor=?', actor).run();
+        return 'この返信案は更新または処理されています。「返信待ち」で最新の案を選んでください。';
+      }
+      await statement(env, `UPDATE manager_reply_selection SET stage='action',draft_ids_json=?,expires_at=? WHERE actor=?`, JSON.stringify([draft.id]), iso(Date.parse(now)+600000), actor).run();
+      return `【選んだ注文】${draft.title || '注文の振分確認'}\n【返信案】\n${draft.message}\n\nまだ送信していません。${replyActions}`;
+    }
+    const candidates = selection?.stage === 'action' ? JSON.parse(selection.draft_ids_json).map(id => ({id})) : (await rows(env, `SELECT d.id,d.customer_id FROM manager_drafts d LEFT JOIN manager_orders o ON o.id=d.order_id
+      WHERE d.status IN ('pending','held') AND (d.order_id IS NULL OR o.revision=d.base_revision)
+      AND COALESCE(o.title,'') NOT LIKE '%架空サンプル%'
+      ORDER BY d.created_at DESC`)).filter(d => !d.customer_id.startsWith('manual:') && managerTestRecipientAllowed(d.customer_id,'customer',env)).slice(0,2);
+    if (!candidates.length) return '回答待ちの返信案はありません。新しい通知をご確認ください。';
+    if (candidates.length > 1) return executeManagerCommand('返信待ち', actor, env, now);
+    if (!['1','2','3'].includes(numbered[1])) return `操作は1〜3でご回答ください。${replyActions}`;
+    if (numbered[1] === '2' && !numbered[2]) return '「2 修正した文章」の形で、お客様へ送る全文を入力してください。まだ送信しません。';
+    if (numbered[1] !== '2' && numbered[2]) return '送信は「1」、保留は「3」だけでご回答ください。文章を変更する場合は「2 修正した文章」です。まだ送信しません。';
+    const result = await executeManagerCommand(`${{'1':'承認送信','2':'返信修正','3':'返信保留'}[numbered[1]]} ${candidates[0].id}${numbered[2] ? ` ${numbered[2]}` : ''}`, actor, env, now);
+    // Keep the selected target even after approval: a repeated number must never approve another order.
+    await statement(env, `INSERT INTO manager_reply_selection(actor,stage,draft_ids_json,expires_at) VALUES (?,'action',?,?) ON CONFLICT(actor) DO UPDATE SET stage='action',draft_ids_json=excluded.draft_ids_json,expires_at=excluded.expires_at`, actor, JSON.stringify([candidates[0].id]), iso(Date.parse(now)+600000)).run();
+    return result;
+  }
+  if (/^(?:返信待ち|確認待ち一覧|受注判断)$/u.test(text)) {
+    const drafts = (await rows(env, `SELECT d.id,d.customer_id,d.reasons_json,o.title,
+      (SELECT value_text FROM manager_fields WHERE order_id=d.order_id AND field_key='customer_name') AS name,
+      (SELECT value_text FROM manager_fields WHERE order_id=d.order_id AND field_key='receive_date') AS receive_date,
+      (SELECT value_text FROM manager_fields WHERE order_id=d.order_id AND field_key='quantity') AS quantity,
+      (SELECT value_text FROM manager_fields WHERE order_id=d.order_id AND field_key='fulfillment_method') AS method
+      FROM manager_drafts d LEFT JOIN manager_orders o ON o.id=d.order_id
+      WHERE d.status IN ('pending','held') AND (d.order_id IS NULL OR o.revision=d.base_revision)
+      AND COALESCE(o.title,'') NOT LIKE '%架空サンプル%'
+      ORDER BY d.created_at DESC,d.id`)).filter(d => !d.customer_id.startsWith('manual:') && managerTestRecipientAllowed(d.customer_id,'customer',env)).slice(0,30);
+    if (!drafts.length) return '回答待ちの返信案はありません。';
+    await statement(env, `INSERT INTO manager_reply_selection(actor,stage,draft_ids_json,expires_at) VALUES (?,'choose',?,?) ON CONFLICT(actor) DO UPDATE SET stage='choose',draft_ids_json=excluded.draft_ids_json,expires_at=excluded.expires_at`, actor, JSON.stringify(drafts.map(d => d.id)), iso(Date.parse(now)+600000)).run();
+    return `【確認待ち・どの注文ですか？】\n${drafts.map((d,i) => {
+      const date = String(d.receive_date || '').replace(/^\d{4}-(\d{2})-(\d{2})$/u,(_,m,day)=>`${Number(m)}月${Number(day)}日`);
+      const reasons = JSON.parse(d.reasons_json || '[]').map(r => REASON_LABELS[r] || (/^[a-z_]+$/u.test(r) ? '注文内容の確認' : r));
+      return `${i+1}：${[d.name,d.title || '注文の振分確認',d.quantity ? `${d.quantity}個` : '',date,d.method].filter(Boolean).join('／')}\n確認：${[...new Set(reasons)].join('／') || 'お客様への返信内容'}`;
+    }).join('\n\n')}\n\n番号で返信案を確認できます。選ぶだけでは送信しません。`;
+  }
+  const historyRequest=parseHistoryRequest(text);
+  if(historyRequest) {
+    if(historyRequest.detailId)return (await getHistoryDetail(historyRequest.detailId,env))||'指定の過去カルテはありません。';
+    if(historyRequest.orderId) {
+      const current=await first(env,`SELECT customer_id FROM manager_orders WHERE id=?`,historyRequest.orderId);
+      if(!current)return '注文カルテがありません。';
+      return (await formatCustomerHistory(current.customer_id,env,historyRequest.orderId))||'本人に紐付く過去カルテはまだありません。名前や電話で候補を検索して本人を確認してください。';
+    }
+    if(!historyRequest.query)return 'お名前・電話番号・商品などを添えてください。例：山田さんの過去の注文を確認したい';
+    const found=await searchHistory(historyRequest.query,env);
+    if(!found.records.length)return '一致する保存済み過去カルテはありません。別の名前・電話・商品で確認してください。全トーク履歴を網羅した資料ではありません。';
+    return `【過去情報の検索候補】本人はまだ断定していません。\n当時の価格・仕様・住所は現在の条件ではありません。\n\n`+found.records.map((r,i)=>`${i+1}. ${r.label}［${r.reviewStatus}］\n${r.summary}\n履歴詳細 ${r.id}`).join('\n\n')+(found.hasMore?'\nほかにも候補があります。名前や電話で絞り込んでください。':'');
+  }
+  if (text === '案件一覧') {
     const orders = await rows(env, `SELECT o.*,(SELECT COUNT(*) FROM manager_tasks t WHERE t.order_id=o.id AND t.status='open') AS tasks
       FROM manager_orders o WHERE status='open' ORDER BY updated_at DESC LIMIT 30`);
-    return orders.length ? orders.map(o => `${o.id} ${o.title}\n制作：${o.production_status}／受渡：${o.fulfillment_status}／支払：${o.payment_status}／待ち${o.tasks}件`).join('\n\n') : '進行中の新カルテはありません。';
+    const visible = orders.filter(o => !o.title.includes('架空サンプル') && (o.customer_id.startsWith('manual:') || managerTestRecipientAllowed(o.customer_id,'customer',env)));
+    return visible.length ? `【進行中の注文】\n${visible.map(o => `${o.title}\n${Number(o.tasks) ? '確認・対応待ちあり' : '確認待ちなし'}`).join('\n\n')}\n\n判断する返信案は「確認待ち一覧」で番号から確認できます。` : '進行中の注文はありません。';
   }
   if (text === '統括状況') {
     const inbox = await first(env, `SELECT COUNT(*) AS n FROM manager_events WHERE processed_at IS NULL`);
@@ -354,7 +442,7 @@ async function executeManagerCommand(text, actor, env, now) {
     if (match[1] === '返信修正') {
       if (!match[3] || match[3].length > 4900) return '修正する本文を4900文字以内で入力してください。';
       await statement(env, `UPDATE manager_drafts SET message=?,status='pending' WHERE id=? AND status IN ('pending','held')`, match[3], draft.id).run();
-      return `送信案を更新しました。\n${match[3]}\n承認送信 ${draft.id}`;
+      return `返信案を更新しました。\n${match[3]}\n\n1：送信\n2 修正した文章：再修正\n3：保留\nまだ送信していません。`;
     }
     if (match[1] === '返信保留') {
       await statement(env, `UPDATE manager_drafts SET status='held' WHERE id=? AND status='pending'`, draft.id).run();

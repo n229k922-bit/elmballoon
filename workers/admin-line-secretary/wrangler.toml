@@ -30,9 +30,15 @@ name = "elm-balloon-admin-line-secretary-test"
 [env.test.vars]
 ALLOWED_ORIGINS = ""
 ORDER_ENGINE = "v2"
-MANAGER_SEND_PAUSED = "true"
+MANAGER_SEND_PAUSED = "false"
+MANAGER_TEST_MODE = "true"
+MANAGER_SEND_NOT_BEFORE = "2026-10-01T02:56:25.000Z"
+# MANAGER_TEST_CUSTOMER_IDS and ADMIN_LINE_USER_IDS must be explicitly set
+# before enabling test sends. Empty lists fail closed.
 MANAGER_REVIEW_WORK_HOURS = "8"
 MANAGER_APP_ORIGIN = "https://elm-balloon-admin-line-secretary-test.n229k922.workers.dev"
+SCHEDULE_PROOF_PAGE_URL = "https://n229k922-bit.github.io/elmballoon/?schedule=test"
+CLOUDFLARE_ACCOUNT_ID = "169dba5165188f599e49323315ac1fd6"
 MANAGER_APP_USER_IDS = "mobile-owner"
 GOOGLE_REDIRECT_URI = "https://elm-balloon-admin-line-secretary-test.n229k922.workers.dev/oauth/google/callback"
 
@@ -52,3 +58,7 @@ id = "f14e95ea09e64e069cebcf8531832306"
 # ADMIN_LINE_USER_IDS (バルーン統括で受信する店長のLINE userId。Cloudflare dashboardで設定)
 # CUSTOMER_LINE_CHANNEL_SECRET
 # CUSTOMER_LINE_CHANNEL_ACCESS_TOKEN
+# BROWSER_RENDERING_TOKEN (Cloudflare Browser Rendering - Edit; secret)
+# SCHEDULE_PROOF_PAGE_URL and CLOUDFLARE_ACCOUNT_ID must be configured for
+# the page connected to this environment's schedule API. Never use the real
+# production page as proof of an isolated test schedule change.

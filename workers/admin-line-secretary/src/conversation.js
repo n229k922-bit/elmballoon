@@ -157,6 +157,6 @@ export function planConversation({ text = '', fields = {}, history = [], sourceT
   const waiting = !questions.length && !ownerReasons.length;
   if (waiting) ownerReasons.push('review_collected_details');
   const historyCheck=ownerReasons.includes('verify_previous_order') ? '以前のご注文を確認します。変更したい点があれば、その点だけお知らせください。' : '';
-  const message = [updates.length ? 'ご回答ありがとうございます😊' : 'ご連絡ありがとうございます😊', historyCheck, ...questions.map(question => question.text), ownerReasons.length ? 'いただいた内容で対応できるか、お店で確認いたします。' : ''].filter(Boolean).join('\n\n');
+  const message = [updates.length ? 'ご回答ありがとうございます😊' : 'ご連絡ありがとうございます😊', historyCheck, ...questions.map(question => question.text), ownerReasons.length ? 'いただいた内容で対応できるか確認いたします。' : ''].filter(Boolean).join('\n\n');
   return { updates, fields: merged, facts, questions, message, requiresOwner: ownerReasons.length > 0, ownerReasons, evidence: updates.map(({ key, evidence, sourceTimestamp: timestamp }) => ({ key, text: evidence, sourceTimestamp: timestamp })), clarificationNeeded: facts.dateAmbiguities.length > 0, approvalRequired: true };
 }

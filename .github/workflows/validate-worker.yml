@@ -28,6 +28,9 @@ jobs:
           node tools/test-calendar-security.mjs
           node tools/test-manager-mobile.mjs
           node tools/test-manager-intake.mjs
+          node tools/test-manager-history.mjs
+          node tools/test-line-e2e.mjs
+          node tools/test-schedule-proof.mjs
           node --test tools/test-manager-runtime.mjs tools/test-order-knowledge-import.mjs
       - name: Check required integration routes
         shell: bash
