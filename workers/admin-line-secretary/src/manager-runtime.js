@@ -1,5 +1,7 @@
 import { planConversation, extractConversationFacts, resolveConversationDate } from './conversation.js';
 import { parseHistoryRequest, searchHistory, getHistoryDetail, formatCustomerHistory } from './manager-history.js';
+import { reserveOrderCapacity, getCapacitySummary, validateCapacityRequirements } from './capacity-safety.js';
+import { getOperationalMetrics, formatOperationalMetrics } from './operational-metrics.js';
 
 const iso = (value = Date.now()) => new Date(value).toISOString();
 const statement = (env, sql, ...args) => env.DB.prepare(sql).bind(...args);
@@ -11,6 +13,7 @@ const fieldValue = (fields, key) => fields[key]?.value_text || '';
 const LABELS = { purpose:'用途', product_type:'商品', product_source:'参考商品', receive_date:'受取希望日', use_date:'使用日', receive_time:'受取時間', fulfillment_method:'受取方法', delivery_area:'配達地域', delivery_address:'お届け先', quantity:'数量', budget:'予算', budget_scope:'予算の単位', color_vibe:'色・雰囲気', customer_name:'お名前', phone:'電話番号', balloon_message:'文字入れ', card_message:'カード' };
 const REASON_LABELS = { delivery_feasibility:'配達・発送できるか確認', urgent_capacity:'直近の日程で対応できるか確認', past_date:'希望日が過去の日付になっています', verify_previous_order:'前回の注文内容を確認', order_exception:'変更・キャンセルなどの対応確認', per_item_specifications:'商品ごとの仕様を確認', review_collected_details:'注文内容で対応できるか確認' };
 const replyActions = '\n1：この内容で送信\n2：修正（「2 修正した文章」）\n3：保留';
+const capacityMessage = reason => ({capacity_unknown_limits:'その日の受付上限が未設定です。店長が「受付上限」を設定してください。',capacity_exceeded:'他の注文と合計すると受付上限を超えます。日程・作業量を見直してください。',capacity_stale_order:'注文内容が変わっています。最新のカルテで枠を確認し直してください。',capacity_unavailable:'受付枠を確認できません。制作開始を止め、システムの状態を確認してください。',capacity_unaccounted_existing_load:'同じ日に、枠が未確認の受注済み注文があります。先に既存注文の作業量を整理してください。',capacity_uncertain_existing_load:'受注済み注文に日付が未確認のものがあります。既存注文の日付と作業量を整理してください。'}[reason] || '日付・制作分数・配達件数・注文件数を正しい数字で指定してください。');
 
 export function managerV2Enabled(env) { return env.ORDER_ENGINE === 'v2'; }
 export function managerTestRecipientAllowed(customerId,channel,env) {
@@ -337,6 +340,51 @@ export async function handleManagerCommand(text, actor, env, now = iso()) {
 }
 
 async function executeManagerCommand(text, actor, env, now) {
+  if (/^(?:運用確認|改善状況)$/u.test(text.trim())) {
+    return formatOperationalMetrics(await getOperationalMetrics(env,{since:iso(Date.parse(now)-7*86400_000),until:now}));
+  }
+  const loadMatch=text.match(/^負荷確認\s+(\d{4}-\d{2}-\d{2})$/u);
+  if(loadMatch) {
+    const load=await getCapacitySummary(env,loadMatch[1]);
+    if(!load.ok)return capacityMessage(load.reason);
+    return `${loadMatch[1]}の受付枠\n制作：${load.used_production_minutes}／${load.production_minutes}分\n配達：${load.used_delivery_count}／${load.delivery_count}件\n注文：${load.used_order_count}／${load.order_count}件\n未登録の電話・店頭注文は集計に含まれません。`;
+  }
+  const multiCapacity=text.match(/^受注枠\s+(M[A-F0-9]{16})\s+(\[[\s\S]*\])$/iu);
+  if(multiCapacity) {
+    let requirements;try{requirements=JSON.parse(multiCapacity[2]);}catch{return '受付枠の入力形式を確認してください。';}
+    const invalid=validateCapacityRequirements(requirements);
+    if(invalid)return capacityMessage(invalid);
+    const order=await first(env,`SELECT * FROM manager_orders WHERE id=? AND status='open'`,multiCapacity[1].toUpperCase());
+    if(!order)return '進行中のカルテがありません。';
+    const result=await reserveOrderCapacity(env,order.id,order.revision,requirements,now);
+    if(!result.ok)return capacityMessage(result.reason);
+    await statement(env,`INSERT INTO manager_audit(order_id,actor,action,detail,created_at) VALUES (?,?,'capacity.reserved',?,?)`,order.id,actor,JSON.stringify({revision:order.revision,requirements}),now).run();
+    return '指定した全日程の制作・配達・注文枠をまとめて確保しました。価格や注文確定の承認ではありません。';
+  }
+  // Capacity is explicit owner evidence, never guessed from budget or opening hours.
+  let capacityMatch=text.match(/^(受付上限|受注枠)\s+(?:(M[A-F0-9]{16})\s+)?(\d{4}-\d{2}-\d{2})\s+(\d+)\s+(\d+)\s+(\d+)$/iu);
+  if(capacityMatch) {
+    const [,action,orderId,date,minutes,deliveries,ordersCount]=capacityMatch;
+    const requirement={date,production_minutes:Number(minutes),delivery_count:Number(deliveries),order_count:Number(ordersCount)};
+    const invalid=validateCapacityRequirements([action==='受付上限'&&Object.values(requirement).slice(1).every(x=>x===0)?{...requirement,order_count:1}:requirement]);
+    if(invalid)return capacityMessage(invalid);
+    if(action==='受付上限') {
+      if(orderId)return '受付上限にはカルテ番号は不要です。';
+      const used=await getCapacitySummary(env,date);
+      if(used.ok&&(requirement.production_minutes<used.used_production_minutes||requirement.delivery_count<used.used_delivery_count||requirement.order_count<used.used_order_count))return '予約済みの作業量より小さい上限には変更できません。';
+      await statement(env,`INSERT INTO manager_capacity_limits(date,production_minutes,delivery_count,order_count,updated_by,updated_at) VALUES (?,?,?,?,?,?) ON CONFLICT(date) DO UPDATE SET production_minutes=excluded.production_minutes,delivery_count=excluded.delivery_count,order_count=excluded.order_count,updated_by=excluded.updated_by,updated_at=excluded.updated_at`,date,requirement.production_minutes,requirement.delivery_count,requirement.order_count,actor,now).run();
+      return `${date}の受付上限を記録しました。制作${minutes}分・配達${deliveries}件・注文${ordersCount}件です。`;
+    }
+    if(!orderId)return '受注枠はカルテ番号・日付・制作分数・配達件数・注文件数を指定してください。';
+    const order=await first(env,`SELECT * FROM manager_orders WHERE id=? AND status='open'`,orderId.toUpperCase());
+    if(!order)return '進行中のカルテがありません。';
+    const existing=await rows(env,`SELECT date,production_minutes,delivery_count,order_count FROM manager_capacity_reservations WHERE order_id=? AND date<>?`,order.id,date);
+    const result=await reserveOrderCapacity(env,order.id,order.revision,[...existing,requirement],now);
+    if(!result.ok)return capacityMessage(result.reason);
+    await statement(env,`INSERT INTO manager_audit(order_id,actor,action,detail,created_at) VALUES (?,?,'capacity.reserved',?,?)`,order.id,actor,JSON.stringify({revision:order.revision,requirements:[...existing,requirement]}),now).run();
+    return '制作・配達・注文の枠を確保しました。価格や注文確定の承認ではありません。';
+  }
+  if(/^(受付上限|受注枠)(?:\s|$)/u.test(text))return '受付上限 日付 制作できる分数 配達件数 注文件数\n受注枠 M番号 日付 必要な制作分数 配達件数 注文件数\n例：受付上限 2026-10-10 480 3 8';
   const numericInput = String(text).trim().match(/^([0-9０-９]{1,2})([\s\S]*)$/u);
   // Normalize only the operation number; preserve the customer's proposed reply verbatim.
   const numbered = numericInput ? [numericInput[0], numericInput[1].normalize('NFKC'), numericInput[2].trim()] : null;
@@ -421,10 +469,12 @@ async function executeManagerCommand(text, actor, env, now) {
     const items = await rows(env, `SELECT * FROM manager_order_items WHERE order_id=? ORDER BY label`, order.id);
     const drafts = await rows(env, `SELECT id,message FROM manager_drafts WHERE order_id=? AND status='pending'`, order.id);
     const tasks = await rows(env, `SELECT detail,due_at FROM manager_tasks WHERE order_id=? AND status='open'`, order.id);
+    const ownerNotes=await rows(env,`SELECT text,occurred_at FROM manager_events WHERE order_id=? AND direction='owner' ORDER BY occurred_at DESC,id DESC LIMIT 3`,order.id);
     return `${order.id} ${order.title}（版${order.revision}）\n制作：${order.production_status}／受渡：${order.fulfillment_status}／支払：${order.payment_status}／回収：${order.collection_status}\n`
       + fields.map(f => `${LABELS[f.field_key] || f.field_key}：${f.value_text}［${f.status}］`).join('\n')
       + '\n【個別商品】\n' + items.map(i => `${i.label}：${i.specification}`).join('\n')
       + '\n【次の対応】\n' + tasks.map(t => `${t.detail} ${t.due_at}`).join('\n')
+      + '\n【最近の店長記録】\n' + ownerNotes.map(n=>`${n.occurred_at}：${n.text}`).join('\n')
       + '\n【返信案】\n' + drafts.map(d => `${d.id}\n${d.message}\n承認送信 ${d.id}`).join('\n');
   }
   match = text.match(/^(承認送信|返信修正|返信保留|返信取消)\s+(D[A-F0-9]{16})(?:\s+([\s\S]+))?$/iu);
@@ -449,14 +499,18 @@ async function executeManagerCommand(text, actor, env, now) {
       return '返信を保留しました。対応期限は引き続き管理します。';
     }
     if (draft.order_id) {
+      const manualReview=await first(env,`SELECT id FROM manager_tasks WHERE order_id=? AND kind='manual_review' AND status='open' LIMIT 1`,draft.order_id);
+      if(manualReview)return `手動対応後の確認が必要です。メモと最新カルテを確認し、必要な項目変更を済ませて「対応確認 ${draft.order_id}」を入力してください。これは返信送信だけの承認で、受注確定ではありません。`;
       const changes = await first(env, `SELECT COUNT(*) AS n FROM manager_changes WHERE order_id=? AND status='pending'`, draft.order_id);
       if (changes.n) return '内容変更の判断待ちがあります。先に「変更承認 C番号」または「変更却下 C番号」で確認してください。';
     }
     if(draft.customer_id.startsWith('manual:'))return '電話・来店のカルテはLINE送信先に接続していません。電話または店頭でご案内ください。';
+    const incoming = await first(env, `SELECT id FROM manager_events WHERE customer_id=? AND direction='customer' AND processed_at IS NULL LIMIT 1`, draft.customer_id);
+    if (incoming) return '新しいお客様の連絡を整理中です。最新内容を確認してから返信を承認してください。';
     await env.DB.batch([
       statement(env, `UPDATE manager_drafts SET status='approved',approved_by=?,approved_at=? WHERE id=? AND status IN ('pending','held')`, actor, now, draft.id),
       outboxStatement(env, `customer:${draft.id}`, draft.customer_id, 'customer', draft.message, now, draft.id),
-      statement(env, `INSERT INTO manager_audit(order_id,actor,action,detail,created_at) VALUES (?,?,'reply.approved',?,?)`, draft.order_id, actor, draft.id, now),
+      statement(env, `INSERT INTO manager_audit(order_id,actor,action,detail,created_at) VALUES (?,?,'reply.approved',?,?)`, draft.order_id, actor, JSON.stringify({ draftId:draft.id, scope:'reply_only', revision:draft.base_revision, message:draft.message }), now),
     ]);
     return '承認した文面を送信待ちに登録しました。実際の送信結果は「統括状況」で確認できます。';
   }
@@ -554,12 +608,35 @@ async function executeManagerCommand(text, actor, env, now) {
     ]);
     return '個別商品明細を記録しました。名前・番号・表記は入力どおり保存しました。';
   }
-  match = text.match(/^電話メモ\s+(M[A-F0-9]{16})\s+([\s\S]+)$/iu);
+  match = text.match(/^(?:電話メモ|店頭メモ|手動対応メモ)\s+(M[A-F0-9]{16})\s+([\s\S]+)$/iu);
   if (match) {
     const order = await first(env, `SELECT * FROM manager_orders WHERE id=?`, match[1].toUpperCase());
     if (!order) return 'カルテがありません。';
-    await statement(env, `INSERT INTO manager_events(id,customer_id,order_id,direction,text,occurred_at,received_at,processed_at) VALUES (?,?,?,'owner',?,?,?,?)`, id('O'), order.customer_id, order.id, match[2], now, now, now).run();
-    return '店長メモを原文で残しました。注文項目の確定変更はカルテ上で確認してください。';
+    if (!match[2].trim() || match[2].length > 4000) return '対応内容を4000文字以内で入力してください。';
+    await env.DB.batch([
+      statement(env, `INSERT INTO manager_events(id,customer_id,order_id,direction,text,occurred_at,received_at,processed_at) VALUES (?,?,?,'owner',?,?,?,?)`, id('O'), order.customer_id, order.id, match[2], now, now, now),
+      statement(env, `UPDATE manager_orders SET revision=revision+1,updated_at=? WHERE id=?`, now, order.id),
+      statement(env, `UPDATE manager_outbox SET status='cancelled',last_error='manual_update_requires_review' WHERE draft_id IN (SELECT id FROM manager_drafts WHERE order_id=?) AND channel='customer' AND first_attempt_at IS NULL AND status='pending'`, order.id),
+      statement(env, `UPDATE manager_drafts SET status='stale' WHERE order_id=? AND status IN ('pending','held','approved')`, order.id),
+      statement(env, `UPDATE manager_tasks SET status='cancelled',completed_at=? WHERE order_id=? AND kind='reply' AND status='open'`, now, order.id),
+      statement(env, `INSERT INTO manager_tasks(id,order_id,kind,detail,due_at,created_at) VALUES (?,?,'manual_review',?,?,?)`, id('T'), order.id, '手動対応後の最新内容と返信の必要性を確認', now, now),
+      statement(env, `INSERT INTO manager_audit(order_id,actor,action,detail,created_at) VALUES (?,?,'manual_update.recorded',?,?)`, order.id, actor, JSON.stringify({ scope:'note_only', revision:order.revision+1 }), now),
+    ]);
+    return `店長メモを原文で残しました。以前の返信案と未送信の承認は取り消しました。メモと最新カルテを確認し、項目変更は「項目確定」、確認後は「対応確認 ${order.id}」をお願いします。送信を開始済みの文面は取り消せない場合があります。`;
+  }
+  match=text.match(/^対応確認\s+(M[A-F0-9]{16})$/iu);
+  if(match) {
+    const order=await first(env,`SELECT * FROM manager_orders WHERE id=? AND status='open'`,match[1].toUpperCase());
+    if(!order)return '進行中のカルテがありません。';
+    const pending=await first(env,`SELECT id FROM manager_tasks WHERE order_id=? AND kind='manual_review' AND status='open' LIMIT 1`,order.id);
+    if(!pending)return '手動対応後の確認はすでに記録済み、または確認待ちはありません。';
+    const incoming=await first(env,`SELECT id FROM manager_events WHERE customer_id=? AND direction='customer' AND processed_at IS NULL LIMIT 1`,order.customer_id);
+    if(incoming)return '新しいお客様の連絡を整理中です。最新内容を確認してから対応確認してください。';
+    await env.DB.batch([
+      statement(env,`UPDATE manager_tasks SET status='done',completed_at=? WHERE order_id=? AND kind='manual_review' AND status='open'`,now,order.id),
+      statement(env,`INSERT INTO manager_audit(order_id,actor,action,detail,created_at) VALUES (?,?,'manual_update.reviewed',?,?)`,order.id,actor,JSON.stringify({scope:'latest_information_only',revision:order.revision}),now),
+    ]);
+    return '手動対応後の最新内容を確認済みとして記録しました。制作可否・価格・受注確定・返信送信は別の判断です。';
   }
   if (/^(?:送信|はい|確定|承認|受ける|難しい|確認|変更OK|顧客送信確認|最新カルテ|カルテ|お客様へ|制作開始|完成|受渡完了|支払完了)(?:\s|$)/u.test(text)) {
     return '新しい注文管理では対象を指定します。\n案件一覧\nカルテ M番号\n承認送信 D番号\n返信作成 M番号 本文\n制作開始 M番号\n対象を省略した承認は実行しません。';
@@ -587,6 +664,8 @@ async function lifecycle(action, orderId, actor, env, now) {
     mapping.案件終了 = ['status','closed'];
   }
   if (action === '制作開始') {
+    const manualReview=await first(env,`SELECT id FROM manager_tasks WHERE order_id=? AND kind='manual_review' AND status='open' LIMIT 1`,orderId);
+    if(manualReview)return `手動対応後の確認が必要です。メモと最新カルテを確認し「対応確認 ${orderId}」を入力してから制作開始してください。`;
     const pending = await first(env, `SELECT COUNT(*) AS n FROM manager_changes WHERE order_id=? AND status='pending'`, orderId);
     if (pending.n) return '変更判断待ちがあります。確認が済むまで制作開始には進めません。';
     const detail=await rows(env,`SELECT field_key,value_text,status FROM manager_fields WHERE order_id=?`,orderId);
@@ -594,11 +673,23 @@ async function lifecycle(action, orderId, actor, env, now) {
     const required=['product_type','quantity','budget','receive_date','fulfillment_method'];
     const missing=required.filter(key=>verified[key]?.status!=='confirmed'||/未定/u.test(verified[key]?.value_text||''));
     if(missing.length) return `制作開始前に店長確認が必要です：${missing.map(k=>LABELS[k]).join('、')}\n項目確定 ${orderId} 項目名：内容`;
+    const reserved=await rows(env,`SELECT date,revision,production_minutes,delivery_count,order_count FROM manager_capacity_reservations WHERE order_id=?`,orderId);
+    if(!reserved.length)return '制作・配達の枠が未確認です。「受付上限」と「受注枠」を確認してから制作開始してください。';
+    if(reserved.some(r=>r.revision!==order.revision))return '枠の確認後に注文内容が変わっています。最新の内容で「受注枠」を確認し直してください。';
+    if(!reserved.some(r=>r.production_minutes>0)||!reserved.some(r=>r.date===verified.receive_date.value_text&&r.order_count>0))return '必要な制作時間と受取日の注文枠が未確認です。「受注枠」を確認してください。';
+    if(/配達/u.test(verified.fulfillment_method.value_text)&&!reserved.some(r=>r.date===verified.receive_date.value_text&&r.delivery_count>0))return '配達日の配達枠が未確認です。「受注枠」を確認してください。';
+    const capacity=await reserveOrderCapacity(env,orderId,order.revision,reserved.map(({revision,...requirement})=>requirement),now);
+    if(!capacity.ok)return capacityMessage(capacity.reason);
   }
   const [column, value] = mapping[action];
   if (order[column] === value) return 'すでに記録済みです。';
+  const currentReservations=await rows(env,`SELECT * FROM manager_capacity_reservations WHERE order_id=?`,orderId);
+  const rebase=currentReservations.length&&currentReservations.every(r=>r.revision===order.revision);
   const commands=[
     statement(env, `UPDATE manager_orders SET ${column}=?,revision=revision+1,updated_at=? WHERE id=?`, value, now, orderId),
+    // Lifecycle bookkeeping does not change the agreed work estimate. Preserve
+    // freshness only when the reservation was already current; never bless a stale plan.
+    ...(rebase ? [statement(env,`DELETE FROM manager_capacity_reservations WHERE order_id=?`,orderId),...currentReservations.map(r=>statement(env,`INSERT INTO manager_capacity_reservations(order_id,date,revision,production_minutes,delivery_count,order_count,created_at) VALUES (?,?,?,?,?,?,?)`,orderId,r.date,order.revision+1,r.production_minutes,r.delivery_count,r.order_count,r.created_at))] : []),
     statement(env, `INSERT INTO manager_audit(order_id,actor,action,detail,created_at) VALUES (?,?,'lifecycle',?,?)`, orderId, actor, JSON.stringify({ action, before: order[column], after: value }), now),
   ];
   const completeKind={完成:'production',受渡完了:'handoff',支払完了:'payment',回収完了:'collection'}[action];

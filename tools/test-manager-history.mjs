@@ -49,3 +49,10 @@ test('repeat-customer summary is identity-scoped and verified-only with historic
  assert.equal(await formatCustomerHistory('UNKNOWN',f.env),'');assert.equal(await formatCustomerHistory('',f.env),'');
  assert.equal(f.db.prepare('SELECT COUNT(*) n FROM manager_audit').get().n,0);
 });
+test('relevant history projection avoids unstructured personal carryover and labels source age',async()=>{
+ const f=fixture();f.imp(1,'本人','過去の秘密電話番号','verified','C');f.order(1,'C');
+ for(const [key,value] of [['phone','過去電話'],['color_vibe','赤ハート']])f.db.prepare('INSERT INTO manager_fields(order_id,field_key,value_text,source_occurred_at) VALUES(?,?,?,?)').run('M'+'0'.repeat(15)+'1',key,value,'2026-09-01');
+ const result=await formatCustomerHistory('C',f.env,null,{relevantKeys:['color_vibe']});
+ assert.match(result,/赤ハート/);assert.doesNotMatch(result,/過去電話|秘密電話/);assert.match(result,/注文日とは限りません/);assert.match(result,/未記録項目は不明/);
+ assert.equal(f.db.prepare('SELECT COUNT(*) n FROM manager_changes').get().n,0);
+});

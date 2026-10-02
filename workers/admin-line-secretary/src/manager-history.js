@@ -36,9 +36,9 @@ export async function searchHistory(query, env, {limit=8,offset=0,allowEmpty=fal
 }
 
 async function orderDetail(order,env) {
-  const fields=await rows(env.DB.prepare('SELECT field_key,value_text,status FROM manager_fields WHERE order_id=? ORDER BY field_key').bind(order.id));
+  const fields=await rows(env.DB.prepare('SELECT field_key,value_text,status,source_occurred_at,confirmed_at,confirmed_by FROM manager_fields WHERE order_id=? ORDER BY field_key').bind(order.id));
   const items=await rows(env.DB.prepare('SELECT label,specification FROM manager_order_items WHERE order_id=? ORDER BY id').bind(order.id));
-  return [`${order.id} ${order.title}`,`記録日：${order.updated_at}`,...fields.map(f=>`${LABELS[f.field_key]||f.field_key}：${f.value_text}${f.status==='confirmed'?'':'（当時の回答・未確定）'}`),...items.map(i=>`明細 ${i.label}：${i.specification}`)].join('\n');
+  return [`${order.id} ${order.title}`,`記録更新日：${order.updated_at}（注文日とは限りません）`,...fields.map(f=>`${LABELS[f.field_key]||f.field_key}：${f.value_text}${f.status==='confirmed'?'（当時の確認済み）':'（当時の回答・未確定）'}／出典日時：${f.source_occurred_at||'不明'}`),...items.map(i=>`明細 ${i.label}：${i.specification}`)].join('\n');
 }
 
 export async function getHistoryDetail(id,env) {
@@ -56,13 +56,21 @@ export async function getHistoryDetail(id,env) {
   return '該当する終了済みの過去カルテは見つかりませんでした。';
 }
 
-export async function formatCustomerHistory(customerId,env,excludeOrderId=null) {
+export async function formatCustomerHistory(customerId,env,excludeOrderId=null,{relevantKeys=null}={}) {
   if (!customerId) return '';
-  const imports=await rows(env.DB.prepare("SELECT source_heading,raw_text FROM manager_imports WHERE linked_customer_id=? AND review_status='verified' ORDER BY created_at DESC,id LIMIT 3").bind(customerId));
+  // Only trusted structured field names are eligible for a limited summary.
+  if(relevantKeys!==null) relevantKeys=Array.isArray(relevantKeys)?relevantKeys.filter(key=>Object.hasOwn(LABELS,key)):[];
+  const imports=await rows(env.DB.prepare("SELECT source_heading,raw_text,source_file,source_line,created_at FROM manager_imports WHERE linked_customer_id=? AND review_status='verified' ORDER BY created_at DESC,id LIMIT 3").bind(customerId));
   const orders=await rows(env.DB.prepare("SELECT * FROM manager_orders WHERE customer_id=? AND status='closed' AND id<>? ORDER BY updated_at DESC,id LIMIT 3").bind(customerId,excludeOrderId||''));
   if (!imports.length&&!orders.length) return '';
-  const sections=imports.map(r=>`${r.source_heading}\n${cut(r.raw_text,450)}`);
-  for(const order of orders) sections.push(cut(await orderDetail(order,env),450));
-  const body=`${WARNING}\n本人確認・紐付け済みの過去記録のみ。今回の希望とは区別してください。\n\n${sections.join('\n\n')}`;
+  const sections=imports.map(r=>`${r.source_heading}\n出典：${r.source_file}:${r.source_line}／保存日：${r.created_at}（注文日とは限りません）\n${relevantKeys?'未構造化の過去記録です。必要な情報は過去カルテで確認してください。':cut(r.raw_text,350)}`);
+  for(const order of orders) {
+    if(relevantKeys) {
+      const fields=await rows(env.DB.prepare('SELECT field_key,value_text,status,source_occurred_at FROM manager_fields WHERE order_id=? ORDER BY field_key').bind(order.id));
+      const selected=fields.filter(f=>relevantKeys.includes(f.field_key)&&LABELS[f.field_key]);
+      sections.push(`${order.title}／更新日：${order.updated_at}\n${selected.map(f=>`${LABELS[f.field_key]}：${cut(f.value_text,100)}（当時${f.status==='confirmed'?'確認済み':'未確定'}・出典 ${f.source_occurred_at||'不明'}）`).join('\n')||'関連項目の記録なし'}`);
+    } else sections.push(cut(await orderDetail(order,env),450));
+  }
+  const body=`${WARNING}\n本人確認・紐付け済みの過去記録のみ。今回の希望とは区別してください。未記録項目は不明です。「前回と同じ」の希望も今回の確認が必要です。\n\n${sections.join('\n\n')}`;
   return cut(body,1750)+(body.length>1750?'\n（表示上限のため一部省略。過去カルテで詳細確認）':'');
 }

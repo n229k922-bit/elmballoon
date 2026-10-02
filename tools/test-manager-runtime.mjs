@@ -295,6 +295,9 @@ test('production requires individually confirmed facts and generates a tracked p
   for(const [key,value] of Object.entries({product_type:'ブーケ',quantity:'3',budget:'3000円',receive_date:'2026-10-10',fulfillment_method:'店頭受取'})) {
     assert.match(await handleManagerCommand(`項目確定 ${order.id} ${key}：${value}`,'OWNER',f.env,f.later),/保存しました/);
   }
+  assert.match(await handleManagerCommand(`制作開始 ${order.id}`,'OWNER',f.env,f.later),/枠が未確認/);
+  assert.match(await handleManagerCommand('受付上限 2026-10-10 480 3 8','OWNER',f.env,f.later),/記録しました/);
+  assert.match(await handleManagerCommand(`受注枠 ${order.id} 2026-10-10 60 0 1`,'OWNER',f.env,f.later),/枠を確保/);
   await handleManagerCommand(`制作開始 ${order.id}`,'OWNER',f.env,f.later);
   assert.equal(f.get('SELECT production_status FROM manager_orders').production_status,'production');
   assert.equal(f.get("SELECT COUNT(*) n FROM manager_tasks WHERE kind='production' AND status='open'").n,1);

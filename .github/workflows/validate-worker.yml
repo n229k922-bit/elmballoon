@@ -29,6 +29,10 @@ jobs:
           node tools/test-manager-mobile.mjs
           node tools/test-manager-intake.mjs
           node tools/test-manager-history.mjs
+          node tools/test-capacity-safety.mjs
+          node tools/test-operational-metrics.mjs
+          node tools/test-manager-freshness.mjs
+          node tools/test-manager-safety-ui.mjs
           node tools/test-line-e2e.mjs
           node tools/test-schedule-proof.mjs
           node --test tools/test-manager-runtime.mjs tools/test-order-knowledge-import.mjs
