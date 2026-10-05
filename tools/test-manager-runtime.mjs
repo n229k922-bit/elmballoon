@@ -36,6 +36,29 @@ function fixture() {
   return { db,env,get,all,now,later,event,receive };
 }
 
+test('friendly order menu uses explicit numbered confirmation and rejects stale or repeated actions', async()=>{
+  const f=fixture();await f.receive('ブーケを3つお願いします');
+  const listing=await handleManagerCommand('案件一覧','OWNER',f.env,f.later);
+  assert.match(listing,/1：/);assert.doesNotMatch(listing,/M[A-F0-9]{16}|pending|consulting/);
+  assert.match(await handleManagerCommand('1','OWNER',f.env,f.later),/何を確認/);
+  const card=await handleManagerCommand('1','OWNER',f.env,f.later);
+  assert.doesNotMatch(card,/M[A-F0-9]{16}|D[A-F0-9]{16}|（版|pending|unconfirmed/);
+  assert.match(await handleManagerCommand('6','OWNER',f.env,f.later),/まだ変更/);
+  assert.notEqual(f.get('SELECT payment_status FROM manager_orders').payment_status,'paid');
+  assert.match(await handleManagerCommand('1','OTHER',f.env,f.later)||'',/^$/);
+  await handleManagerCommand('1','OWNER',f.env,f.later);
+  assert.equal(f.get('SELECT payment_status FROM manager_orders').payment_status,'paid');
+  const revision=f.get('SELECT revision FROM manager_orders').revision;
+  await handleManagerCommand('1','OWNER',f.env,f.later);
+  assert.equal(f.get('SELECT revision FROM manager_orders').revision,revision);
+  await handleManagerCommand('案件一覧','OWNER',f.env,f.later);
+  await handleManagerCommand('1','OWNER',f.env,f.later);
+  await handleManagerCommand('5','OWNER',f.env,f.later);
+  f.db.exec('UPDATE manager_orders SET revision=revision+1');
+  assert.match(await handleManagerCommand('1','OWNER',f.env,f.later),/変わりました/);
+  assert.notEqual(f.get('SELECT fulfillment_status FROM manager_orders').fulfillment_status,'fulfilled');
+});
+
 test('all migrations apply and ordinary natural messages create persistent cards and reviewed replies', async () => {
   const f=fixture(); await f.receive('10月10日に卒業のブーケを3つ。合計3000円で店頭受取をお願いします');
   assert.equal(f.get('SELECT COUNT(*) n FROM manager_orders').n,1);
@@ -57,6 +80,9 @@ test('all migrations apply and ordinary natural messages create persistent cards
 
 test('manager numbers revise, hold and approve only one valid draft', async () => {
   const f=fixture(); await f.receive('10月10日にブーケ3個、3000円で店頭受取');
+  assert.match(await handleManagerCommand('1','OWNER',f.env,f.later),/どの注文/);
+  assert.equal(f.get("SELECT COUNT(*) n FROM manager_outbox WHERE channel='customer'").n,0);
+  await handleManagerCommand('1','OWNER',f.env,f.later);
   assert.match(await handleManagerCommand('2','OWNER',f.env,f.later),/全文/);
   assert.match(await handleManagerCommand('２ ご希望の色を教えてください。','OWNER',f.env,f.later),/まだ送信していません/);
   assert.equal(f.get('SELECT message FROM manager_drafts').message,'ご希望の色を教えてください。');
@@ -92,6 +118,8 @@ test('number selection is actor scoped and rejects a draft updated after selecti
 
 test('manager accepts attached reply text without normalizing or sending it', async () => {
   const f=fixture(); await f.receive('ブーケ希望');
+  await handleManagerCommand('返信待ち','OWNER',f.env,f.later);
+  await handleManagerCommand('1','OWNER',f.env,f.later);
   for (const input of ['2かしこまりました。','２かしこまりました。','2\nかしこまりました。']) {
     assert.match(await handleManagerCommand(input,'OWNER',f.env,f.later),/まだ送信していません/);
     assert.equal(f.get('SELECT message FROM manager_drafts').message,'かしこまりました。');

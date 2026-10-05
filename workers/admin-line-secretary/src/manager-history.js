@@ -2,6 +2,8 @@
 const WARNING = '【過去情報】当時の価格・在庫・納期・対応条件です。今回の条件や注文確定には使わず、改めて確認してください。保存できた範囲の記録であり、会話の全履歴ではありません。';
 const LABELS = { customer_name:'お名前', phone:'電話番号', delivery_address:'住所', product_type:'商品', quantity:'数量', budget:'予算', receive_date:'受取日', receive_time:'受取時間', fulfillment_method:'受取方法', color_vibe:'色・雰囲気', balloon_message:'文字入れ', card_message:'カード', purpose:'用途' };
 const cut = (value, length) => String(value || '').slice(0, length);
+const friendlyDate=value=>String(value||'不明').replace(/(\d{4})-(\d{2})-(\d{2})(?:T[\d:.]+Z)?/gu,(_,y,m,d)=>`${y}年${Number(m)}月${Number(d)}日`);
+const friendlyLabel=value=>String(value||'過去のご注文').replace(/^(?:[ABC]-\d+|M[a-f0-9]{16}|legacy_[a-f0-9]{32})\s*/iu,'');
 const rows = async statement => (await statement.all()).results || [];
 
 export function parseHistoryRequest(text) {
@@ -38,7 +40,7 @@ export async function searchHistory(query, env, {limit=8,offset=0,allowEmpty=fal
 async function orderDetail(order,env) {
   const fields=await rows(env.DB.prepare('SELECT field_key,value_text,status,source_occurred_at,confirmed_at,confirmed_by FROM manager_fields WHERE order_id=? ORDER BY field_key').bind(order.id));
   const items=await rows(env.DB.prepare('SELECT label,specification FROM manager_order_items WHERE order_id=? ORDER BY id').bind(order.id));
-  return [`${order.id} ${order.title}`,`記録更新日：${order.updated_at}（注文日とは限りません）`,...fields.map(f=>`${LABELS[f.field_key]||f.field_key}：${f.value_text}${f.status==='confirmed'?'（当時の確認済み）':'（当時の回答・未確定）'}／出典日時：${f.source_occurred_at||'不明'}`),...items.map(i=>`明細 ${i.label}：${i.specification}`)].join('\n');
+  return [friendlyLabel(order.title),`記録の更新：${friendlyDate(order.updated_at)}（注文日とは限りません）`,...fields.filter(f=>Object.hasOwn(LABELS,f.field_key)).map(f=>`${LABELS[f.field_key]}：${friendlyDate(f.value_text)}${f.status==='confirmed'?'（当時確認済み）':'（当時未確定）'}`),...items.map(i=>`${i.label}：${i.specification}`)].join('\n');
 }
 
 export async function getHistoryDetail(id,env) {
@@ -46,8 +48,9 @@ export async function getHistoryDetail(id,env) {
     const record=await env.DB.prepare('SELECT * FROM manager_imports WHERE id=?').bind(id).first();
     if (!record) return '該当する過去カルテは見つかりませんでした。';
     const status=record.review_status==='verified'?'確認済み':'未確認・本人との紐付けは未確定';
-    const header=`${WARNING}\n\n${record.source_heading}\n記録状態：${status}\n出典：${record.source_file} ${record.source_line}行\n\n`;
-    return cut(header+record.raw_text,4450)+(header.length+record.raw_text.length>4450?'\n（長い記録のため一部省略）':'');
+    const header=`${WARNING}\n\n${friendlyLabel(record.source_heading)}\n確認状況：${status}\n\n`;
+    const content=record.raw_text.replace(/^###?\s+[^\n]+\n/u,'');
+    return cut(header+content,4450)+(header.length+content.length>4450?'\n（長い記録のため一部省略）':'');
   }
   if (/^M[a-f0-9]{16}$/i.test(String(id))) {
     const order=await env.DB.prepare("SELECT * FROM manager_orders WHERE id=? AND status='closed'").bind(id).first();
@@ -63,12 +66,12 @@ export async function formatCustomerHistory(customerId,env,excludeOrderId=null,{
   const imports=await rows(env.DB.prepare("SELECT source_heading,raw_text,source_file,source_line,created_at FROM manager_imports WHERE linked_customer_id=? AND review_status='verified' ORDER BY created_at DESC,id LIMIT 3").bind(customerId));
   const orders=await rows(env.DB.prepare("SELECT * FROM manager_orders WHERE customer_id=? AND status='closed' AND id<>? ORDER BY updated_at DESC,id LIMIT 3").bind(customerId,excludeOrderId||''));
   if (!imports.length&&!orders.length) return '';
-  const sections=imports.map(r=>`${r.source_heading}\n出典：${r.source_file}:${r.source_line}／保存日：${r.created_at}（注文日とは限りません）\n${relevantKeys?'未構造化の過去記録です。必要な情報は過去カルテで確認してください。':cut(r.raw_text,350)}`);
+  const sections=imports.map(r=>`${friendlyLabel(r.source_heading)}\n記録の保存：${friendlyDate(r.created_at)}（注文日とは限りません）\n${relevantKeys?'詳しい内容は過去のカルテで確認できます。':cut(r.raw_text.replace(/^###?\s+[^\n]+\n/u,''),350)}`);
   for(const order of orders) {
     if(relevantKeys) {
       const fields=await rows(env.DB.prepare('SELECT field_key,value_text,status,source_occurred_at FROM manager_fields WHERE order_id=? ORDER BY field_key').bind(order.id));
       const selected=fields.filter(f=>relevantKeys.includes(f.field_key)&&LABELS[f.field_key]);
-      sections.push(`${order.title}／更新日：${order.updated_at}\n${selected.map(f=>`${LABELS[f.field_key]}：${cut(f.value_text,100)}（当時${f.status==='confirmed'?'確認済み':'未確定'}・出典 ${f.source_occurred_at||'不明'}）`).join('\n')||'関連項目の記録なし'}`);
+      sections.push(`${friendlyLabel(order.title)}／更新：${friendlyDate(order.updated_at)}\n${selected.map(f=>`${LABELS[f.field_key]}：${cut(friendlyDate(f.value_text),100)}（当時${f.status==='confirmed'?'確認済み':'未確定'}）`).join('\n')||'関連項目の記録なし'}`);
     } else sections.push(cut(await orderDetail(order,env),450));
   }
   const body=`${WARNING}\n本人確認・紐付け済みの過去記録のみ。今回の希望とは区別してください。未記録項目は不明です。「前回と同じ」の希望も今回の確認が必要です。\n\n${sections.join('\n\n')}`;

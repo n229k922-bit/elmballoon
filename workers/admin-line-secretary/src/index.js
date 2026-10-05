@@ -4,6 +4,7 @@ import { managerApi, managerConsole } from './manager-console.js';
 import { createManagerLoginLink, managerSessionEndpoint } from './manager-auth.js';
 import { managerPwaAsset } from './manager-pwa.js';
 import { scheduleProofAsset, scheduleProofMessages } from './schedule-proof.js';
+import { siteDialogue, readableSiteDate } from './site-dialogue.js';
 
 const encoder = new TextEncoder();
 const CUSTOMER_SESSION_TTL = 60 * 60 * 24 * 14;
@@ -156,6 +157,10 @@ function normalizeManagerCommand(text) {
 }
 
 async function handleAdmin(event, env) {
+  const siteResponse = await siteDialogue(event, env, applyChange, scheduleProofMessages);
+  if (siteResponse !== null) return Array.isArray(siteResponse)
+    ? replyMessages(event.replyToken, siteResponse, env)
+    : reply(event.replyToken, siteResponse, env);
   if (managerV2Enabled(env)) {
     const businessText = event.message?.text?.trim() || '';
     if (/^(?:日付変更依頼|店休日変更依頼)$/u.test(businessText)) {
@@ -163,8 +168,9 @@ async function handleAdmin(event, env) {
     }
     const businessChange = parseCommand(businessText);
     if (businessChange) {
-      await env.SECRETARY_KV.put('pending:' + event.source.userId, JSON.stringify(businessChange), {expirationTtl:600});
-      return reply(event.replyToken, `【店休日・営業時間の変更確認】\n${businessChange.summary}\nお客様の注文日時は変更しません。\n10分以内に「確定」で営業日設定へ反映、「取消」で取り消します。`, env);
+      businessChange.summary = `${readableSiteDate(businessChange.date)} ${businessChange.status === 'closed' ? 'をお休みに変更' : businessChange.status === 'open' ? 'を通常営業に変更' : `${businessChange.openTime}〜${businessChange.closeTime}の営業に変更`}`;
+      await env.SECRETARY_KV.put('site-dialogue:' + event.source.userId, JSON.stringify({step:'confirm',change:businessChange,expiresAt:Date.now()+600000}), {expirationTtl:600});
+      return reply(event.replyToken, `【営業案内の変更】\n${businessChange.summary}\nお客様の受取日時はそのままです。\n\n1：この内容で変更する\n2：選び直す\n3：やめる`, env);
     }
     if (/^(確定|承認|はい|取消|キャンセル)$/u.test(businessText)) {
       const key = 'pending:' + event.source.userId;

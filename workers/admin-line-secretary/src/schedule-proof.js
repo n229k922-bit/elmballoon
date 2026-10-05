@@ -41,10 +41,11 @@ export async function scheduleProofAsset(path,env) {
 }
 
 export async function scheduleProofMessages(change,env,fetcher=fetch) {
+  const summary=String(change.summary||'営業日の変更').replace(/(\d{4})-(\d{2})-(\d{2})/gu,(_,y,m,d)=>`${Number(m)}月${Number(d)}日`);
   try {
     const proof=await captureScheduleProof(change,env,fetcher);
-    return [{type:'text',text:`【ホームページの表示確認済み】\n${change.summary}\n変更日の表示を含むカレンダー画像です。\n${proof.pageUrl}\n画像は7日間確認できます。`},{type:'image',originalContentUrl:proof.imageUrl,previewImageUrl:proof.imageUrl}];
+    return [{type:'text',text:`ホームページの表示も確認できました😊\n${summary}\n\n変更した日のカレンダー画像をお送りします。`},{type:'image',originalContentUrl:proof.imageUrl,previewImageUrl:proof.imageUrl}];
   } catch {
-    return [{type:'text',text:`営業日設定を保存しました。\n${change.summary}\nホームページの反映・画像確認は未完了です。画像取得の接続設定またはページ表示を確認する必要があります。お客様の注文日時は変更していません。`}];
+    return [{type:'text',text:`営業日の変更を保存しました。\n${summary}\n\nホームページの表示・画像の確認は未完了です。表示を確認してから完了をご案内する必要があります。\nお客様との受取・配達のお約束は変更していません。`}];
   }
 }

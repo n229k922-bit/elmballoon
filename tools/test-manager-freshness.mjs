@@ -40,8 +40,8 @@ test('manual update invalidates queued approval without mutating confirmed order
   assert.match(await handleManagerCommand(`承認送信 ${draft.id}`,'OWNER',f.env,f.now),/処理済み/);
   await handleManagerCommand(`返信作成 ${order.id} 日付確認のご連絡です。`,'OWNER',f.env,f.now);
   const fresh=f.get("SELECT * FROM manager_drafts WHERE status='pending'");
-  assert.match(await handleManagerCommand(`承認送信 ${fresh.id}`,'OWNER',f.env,f.now),/手動対応後の確認/);
-  assert.match(await handleManagerCommand(`制作開始 ${order.id}`,'OWNER',f.env,f.now),/手動対応後の確認/);
+  assert.match(await handleManagerCommand(`承認送信 ${fresh.id}`,'OWNER',f.env,f.now),/電話・店頭での対応後の確認/);
+  assert.match(await handleManagerCommand(`制作開始 ${order.id}`,'OWNER',f.env,f.now),/最新内容を確認するまで制作開始できません/);
   assert.match(await handleManagerCommand(`対応確認 ${order.id}`,'OWNER',f.env,f.now),/最新内容を確認済み/);
   assert.match(await handleManagerCommand(`対応確認 ${order.id}`,'OWNER',f.env,f.now),/すでに記録済み/);
   assert.match(await handleManagerCommand(`承認送信 ${fresh.id}`,'OWNER',f.env,f.now),/送信待ち/);

@@ -21,6 +21,10 @@ test('signed customer receipt leads to owner notice, manager approval and one cu
   assert.equal(received.status,200);assert.equal(sent.filter(s=>s.body.to==='OWNER').length,1);assert.equal(sent.filter(s=>s.body.to==='CUSTOMER').length,0);
   const draft=f.db.prepare('SELECT id FROM manager_drafts').get();assert.match(sent[0].body.messages[0].text,/1：この内容で送信/);
   assert.ok(!sent[0].body.messages[0].text.includes(draft.id));
+  await worker.fetch(f.req('/webhook/line','OWNER','1','O-LIST',f.env.LINE_CHANNEL_SECRET),f.env);
+  assert.equal(sent.filter(s=>s.body.to==='CUSTOMER').length,0);
+  await worker.fetch(f.req('/webhook/line','OWNER','1','O-SELECT',f.env.LINE_CHANNEL_SECRET),f.env);
+  assert.equal(sent.filter(s=>s.body.to==='CUSTOMER').length,0);
   const approved=await worker.fetch(f.req('/webhook/line','OWNER','1','O-EVENT',f.env.LINE_CHANNEL_SECRET),f.env);
   assert.equal(approved.status,200);assert.equal(sent.filter(s=>s.body.to==='CUSTOMER').length,1);assert.equal(f.db.prepare('SELECT status FROM manager_drafts').get().status,'sent');
   await worker.fetch(f.req('/webhook/line','OWNER','1','O-EVENT',f.env.LINE_CHANNEL_SECRET),f.env);

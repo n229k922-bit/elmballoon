@@ -40,6 +40,8 @@ test('details preserve source uncertainty and closed item data without accepting
  f.db.prepare('INSERT INTO manager_order_items(id,order_id,label,specification,updated_at) VALUES(?,?,?,?,?)').run('I1','M'+'0'.repeat(15)+'1','1人目','RINO 背番号1','2026-09-01');
  assert.match(await getHistoryDetail('legacy_'+'0'.repeat(31)+'1',f.env),/未確認.*本人/);
  assert.match(await getHistoryDetail('M'+'0'.repeat(15)+'1',f.env),/RINO 背番号1/);
+ assert.doesNotMatch(await getHistoryDetail('M'+'0'.repeat(15)+'1',f.env),/M[0-9a-f]{16}|source_|legacy_/iu);
+ assert.doesNotMatch(await getHistoryDetail('legacy_'+'0'.repeat(31)+'1',f.env),/CUSTOMER_ORDER_CARDS_PRIVATE\.md|legacy_/u);
  assert.match(await getHistoryDetail('M'+'0'.repeat(15)+'2',f.env),/見つかりません/);
  f.imp(2,'長文','長'.repeat(10000));assert.ok((await getHistoryDetail('legacy_'+'0'.repeat(31)+'2',f.env)).length<=4500);
 });

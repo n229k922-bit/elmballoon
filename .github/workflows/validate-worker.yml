@@ -33,6 +33,9 @@ jobs:
           node tools/test-operational-metrics.mjs
           node tools/test-manager-freshness.mjs
           node tools/test-manager-safety-ui.mjs
+          node tools/test-manager-friendly-console.mjs
+          node tools/test-site-dialogue.mjs
+          node tools/test-ai-disclosure.mjs
           node tools/test-line-e2e.mjs
           node tools/test-schedule-proof.mjs
           node --test tools/test-manager-runtime.mjs tools/test-order-knowledge-import.mjs
