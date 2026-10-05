@@ -3,6 +3,7 @@ import { parseHistoryRequest, searchHistory, getHistoryDetail, formatCustomerHis
 import { reserveOrderCapacity, getCapacitySummary, validateCapacityRequirements } from './capacity-safety.js';
 import { getOperationalMetrics, formatOperationalMetrics } from './operational-metrics.js';
 import { discloseAssistant } from './ai-disclosure.js';
+import { isJapanesePublicHoliday } from './japan-calendar.js';
 
 const iso = (value = Date.now()) => new Date(value).toISOString();
 const statement = (env, sql, ...args) => env.DB.prepare(sql).bind(...args);
@@ -87,7 +88,8 @@ export async function loadCustomerHistory(customerId, env) {
 
 export function businessDeadline(now, urgent, schedule = [], hours = 8) {
   if (urgent) return iso(Date.parse(now) + 30 * 60_000);
-  // Count store working hours. Unknown weekdays use 10–16; explicit closures pause the timer.
+  // Count weekday store hours. Unknown weekdays use 10–16; weekends, public holidays,
+  // and explicit closures pause the timer.
   const exceptions = new Map(schedule.map(row => [row.date, row]));
   let cursor = Math.ceil(Date.parse(now) / 60_000) * 60_000;
   let remaining = hours * 60;
@@ -96,10 +98,49 @@ export function businessDeadline(now, urgent, schedule = [], hours = 8) {
     const day = local.slice(0, 10), time = local.slice(11, 16);
     const row = exceptions.get(day);
     if (row?.status === 'closed') continue;
+    const weekday = new Date(`${day}T00:00:00Z`).getUTCDay();
+    if (weekday === 0 || weekday === 6 || isJapanesePublicHoliday(day)) continue;
     const start = row?.open_time || '10:00', end = row?.close_time || '16:00';
     if (time >= start && time < end && --remaining <= 0) return iso(cursor + 60_000);
   }
   return iso(cursor);
+}
+
+function japanDateTime(now) {
+  const parts = Object.fromEntries(new Intl.DateTimeFormat('en-CA', {
+    timeZone: 'Asia/Tokyo', year: 'numeric', month: '2-digit', day: '2-digit',
+    weekday: 'short', hour: '2-digit', minute: '2-digit', hourCycle: 'h23',
+  }).formatToParts(new Date(now)).filter(part => part.type !== 'literal').map(part => [part.type, part.value]));
+  return { ...parts, date: `${parts.year}-${parts.month}-${parts.day}`, time: `${parts.hour}:${parts.minute}` };
+}
+
+function reminderWindow(now, schedule) {
+  const local = japanDateTime(now);
+  if (local.weekday === 'Sat' || local.weekday === 'Sun' || isJapanesePublicHoliday(local.date)) return false;
+  const override = schedule.find(row => row.date === local.date);
+  if (override?.status === 'closed') return false;
+  const opens = override?.open_time || '10:00';
+  const closes = override?.close_time || '16:00';
+  return local.time >= opens && local.time < closes;
+}
+
+function readableJapanDateTime(value) {
+  const local = japanDateTime(value);
+  return `${Number(local.month)}月${Number(local.day)}日 ${Number(local.hour)}:${local.minute}`;
+}
+
+function reminderOrderText(task) {
+  const identity = [task.customer_name, task.title].filter(Boolean).join('・') || '注文内容を確認中のお客様';
+  const details = [
+    task.quantity ? `${task.quantity}個` : '',
+    task.receive_date ? `受取希望：${String(task.receive_date).replace(/^(?:\d{4}-)?(\d{2})-(\d{2})$/u, (_, month, day) => `${Number(month)}月${Number(day)}日`)}` : '',
+  ].filter(Boolean);
+  const reasons = (() => { try { return JSON.parse(task.reasons_json || '[]'); } catch { return []; } })();
+  const decision = task.kind === 'reply'
+    ? [...new Set(reasons.map(reason => REASON_LABELS[reason] || (/^[a-z_]+$/u.test(reason) ? '注文内容で対応できるか確認' : reason)))].join('・') || 'お客様への返信内容を確認'
+    : task.kind === 'manual_review' ? '電話・店頭で確認した内容を見直し、返信が必要か確認'
+      : '必要な対応を確認';
+  return `・${identity}${details.length ? `（${details.join('／')}）` : ''}\n  確認すること：${decision}\n  確認予定：${readableJapanDateTime(task.due_at)}`;
 }
 
 async function processInboxGroup(events, env, now) {
@@ -323,14 +364,24 @@ export async function flushManagerOutbox(env, now = iso(), fetcher = fetch) {
 }
 
 export async function monitorManagerTasks(env, now = iso()) {
-  const overdue = await rows(env, `SELECT t.*,o.title FROM manager_tasks t LEFT JOIN manager_orders o ON o.id=t.order_id
-    WHERE t.status='open' AND t.due_at<=? AND (t.last_notified_at IS NULL OR t.last_notified_at<?)
-    AND (?='' OR t.created_at>=?) ORDER BY t.due_at LIMIT 20`, now, iso(Date.parse(now) - 4 * 3600_000),env.MANAGER_SEND_NOT_BEFORE||'',env.MANAGER_SEND_NOT_BEFORE||'');
+  const local = japanDateTime(now);
+  if (!reminderWindow(now, await rows(env, 'SELECT date,status,open_time,close_time FROM business_schedule WHERE date=?', local.date))) return;
+  const overdue = await rows(env, `SELECT t.*,o.title,
+      (SELECT value_text FROM manager_fields WHERE order_id=o.id AND field_key='customer_name') AS customer_name,
+      (SELECT value_text FROM manager_fields WHERE order_id=o.id AND field_key='receive_date') AS receive_date,
+      (SELECT value_text FROM manager_fields WHERE order_id=o.id AND field_key='quantity') AS quantity,
+      (SELECT reasons_json FROM manager_drafts WHERE id=substr(t.id,7)) AS reasons_json
+    FROM manager_tasks t LEFT JOIN manager_orders o ON o.id=t.order_id
+    WHERE t.status='open' AND t.due_at<=?
+    AND (t.last_notified_at IS NULL OR date(t.last_notified_at,'+9 hours')<?)
+    AND (?='' OR t.created_at>=?) ORDER BY t.due_at LIMIT 20`, now,local.date,env.MANAGER_SEND_NOT_BEFORE||'',env.MANAGER_SEND_NOT_BEFORE||'');
   if (!overdue.length || !owners(env).length) return;
-  const text = '【対応期限の確認】\n' + overdue.map(t => `${t.title || 'どの注文か確認が必要です'}\n${t.kind==='reply'?'お客様への返信をご確認ください':t.kind==='manual_review'?'電話・店頭での最新内容をご確認ください':'対応内容を確認してください'}\n確認の目安：${t.due_at}`).join('\n\n')+'\n\n「案件一覧」または「返信待ち」で番号から確認できます。';
+  const text = `店長、確認をお願いします😊\n以下の注文で、お客様へのご案内が止まっています。\n\n${overdue.map(reminderOrderText).join('\n\n')}\n\n「返信待ち」と送ると、注文ごとの確認点を見て番号で選べます。`;
+  const key = `due:${local.date}:${overdue.map(task => task.id).sort().join(':')}`;
   await env.DB.batch([
-    ...ownerMessages(env, `due:${now.slice(0, 13)}`, text, now),
-    ...overdue.map(t => statement(env, `UPDATE manager_tasks SET last_notified_at=? WHERE id=?`, now, t.id)),
+    ...ownerMessages(env, key, text, now),
+    ...overdue.map(t => statement(env, `UPDATE manager_tasks SET last_notified_at=? WHERE id=?
+      AND (last_notified_at IS NULL OR date(last_notified_at,'+9 hours')<?)`, now, t.id, local.date)),
   ]);
 }
 
