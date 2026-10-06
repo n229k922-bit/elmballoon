@@ -138,7 +138,7 @@ async function lineWebhook(request, env) {
   const signature = request.headers.get('x-line-signature') || '';
   if (!(await signatureIsValid(body, signature, env.LINE_CHANNEL_SECRET))) return new Response('Invalid signature', { status: 401 });
   const payload = JSON.parse(body);
-  for (const event of payload.events || []) if (event.type === 'message') await handleEvent(event, env);
+  for (const event of payload.events || []) if (event.type === 'message' || event.type === 'postback') await handleEvent(event, env);
   return new Response('OK');
 }
 
@@ -157,6 +157,18 @@ function normalizeManagerCommand(text) {
 }
 
 async function handleAdmin(event, env) {
+  if (event.type === 'postback') {
+    if (!managerV2Enabled(env)) return;
+    const target = String(event.postback?.data || '').match(/^manager-review:(D[A-F0-9]{16})$/u);
+    if (!target) return reply(event.replyToken, 'この操作は確認できません。「返信待ち」で選び直してください。', env);
+    if (!event.webhookEventId || typeof event.webhookEventId !== 'string' || event.webhookEventId.length > 200) return reply(event.replyToken, '操作を確認できませんでした。「返信待ち」で注文を選んでください。', env);
+    const response = await handleManagerCommand(`通知確認 ${target[1]}`, event.source.userId, env, new Date().toISOString(), event.webhookEventId);
+    if (env.SECRETARY_KV && response?.startsWith('【選んだ注文')) {
+      await env.SECRETARY_KV.delete('site-dialogue:' + event.source.userId);
+      await env.SECRETARY_KV.delete('pending:' + event.source.userId);
+    }
+    return reply(event.replyToken, response, env);
+  }
   const siteResponse = await siteDialogue(event, env, applyChange, scheduleProofMessages);
   if (siteResponse !== null) return Array.isArray(siteResponse)
     ? replyMessages(event.replyToken, siteResponse, env)
@@ -197,7 +209,7 @@ async function handleAdmin(event, env) {
     }
     // Keep only explicit business-hours commands on the legacy system route.
     if (!/^(?:休業 |営業時間 |休業解除 )/u.test(event.message?.text || '')) {
-      return reply(event.replyToken, '案件一覧／統括状況／カルテ M番号\n過去注文 お名前／○○さんの過去の注文を確認したい\n過去情報 M番号\n返信作成 M番号 本文／承認送信 D番号\n明細 M番号 お名前：仕様\n電話メモ M番号 内容', env);
+      return reply(event.replyToken, '何を確認しましょうか？😊\n\n「返信待ち」：お客様への返信を確認\n「案件一覧」：注文を選び、カルテ・変更確認・電話メモへ\n「統括状況」：対応状況を確認\n「○○さんの過去の注文を確認したい」：以前の記録を確認\n「店休日変更依頼」：ホームページの営業案内を変更\n\n一覧から番号で選べます。', env);
     }
   }
   if (event.message?.type === 'image') return registerManualOrderFormImage(event, env);
@@ -380,6 +392,9 @@ async function customerLineWebhook(request, env, ctx) {
   }
 
   if (managerV2Enabled(env)) {
+    // Roles belong to the signed channel route, not to the LINE user ID.
+    // One person may use both test channels. Customer input must never enter
+    // the owner command handler, even when the message is simply "1".
     await receiveManagerEvents(payload.events || [], env);
     const process = async () => {
       await new Promise(resolve => setTimeout(resolve, 12500));

@@ -196,6 +196,9 @@ test('confirmed changes require explicit review, and production is blocked while
   f.db.exec("UPDATE manager_fields SET status='confirmed',confirmed_at='2026-09-30T00:00:00Z' WHERE field_key='budget'");
   await f.receive('予算5000円に変更','E2');
   const change=f.get('SELECT * FROM manager_changes'); assert.ok(change);
+  assert.equal(f.get("SELECT COUNT(*) n FROM manager_questions q JOIN manager_drafts d ON d.id=q.draft_id WHERE d.source_event_id='E2'").n,0,'replaced reply must not mark unsent intake questions as asked');
+  const notice=f.get("SELECT text FROM manager_outbox WHERE channel='owner' ORDER BY rowid DESC LIMIT 1").text;
+  assert.match(notice,/予算の変更希望/);assert.doesNotMatch(notice,/C[A-F0-9]{16}|変更承認|budget/);
   assert.match(f.get("SELECT value_text FROM manager_fields WHERE field_key='budget'").value_text,/3,000/);
   assert.match(await handleManagerCommand(`制作開始 ${order.id}`,'OWNER',f.env,f.later),/変更判断待ち/);
   await handleManagerCommand(`変更承認 ${change.id}`,'OWNER',f.env,f.later);
@@ -209,6 +212,138 @@ test('retry uses an identical key/payload and accepted 409 closes the outbox onc
   await flushManagerOutbox(f.env,'2026-09-30T01:03:00.000Z',async (_,init)=>{const old=calls.find(x=>x.body===init.body);assert.equal(old.headers['X-Line-Retry-Key'],init.headers['X-Line-Retry-Key']);return new Response('{}',{status:409,headers:{'x-line-accepted-request-id':'accepted'}});});
   assert.equal(f.get('SELECT status FROM manager_drafts').status,'sent');
   assert.equal(f.get("SELECT COUNT(*) n FROM manager_events WHERE direction='assistant'").n,1);
+});
+
+test('natural separate order markers split a burst without inheriting previous facts', async()=>{
+  for(const marker of ['別件で','別のご注文：','新しい注文：','もう一つお願いしたいです。']){
+    const f=fixture();
+    await receiveManagerEvents([f.event('10月10日にブーケ3個、合計3000円で店頭受取','A'),f.event(`${marker}スタンド花を1台、予算15000円で配達希望です`,'B')],f.env,f.now);
+    await drainManagerInbox(f.env,f.later);
+    const orders=f.all('SELECT id,title FROM manager_orders ORDER BY rowid');
+    assert.equal(orders.length,2,marker);
+    const fields=id=>Object.fromEntries(f.all('SELECT field_key,value_text FROM manager_fields WHERE order_id=?',id).map(r=>[r.field_key,r.value_text]));
+    const bouquet=fields(orders[0].id),stand=fields(orders[1].id);
+    assert.equal(bouquet.quantity,'3');assert.equal(bouquet.product_type,'ブーケ');
+    assert.equal(stand.quantity,'1');assert.equal(stand.product_type,'バルーンスタンド');
+    assert.equal(stand.fulfillment_method,'配達');assert.equal(stand.receive_date,undefined);
+    assert.match(stand.budget,/15,000/);assert.match(bouquet.budget,/3,000/);
+    await f.receive('予算は20000円です','UNROUTED');
+    assert.equal(fields(orders[0].id).budget,bouquet.budget);
+    assert.equal(fields(orders[1].id).budget,stand.budget);
+    assert.equal(f.get("SELECT COUNT(*) n FROM manager_tasks WHERE kind='routing'").n,1);
+    assert.doesNotMatch(f.get('SELECT message FROM manager_drafts WHERE order_id IS NULL').message,/M[A-F0-9]{16}/);
+  }
+});
+
+test('429 retries keep identical payload and retry key, and do not duplicate delivery',async()=>{
+ const f=fixture();await f.receive('ブーケ希望');
+ const draft=f.get('SELECT * FROM manager_drafts');await handleManagerCommand(`承認送信 ${draft.id}`,'OWNER',f.env,f.later);
+ const calls=[];
+ await flushManagerOutbox(f.env,f.later,async(_,init)=>{calls.push(init);return new Response('{}',{status:429})});
+ assert.equal(f.get("SELECT status FROM manager_outbox WHERE channel='customer'").status,'pending');
+ await flushManagerOutbox(f.env,'2026-09-30T01:03:00.000Z',async(_,init)=>{
+   const old=calls.find(x=>x.body===init.body);assert.ok(old);assert.equal(old.headers['X-Line-Retry-Key'],init.headers['X-Line-Retry-Key']);
+   return new Response('{}',{status:200});
+ });
+ assert.equal(f.get("SELECT status FROM manager_outbox WHERE channel='customer'").status,'sent');
+ assert.equal(f.get("SELECT COUNT(*) n FROM manager_events WHERE direction='assistant'").n,1);
+ await flushManagerOutbox(f.env,'2026-09-30T01:05:00.000Z',async()=>assert.fail('already sent'));
+});
+
+test('test-only auto intake asks missing facts without owner noise and escalates completed details',async()=>{
+ const f=fixture();Object.assign(f.env,{MANAGER_TEST_MODE:'true',MANAGER_AUTO_INTAKE_ENABLED:'true',MANAGER_TEST_CUSTOMER_IDS:'CUSTOMER',ADMIN_LINE_USER_IDS:'OWNER,SECOND'});
+ await f.receive('娘の誕生日にバルーンをお願いしたいんですが、1万円くらいでできますか？');
+ assert.equal(f.get('SELECT approved_by FROM manager_drafts').approved_by,'system:intake');
+ assert.equal(f.get("SELECT COUNT(*) n FROM manager_outbox WHERE channel='owner'").n,0);
+ const sent=[];const fetcher=async(_,init)=>{sent.push(JSON.parse(init.body));return new Response('{}',{status:200})};
+ await flushManagerOutbox(f.env,f.later,fetcher);
+ assert.equal(sent.length,1);assert.equal(sent[0].to,'CUSTOMER');
+ assert.match(sent[0].messages[0].text,/いつ頃/);
+ assert.equal(f.get("SELECT COUNT(*) n FROM manager_audit WHERE action='intake.auto_queued'").n,1);
+ await f.receive('10月10日、ブーケ3個、店頭受取、合計10000円、色はおまかせ','AUTO-DETAILS');
+ const draft=f.get("SELECT * FROM manager_drafts WHERE source_event_id='AUTO-DETAILS'");
+ assert.equal(draft.status,'pending');
+ assert.ok(JSON.parse(draft.reasons_json).includes('review_collected_details'));
+ assert.equal(f.get("SELECT COUNT(*) n FROM manager_outbox WHERE channel='owner'").n,2);
+ await flushManagerOutbox(f.env,f.later,fetcher);
+ assert.equal(sent.filter(s=>s.to==='CUSTOMER').length,1,'acceptance still needs manager review');
+});
+
+test('auto intake fails closed for production, flags, exceptions, manual review and pending changes',async()=>{
+ for(const blocked of ['flag_off','production','urgent','delivery','image','history','manual_review','pending_change','confirmed','ambiguity','unauthorized']){
+  const f=fixture();Object.assign(f.env,{MANAGER_TEST_MODE:'true',MANAGER_AUTO_INTAKE_ENABLED:'true',MANAGER_TEST_CUSTOMER_IDS:'CUSTOMER'});
+  if(blocked==='production')f.env.MANAGER_TEST_MODE='false';
+  if(blocked==='flag_off')f.env.MANAGER_AUTO_INTAKE_ENABLED='false';
+  if(blocked==='unauthorized')f.env.MANAGER_TEST_CUSTOMER_IDS='OTHER';
+  if(['manual_review','pending_change','confirmed'].includes(blocked)){
+   f.env.MANAGER_AUTO_INTAKE_ENABLED='false';await f.receive('ブーケ希望');f.env.MANAGER_AUTO_INTAKE_ENABLED='true';
+   const order=f.get('SELECT id FROM manager_orders').id;
+   if(blocked==='manual_review')f.db.prepare("INSERT INTO manager_tasks(id,order_id,kind,detail,due_at,created_at) VALUES ('MANUAL',?,'manual_review','review',?,?)").run(order,f.now,f.now);
+   if(blocked==='pending_change')f.db.prepare("INSERT INTO manager_changes(id,order_id,field_key,old_value,new_value,source_event_id,base_revision) VALUES ('C1111111111111111',?,'budget','3000','5000','E1',1)").run(order);
+   if(blocked==='confirmed')f.db.exec("UPDATE manager_fields SET status='confirmed'");
+  }
+  const text={urgent:'至急、誕生日のバルーンをお願いします',delivery:'配達でブーケ希望',history:'去年と同じブーケ希望',ambiguity:'来週ブーケ希望'}[blocked]||'誕生日のブーケ希望';
+  if(blocked==='image'){
+   const event=f.event(text,'BLOCKED');event.message={type:'image',id:'IMAGE'};
+   await receiveManagerEvents([event],f.env,f.now);await drainManagerInbox(f.env,f.later);
+  }else await f.receive(text,'BLOCKED');
+  assert.equal(f.get("SELECT COUNT(*) n FROM manager_outbox WHERE channel='customer'").n,0,blocked);
+ }
+});
+
+test('auto intake kill switch cancels unattempted sends but keeps attempted retry payload immutable',async()=>{
+ const f=fixture();Object.assign(f.env,{MANAGER_TEST_MODE:'true',MANAGER_AUTO_INTAKE_ENABLED:'true',MANAGER_TEST_CUSTOMER_IDS:'CUSTOMER'});
+ await f.receive('誕生日のバルーンをお願いしたいです');
+ f.env.MANAGER_AUTO_INTAKE_ENABLED='false';
+ await flushManagerOutbox(f.env,f.later,async()=>assert.fail('disabled automation must not send'));
+ assert.equal(f.get('SELECT last_error FROM manager_outbox').last_error,'auto_intake_disabled');
+ const g=fixture();Object.assign(g.env,{MANAGER_TEST_MODE:'true',MANAGER_AUTO_INTAKE_ENABLED:'true',MANAGER_TEST_CUSTOMER_IDS:'CUSTOMER'});
+ await g.receive('誕生日のバルーンをお願いしたいです');let initial;
+ await flushManagerOutbox(g.env,g.later,async(_,init)=>{initial=init;throw new Error('ambiguous network timeout')});
+ g.env.MANAGER_AUTO_INTAKE_ENABLED='false';
+ await flushManagerOutbox(g.env,'2026-09-30T01:03:00.000Z',async(_,init)=>{assert.equal(init.body,initial.body);assert.equal(init.headers['X-Line-Retry-Key'],initial.headers['X-Line-Retry-Key']);return new Response('{}',{status:200})});
+ assert.equal(g.get('SELECT status FROM manager_outbox').status,'sent');
+});
+
+test('saved notification buttons stay identical across retries and rollout setting changes',async()=>{
+ const f=fixture();Object.assign(f.env,{MANAGER_TEST_MODE:'true',MANAGER_TEST_CUSTOMER_IDS:'CUSTOMER'});await f.receive('ブーケ希望');
+ const initial=[];await flushManagerOutbox(f.env,f.later,async(_,init)=>{initial.push(init);return new Response('{}',{status:429})});
+ f.env.MANAGER_TEST_MODE='false';
+ await flushManagerOutbox(f.env,'2026-09-30T01:03:00.000Z',async(_,init)=>{
+  assert.equal(init.body,initial[0].body);assert.equal(init.headers['X-Line-Retry-Key'],initial[0].headers['X-Line-Retry-Key']);
+  assert.equal(JSON.parse(init.body).messages[0].quickReply.items[0].action.label,'この注文を確認');
+  return new Response('{}',{status:200});
+ });
+});
+
+test('manual reply revision does not record removed questions as sent',async()=>{
+ const f=fixture();await f.receive('ブーケ希望');const draft=f.get('SELECT id FROM manager_drafts');
+ assert.ok(f.get('SELECT COUNT(*) n FROM manager_questions').n>0);
+ await handleManagerCommand(`返信修正 ${draft.id} 内容を確認いたします。`,'OWNER',f.env,f.later);
+ assert.equal(f.get('SELECT COUNT(*) n FROM manager_questions').n,0);
+ await handleManagerCommand(`承認送信 ${draft.id}`,'OWNER',f.env,f.later);
+ await flushManagerOutbox(f.env,f.later,async()=>new Response('{}',{status:200}));
+ assert.equal(f.get('SELECT status FROM manager_drafts').status,'sent');
+});
+
+test('fresh test session retains earlier records without inheriting or sending earlier orders',async()=>{
+ const f=fixture();await f.receive('10月10日にブーケ3個、合計3000円で店頭受取');
+ const oldOrder=f.get('SELECT id FROM manager_orders').id,oldDraft=f.get('SELECT id FROM manager_drafts').id;
+ Object.assign(f.env,{MANAGER_TEST_MODE:'true',MANAGER_TEST_CUSTOMER_IDS:'CUSTOMER',MANAGER_TEST_SESSION_STARTED_AT:'2026-09-30T01:02:00.000Z'});
+ assert.match(await handleManagerCommand('案件一覧','OWNER',f.env,'2026-09-30T01:03:00.000Z'),/進行中の注文はありません/);
+ assert.match(await handleManagerCommand(`承認送信 ${oldDraft}`,'OWNER',f.env,'2026-09-30T01:03:00.000Z'),/以前のテスト/);
+ await receiveManagerEvents([f.event('娘の誕生日にバルーンをお願いしたいです','FRESH')],f.env,'2026-09-30T01:03:00.000Z');
+ await drainManagerInbox(f.env,'2026-09-30T01:04:00.000Z');
+ assert.equal(f.get('SELECT COUNT(*) n FROM manager_orders').n,2);
+ const fresh=f.get('SELECT id FROM manager_orders WHERE id<>?',oldOrder).id;
+ assert.equal(f.get("SELECT COUNT(*) n FROM manager_fields WHERE order_id=? AND field_key IN ('quantity','receive_date','budget')",fresh).n,0);
+ assert.equal(f.get("SELECT value_text FROM manager_fields WHERE order_id=? AND field_key='quantity'",oldOrder).value_text,'3');
+ const list=await handleManagerCommand('案件一覧','OWNER',f.env,'2026-09-30T01:04:00.000Z');
+ assert.match(list,/誕生日/);assert.doesNotMatch(list,/2：/);
+ f.env.ADMIN_API_TOKEN='test';
+ const overview=await (await managerApi(new Request('https://shop.example/api/manager/orders',{headers:{Authorization:'Bearer test'}}),f.env)).json();
+ assert.equal(overview.orders.length,1);assert.equal(overview.orders[0].id,fresh);
+ assert.ok(overview.tasks.every(t=>t.order_id===fresh));assert.equal(overview.today.replyCount,1);
 });
 
 test('expired retry keys stop instead of producing a duplicate a day later', async () => {

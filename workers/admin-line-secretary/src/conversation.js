@@ -17,6 +17,12 @@ const undecided = /未定|まだ決まって|分からない|わからない|決
 const NUMBER = '(\\d[\\d,]*(?:\\.\\d+)?)\\s*(万|千)?';
 const amount = (digits, unit) => Number(digits.replaceAll(',', '')) * (unit === '万' ? 10000 : unit === '千' ? 1000 : 1);
 
+// Shared by order routing and burst grouping: a new order must also begin a
+// new burst, so preceding facts cannot leak into its intake.
+export function startsNewOrder(text) {
+  return /^(?:別件(?:で|の|です|[\s：:。、,]|$)|(?:別の注文|別のご注文|新しい注文|新しいご注文|新規注文|もう(?:一つ|ひとつ|1つ)(?:の注文|注文)?)(?=[\s：:。、,]|$|お願い|を|は))/u.test(normalize(text).trim());
+}
+
 function anchorDay(timestamp) {
   if (timestamp == null || timestamp === '') return null;
   const date = new Date(timestamp);
@@ -58,14 +64,20 @@ export function extractConversationFacts({ text = '', sourceTimestamp, lastQuest
         hasLabeledDate=true;
         const resolved=undecided.test(match[1])?'未定':resolveConversationDate(match[1],sourceTimestamp);
         if(resolved)add(key,resolved,1,match[0].trim());else facts.dateAmbiguities.push(match[1].trim());
+      } else if (key === 'quantity') {
+        const count = normalize(match[1]).trim().match(/^([1-9]\d{0,4})(?:\s*(?:個|つ|束|基|台|本|セット))?$/u);
+        if (count) add(key, count[1], 1, match[0].trim());
       } else add(key, match[1].trim(), 1, match[0].trim());
     }
   }
   const lastKey = typeof lastQuestions.at(-1) === 'string' ? lastQuestions.at(-1) : lastQuestions.at(-1)?.key;
+  const questionKeys = lastQuestions.map(q => typeof q === 'string' ? q : q.key);
+  if (text.trim().length < 80 && /おまかせ|お任せ/u.test(text)
+      && (questionKeys.includes('color_vibe') || /色(?:味)?(?:は|を|も|について)|お色/u.test(text))
+      && !/(?:おまかせ|お任せ)(?:ではなく|じゃなく|にしない)/u.test(text)) add('color_vibe', 'おまかせ', 1);
   if (hasImage) add('product_source', '参考画像あり（内容未確認）', 1);
   if (lastQuestions.length === 1 && text.trim().length < 80) {
     if (lastKey === 'quantity' && /^\d+[。！!]?$/u.test(text.trim())) add('quantity', text.trim().replace(/[。！!]/g,''), 1);
-    if (lastKey === 'color_vibe' && /おまかせ|お任せ/u.test(text)) add('color_vibe','おまかせ',1);
     if (lastKey === 'budget' && /^\d[\d,]*$/u.test(text.trim())) add('budget',`${Number(text.trim().replaceAll(',','')).toLocaleString('ja-JP')}円（単価・合計未確認）`,0.9);
   }
   if (lastQuestions.length === 1 && lastKey && undecided.test(text) && text.length < 30) add(lastKey, '未定', 0.95);
@@ -74,22 +86,22 @@ export function extractConversationFacts({ text = '', sourceTimestamp, lastQuest
   for (const [pattern, value] of [[/スタンド/u, 'バルーンスタンド'], [/ブーケ/u, 'ブーケ'], [/おむつケーキ/u, 'おむつケーキ'], [/ヘリウム|浮く/u, 'ヘリウム（浮く）タイプ'], [/アレンジ/u, '置き型アレンジメント'], [/リリース/u, 'バルーンリリース']]) if (pattern.test(text)) { add('product_type', value); break; }
   const purpose = text.match(/卒団|卒業|誕生日|周年|開店|開業|移転|結婚|発表会|退職|還暦/u);
   if (purpose) add('purpose', purpose[0]);
-  const quantity = text.match(/(\d+)\s*(?:個|つ|束|基|セット)(?!\s*(?:あたり|当たり|\d+円))(?:[をでに、。\s]|$|お願い|希望|注文)/u);
+  const quantity = text.match(/(\d+)\s*(?:個|つ|束|基|台|本|セット)(?!\s*(?:あたり|当たり|\d+円))(?:[をでに、。\s]|$|お願い|希望|注文)/u);
   if (quantity) add('quantity', quantity[1], 0.95, quantity[0]);
   const range = text.match(new RegExp(`${NUMBER}\\s*[〜~～−–-]\\s*${NUMBER}\\s*円`, 'u'));
   const single = text.match(new RegExp(`${NUMBER}\\s*円`, 'u'));
   if (range || single) {
     const min = range ? amount(range[1], range[2] || range[4]) : amount(single[1], single[2]);
     const max = range ? amount(range[3], range[4]) : min;
-    const scope = /1[つ個束基]|一[つ個]|ひとつ|単価|あたり/u.test(text) ? 'unit' : /合計|全体|総額|全部で/u.test(text) ? 'total' : 'unknown';
+    const scope = /1[つ個束基台本]|一[つ個]|ひとつ|単価|あたり/u.test(text) ? 'unit' : /合計|全体|総額|全部で/u.test(text) ? 'total' : 'unknown';
     if (min <= max && Number.isFinite(max)) {
       facts.budget = { min, max, currency: 'JPY', scope, evidence: (range || single)[0] };
       add('budget', `${min.toLocaleString('ja-JP')}${max !== min ? `〜${max.toLocaleString('ja-JP')}` : ''}円${scope === 'unit' ? '／1つ' : scope === 'total' ? '（合計）' : '（単価・合計未確認）'}`);
       if (scope !== 'unknown') add('budget_scope', scope);
     }
   }
-  if (/^(?:全体|合計|全部)(?:です|で|の金額)?[。！!]?$/u.test(text.trim()) && lastKey === 'budget_scope') add('budget_scope', 'total');
-  if (/^(?:1つあたり|一つあたり|単価)(?:です)?[。！!]?$/u.test(text.trim()) && lastKey === 'budget_scope') add('budget_scope', 'unit');
+  if (/^(?:全体|合計|全部)(?:です|で|の金額)?[。！!]?$/u.test(text.trim()) && questionKeys.includes('budget_scope')) add('budget_scope', 'total');
+  if (/^(?:1つあたり|一つあたり|単価)(?:です)?[。！!]?$/u.test(text.trim()) && questionKeys.includes('budget_scope')) add('budget_scope', 'unit');
   const colors = [...new Set(text.match(/メタリックブラック|ゴールド|シルバー|ピンク|ブルー|ラベンダー|ライム|赤|青|白|黒|黄色|紫|緑/g) || [])];
   if (colors.length) add('color_vibe', colors.join('・'), 0.85);
   // Preserve per-item wording intact; do not collapse multiple names into a customer's name.
@@ -140,9 +152,16 @@ export function planConversation({ text = '', fields = {}, history = [], sourceT
   if (/昨年|去年|前回|いつもの/u.test(text)) ownerReasons.push('verify_previous_order');
   if (/変更|キャンセル|返金|間違|届か|まだ来/u.test(text)) ownerReasons.push('order_exception');
   if (facts.items.length > 1) ownerReasons.push('per_item_specifications');
-  const asked = new Set([...lastQuestions, ...history.flatMap(item => item.questions || [])].map(item => typeof item === 'string' ? item : item.key));
+  // Old unanswered questions remain unresolved. Suppress only the immediate
+  // repetition; when all other questions are exhausted, clarify them again.
+  const asked = new Set(lastQuestions.map(item => typeof item === 'string' ? item : item.key));
   const questions = [];
-  const ask = key => { if (questions.length < 2 && !known(merged[key]) && !asked.has(key)) questions.push({ key, text: QUESTIONS[key] }); };
+  const deferred = [];
+  const ask = key => {
+    if (known(merged[key])) return;
+    if (asked.has(key)) deferred.push({ key, text: `念のため、${QUESTIONS[key]}` });
+    else if (questions.length < 2) questions.push({ key, text: QUESTIONS[key] });
+  };
   if (facts.dateAmbiguities.length && !asked.has('date_clarification')) questions.push({ key: 'date_clarification', text: `「${facts.dateAmbiguities[0]}」は何年何月何日のご予定でしょうか？` });
   if (/配達|発送/u.test(method)) ask('delivery_area');
   if (!known(merged.use_date)) ask('receive_date');
@@ -154,6 +173,7 @@ export function planConversation({ text = '', fields = {}, history = [], sourceT
     ask('budget');
     ask('color_vibe');
   }
+  if (!questions.length && !ownerReasons.length) questions.push(...deferred.slice(0, 2));
   const waiting = !questions.length && !ownerReasons.length;
   if (waiting) ownerReasons.push('review_collected_details');
   const historyCheck=ownerReasons.includes('verify_previous_order') ? '以前のご注文を確認します。変更したい点があれば、その点だけお知らせください。' : '';

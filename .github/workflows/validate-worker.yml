@@ -37,6 +37,7 @@ jobs:
           node tools/test-site-dialogue.mjs
           node tools/test-ai-disclosure.mjs
           node tools/test-line-e2e.mjs
+          node tools/test-four-role-scenarios.mjs
           node tools/test-schedule-proof.mjs
           node --test tools/test-manager-runtime.mjs tools/test-order-knowledge-import.mjs
       - name: Check required integration routes

@@ -25,16 +25,20 @@ export async function managerApi(request,env) {
     return detail?json({detail}):json({error:'not_found'},404);
   }
   if(request.method==='GET' && url.pathname==='/api/manager/orders') {
+    const session=env.MANAGER_TEST_MODE==='true'?(env.MANAGER_TEST_SESSION_STARTED_AT||''):'';
     const search=(url.searchParams.get('q')||'').trim().slice(0,100);
-    const searchSql=search?`WHERE instr(lower(o.title || ' ' || o.id),lower(?))>0 OR EXISTS (SELECT 1 FROM manager_fields f WHERE f.order_id=o.id AND f.field_key IN ('customer_name','phone','receive_date','delivery_address') AND instr(lower(f.value_text),lower(?))>0)`:'';
-    const orders=await query(env,`SELECT o.* FROM manager_orders o ${searchSql} ORDER BY o.updated_at DESC LIMIT 100`,...(search?[search,search]:[]));
+    const searchSql=`WHERE (?='' OR o.created_at>=?) AND (?='' OR instr(lower(o.title || ' ' || o.id),lower(?))>0 OR EXISTS (SELECT 1 FROM manager_fields f WHERE f.order_id=o.id AND f.field_key IN ('customer_name','phone','receive_date','delivery_address') AND instr(lower(f.value_text),lower(?))>0))`;
+    const orders=await query(env,`SELECT o.* FROM manager_orders o ${searchSql} ORDER BY o.updated_at DESC LIMIT 100`,session,session,search,search,search);
     const today=new Date(Date.now()+9*60*60*1000).toISOString().slice(0,10);
-    const handoffs=await query(env,`SELECT o.* FROM manager_orders o JOIN manager_fields f ON f.order_id=o.id AND f.field_key='receive_date' WHERE o.status='open' AND o.fulfillment_status!='fulfilled' AND f.value_text=? ORDER BY o.updated_at`,today);
-    const replyCount=await query(env,`SELECT COUNT(*) AS count FROM manager_drafts WHERE status IN ('pending','held')`);
-    const tasks=await query(env,`SELECT * FROM manager_tasks WHERE status='open' ORDER BY due_at LIMIT 100`);
-    const failures=await query(env,`SELECT id,channel,status,last_error,created_at FROM manager_outbox WHERE status IN ('failed','uncertain') ORDER BY created_at DESC LIMIT 30`);
-    const drafts=await query(env,`SELECT id,customer_id,message,source_event_id FROM manager_drafts WHERE order_id IS NULL AND status='pending' ORDER BY created_at LIMIT 30`);
-    return json({orders,tasks,failures,routing:drafts,sendPaused:env.MANAGER_SEND_PAUSED==='true',today:{date:today,handoffs,replyCount:replyCount[0].count},limited:orders.length===100});
+    const handoffs=await query(env,`SELECT o.* FROM manager_orders o JOIN manager_fields f ON f.order_id=o.id AND f.field_key='receive_date' WHERE o.status='open' AND o.fulfillment_status!='fulfilled' AND f.value_text=? AND (?='' OR o.created_at>=?) ORDER BY o.updated_at`,today,session,session);
+    const replyCount=await query(env,`SELECT COUNT(*) AS count FROM manager_drafts d LEFT JOIN manager_orders o ON o.id=d.order_id WHERE d.status IN ('pending','held') AND (?='' OR COALESCE(o.created_at,d.created_at)>=?)`,session,session);
+    const tasks=await query(env,`SELECT t.* FROM manager_tasks t LEFT JOIN manager_orders o ON o.id=t.order_id WHERE t.status='open' AND (?='' OR COALESCE(o.created_at,t.created_at)>=?) ORDER BY t.due_at LIMIT 100`,session,session);
+    const failures=await query(env,`SELECT id,channel,status,last_error,created_at FROM manager_outbox WHERE status IN ('failed','uncertain') AND (?='' OR created_at>=?) ORDER BY created_at DESC LIMIT 30`,session,session);
+    const drafts=await query(env,`SELECT id,customer_id,message,source_event_id FROM manager_drafts WHERE order_id IS NULL AND status='pending' AND (?='' OR created_at>=?) ORDER BY created_at LIMIT 30`,session,session);
+    const owners=(env.ADMIN_LINE_USER_IDS||'').split(',').map(x=>x.trim()).filter(Boolean);
+    const customers=(env.MANAGER_TEST_CUSTOMER_IDS||'').split(',').map(x=>x.trim()).filter(Boolean);
+    const testMode=env.MANAGER_TEST_MODE==='true';
+    return json({orders,tasks,failures,routing:drafts,sendPaused:env.MANAGER_SEND_PAUSED==='true',testMode,ownerRecipients:owners.length,customerAllowlist:customers.length,roleOverlap:testMode&&owners.some(id=>customers.includes(id)),today:{date:today,handoffs,replyCount:replyCount[0].count},limited:orders.length===100});
   }
   if(request.method==='POST'&&url.pathname==='/api/manager/intake') {
     const body=await request.text();if(body.length>12000)return json({error:'too_large'},413);
