@@ -63,3 +63,5 @@
 ## Git保存方針
 
 専用ブランチ `codex/test-intake-notification-safety-20261006` に保存する。mainへのpush・マージ、PR作成、Pages公開の手動起動は実施しない。現在のPages自動公開はmainのpushが対象。
+
+実装コミット `170c0392aedb7a7c3ade13d9bfe7fb6e3ec0d97d` をGitHubへpushし、同ブランチのリモートSHA一致を確認済み。上記テスト公開版のコードを含む保存であり、公開後に追加した変更は引き継ぎ・作業記録のみ。97件と四者シミュレーションはコミット前にも再実行した。
