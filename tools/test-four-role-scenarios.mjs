@@ -33,7 +33,7 @@ assert.equal(deliveries.filter(d=>d.role==='注文担当→お客様').length,1)
 const bouquet=f.db.prepare('SELECT id FROM manager_orders').get().id;
 await customerSays('色はおまかせで大丈夫です','ORDER-2');
 assert.equal(field(bouquet,'color_vibe'),'おまかせ');
-await managerSays('返信待ち'); await managerSays('1'); await managerSays('2 ご希望のお色を確認して制作します😊'); await managerSays('1');
+await managerSays('返信待ち'); await managerSays('1'); await managerSays('2 ご希望のお色を承りました。制作可否とお見積りを確認いたします。'); await managerSays('1');
 assert.equal(deliveries.filter(d=>d.role==='注文担当→お客様').length,2);
 await managerSays('1');
 assert.equal(deliveries.filter(d=>d.role==='注文担当→お客様').length,2,'repeated approval never sends another reply');

@@ -1,0 +1,29 @@
+{
+  "synthetic": true,
+  "anchorTime": "2026-10-16T01:00:00.000Z",
+  "notice": "架空顧客・店長確認値による再生。商品構成・税込4800円・名入れ0円・在庫ありはこのテストだけの仮設定。実店舗ルールや実在庫ではない。",
+  "steps": [
+    {"role":"customer","text":"こんにちは初めての注文です"},
+    {"role":"customer","text":"娘の誕生日に浮くタイプのバルーンを考えています。"},
+    {"role":"customer","text":"明後日なんですけど間に合いますか？"},
+    {"role":"customer","text":"お店に伺います"},
+    {"role":"customer","text":"何時から受け取り出来ますか？"},
+    {"role":"customer","text":"11時ごろ希望です"},
+    {"role":"customer","text":"5000円程度でどのようなものができますか？"},
+    {"role":"customer","text":"ミッキーです"},
+    {"role":"customer","text":"お願いします"},
+    {"role":"customer","text":"ピンクです"},
+    {"role":"customer","text":"OK"},
+    {"role":"customer","text":"山田です"},
+    {"role":"customer","text":"名入れはできますか？"},
+    {"role":"customer","text":"NANO"},
+    {"role":"manager","text":"提案作成 @order:1 {\"items\":[{\"type\":\"浮くミッキーバルーン\",\"quantity\":1,\"size\":\"43cm\"},{\"type\":\"ピンクの星型バルーン\",\"quantity\":1,\"size\":\"45cm\"},{\"type\":\"ピンクのハート型バルーン\",\"quantity\":1,\"size\":\"35cm\"}],\"total_yen\":4800,\"tax_included\":true,\"personalization_fee_yen\":0,\"feasible\":true,\"receive_date\":\"2026-10-18\",\"receive_time\":\"11:00\",\"use_date\":\"2026-10-18\",\"fulfillment_method\":\"店頭受取\",\"balloon_message\":\"NANO（ピンクの星型）\"}"},
+    {"role":"manager","text":"承認送信 @draft:latest"},
+    {"role":"customer","text":"OK"},
+    {"role":"customer","text":"やっぱり受取明日でもいいですか？"},
+    {"role":"customer","text":"１７時希望です"},
+    {"role":"manager","text":"提案作成 @order:1 {\"items\":[{\"type\":\"浮くミッキーバルーン\",\"quantity\":1,\"size\":\"43cm\"},{\"type\":\"ピンクの星型バルーン\",\"quantity\":1,\"size\":\"45cm\"},{\"type\":\"ピンクのハート型バルーン\",\"quantity\":1,\"size\":\"35cm\"}],\"total_yen\":4800,\"tax_included\":true,\"personalization_fee_yen\":0,\"feasible\":true,\"receive_date\":\"2026-10-17\",\"receive_time\":\"16:00\",\"use_date\":\"2026-10-18\",\"fulfillment_method\":\"店頭受取\",\"balloon_message\":\"NANO（ピンクの星型）\"}"},
+    {"role":"manager","text":"承認送信 @draft:latest"},
+    {"role":"customer","text":"OKです"}
+  ]
+}

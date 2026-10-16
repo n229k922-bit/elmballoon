@@ -2,7 +2,7 @@ name: Validate integrated systems
 
 on:
   push:
-    branches: [main, 'codex/production-readiness-*']
+    branches: [main, 'codex/production-readiness-*', 'codex/yamada-order-safety-*']
   pull_request:
     branches: [main]
 
@@ -29,6 +29,9 @@ jobs:
           node tools/test-sensitive-conversation.mjs
           node --test tools/test-sensitive-runtime.mjs tools/test-everyday-simulation.mjs
           node --test tools/test-independent-simulation.mjs
+          node tools/test-yamada-conversation.mjs
+          node --test tools/test-yamada-intake-replay.mjs tools/test-reviewed-proposal.mjs tools/test-yamada-independent.mjs
+          node --test tools/test-chat-session-replay.mjs
           node tools/replay-sensitive-dialogues.mjs
           node tools/audit-expanded-conversation.mjs
           node tools/audit-expanded-manager-queue.mjs

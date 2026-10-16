@@ -3,6 +3,7 @@ import { parseHistoryRequest, searchHistory, getHistoryDetail, formatCustomerHis
 import { reserveOrderCapacity, getCapacitySummary, validateCapacityRequirements } from './capacity-safety.js';
 import { getOperationalMetrics, formatOperationalMetrics } from './operational-metrics.js';
 import { discloseAssistant } from './ai-disclosure.js';
+import { createReviewedProposal, acceptReviewedProposal, reviewedAgreementError, commercialReplyError } from './reviewed-proposal.js';
 import { isJapanesePublicHoliday } from './japan-calendar.js';
 import { managerRecipientAllowed, managerCanTransmit, managerFeatureEnabled, managerReleaseStage, managerProductionSafetyReady } from './manager-policy.js';
 
@@ -15,6 +16,7 @@ const owners = (env) => [...new Set((env.ADMIN_LINE_USER_IDS || '').split(',').m
 const testSessionStart = env => env.MANAGER_TEST_MODE === 'true' ? (env.MANAGER_TEST_SESSION_STARTED_AT || '') : '';
 const fieldValue = (fields, key) => fields[key]?.value_text || '';
 const LABELS = { purpose:'用途', product_type:'商品', product_source:'参考商品', receive_date:'受取希望日', use_date:'使用日', receive_time:'受取時間', fulfillment_method:'受取方法', delivery_area:'配達地域', delivery_address:'お届け先', quantity:'数量', budget:'予算', budget_scope:'予算の単位', color_vibe:'色・雰囲気', customer_name:'お名前', phone:'電話番号', balloon_message:'文字入れ', card_message:'カード' };
+Object.assign(LABELS,{item_specification:'店長確認済み商品構成',quoted_total:'税込総額（円）',personalization_fee:'名入れ料金（円）',feasibility:'制作可否',customer_agreement:'顧客承諾の提案番号'});
 const REASON_LABELS = { delivery_feasibility:'配達・発送できるか確認', urgent_capacity:'直近の日程で対応できるか確認', past_date:'希望日が過去の日付になっています', verify_previous_order:'前回の注文内容を確認', order_exception:'変更・キャンセルなどの対応確認', per_item_specifications:'商品ごとの仕様を確認', review_collected_details:'注文内容で対応できるか確認' };
 const replyActions = '\n1：この内容で送信\n2：修正（「2 修正した文章」）\n3：保留';
 const STATUS_LABELS = {consulting:'相談中',pending:'確認待ち',unconfirmed:'未確認',confirmed:'確認済み',producing:'制作中',completed:'完成',fulfilled:'お渡し済み',paid:'入金済み',not_required:'不要',awaiting_confirmation:'入金確認待ち',sending:'送信中',sent:'送信済み',failed:'送信できていません',uncertain:'送信結果の確認が必要',cancelled:'取り消し済み',held:'保留中',approved:'送信準備中',open:'対応中',closed:'終了',collected:'回収済み'};
@@ -166,6 +168,7 @@ function reminderOrderText(task) {
 }
 
 async function processInboxGroup(events, env, now) {
+  if (await acceptReviewedProposal(events, env, now)) return;
   const latest = events.at(-1), customerId = latest.customer_id;
   const text = events.map(event => event.text).join('\n');
   const session = testSessionStart(env);
@@ -203,6 +206,13 @@ async function processInboxGroup(events, env, now) {
     const priorCustomerMessages = await rows(env, `SELECT text FROM manager_events WHERE customer_id=? AND order_id=? AND direction='customer' AND processed_at IS NOT NULL ORDER BY occurred_at DESC,rowid DESC LIMIT 40`, customerId, order.id);
     let plan = planConversation({ text, fields, lastQuestions: latestQuestions, sourceTimestamp: latest.occurred_at,
       history: [{questions:asked}, ...priorCustomerMessages.reverse()], hasImage: events.some(e => e.media_message_id) });
+    const pendingReceiptChange=await first(env,"SELECT id FROM manager_changes WHERE order_id=? AND field_key IN ('receive_date','receive_time') AND status='pending' LIMIT 1",order.id);
+    if(pendingReceiptChange && fields.use_date?.value_text && !plan.intent?.suppressFacts && !/使用|利用/u.test(text) && !(plan.questions||[]).some(q=>q.key==='use_date_confirmation')) {
+      const question={key:'use_date_confirmation',text:`お受け取りの変更後も、ご使用日は${fields.use_date.value_text}のままでよろしいでしょうか？`};
+      plan.questions=[question,...(plan.questions||[])].slice(0,2);
+      plan.message=[plan.message,question.text].filter(Boolean).join('\n\n');
+      plan.clarificationNeeded=true;
+    }
     const conversationHold = await first(env, `SELECT id,detail FROM manager_tasks WHERE order_id=? AND kind='manual_review' AND status='open' AND detail LIKE 'conversation_hold:%' LIMIT 1`, order.id);
     const holdKinds = ['safety','complaint','withdrawal','handoff','bereavement'];
     const newHold = holdKinds.includes(plan.intent?.kind);
@@ -216,7 +226,7 @@ async function processInboxGroup(events, env, now) {
       // Hold the complete burst too: a follow-up timestamp or amount in the
       // same batch must not be extracted separately from a complaint/withdrawal.
       if (conversationHold || (newHold && plan.intent.kind !== 'bereavement')) continue;
-      const parsed=extractConversationFacts({text:event.text,sourceTimestamp:event.occurred_at,lastQuestions:latestQuestions,hasImage:Boolean(event.media_message_id)});
+      const parsed=extractConversationFacts({text:event.text,sourceTimestamp:event.occurred_at,lastQuestions:latestQuestions,fields,history:[{questions:asked},...priorCustomerMessages],hasImage:Boolean(event.media_message_id)});
       for(const update of parsed.updates) evidenceUpdates.set(update.key,{...update,sourceEventId:event.id});
     }
     const changes = [], proposed = { ...fields };
@@ -226,7 +236,7 @@ async function processInboxGroup(events, env, now) {
       const previous = fields[update.key];
       if (previous?.value_text === value) continue;
       // Older evidence can be inspected, but must never overwrite a newer statement.
-      const needsReview = previous && (previous.confirmed_at || previous.status === 'confirmed'
+      const needsReview = previous && (['receive_date','receive_time','use_date'].includes(update.key) || previous.confirmed_at || previous.status === 'confirmed'
         || update.sourceTimestamp < previous.source_occurred_at);
       if (needsReview) {
         const changeId = id('C');
@@ -257,7 +267,8 @@ async function processInboxGroup(events, env, now) {
       && !unresolvedChanges && !manualReview
       && (!order.production_status || order.production_status === 'consulting')
       && !existing.some(f => f.confirmed_at || f.status === 'confirmed');
-    const baseMessage = changes.length ? 'ご変更の内容を確認しています。対応できるか確認のうえ、改めてご案内いたします。'
+    const changeQuestions=(plan.questions||[]).filter(q=>q.key==='use_date_confirmation'||q.key==='use_date');
+    const baseMessage = changes.length ? ['ご変更の内容を確認しています。対応できるか確認のうえ、改めてご案内いたします。',...changeQuestions.map(q=>q.text)].join('\n\n')
       : String(plan.message || 'ご連絡ありがとうございます。内容を確認してご案内いたします。');
     const message = await discloseAssistant(reasons.length ? `${baseMessage}\n\n確認が取れ次第、ご返信いたします。店休日・営業時間外は、次の営業時間内のご返信となる場合がございます。` : baseMessage, customerId, env, { restrained: newHold || Boolean(conversationHold) });
     const title = [fieldValue(proposed, 'purpose'), fieldValue(proposed, 'product_type')].filter(Boolean).join('・').slice(0, 100) || order.title;
@@ -274,7 +285,7 @@ async function processInboxGroup(events, env, now) {
       VALUES (?,?,?,?,?,?,?,?)`, draftId, order.id, customerId, latest.id, order.revision + 1, message, JSON.stringify(reasons), now));
     // Change-review replies replace the intake message. Do not register
     // questions that were planned but are absent from the actual reply.
-    for (const question of (changes.length ? [] : plan.questions || []).slice(0, 2)) {
+    for (const question of (changes.length ? changeQuestions : plan.questions || []).slice(0, 2)) {
       batch.push(statement(env, `INSERT OR IGNORE INTO manager_questions(draft_id,order_id,field_key,question_text) VALUES (?,?,?,?)`, draftId, order.id, question.key, question.text));
     }
     const schedule = await rows(env, `SELECT date,status,open_time,close_time FROM business_schedule WHERE date >= ?`, now.slice(0, 10));
@@ -375,6 +386,10 @@ export async function flushManagerOutbox(env, now = iso(), fetcher = fetch) {
       const draft = await first(env, `SELECT d.*,o.revision,o.created_at AS order_created_at FROM manager_drafts d LEFT JOIN manager_orders o ON o.id=d.order_id WHERE d.id=?`, item.draft_id);
       const incoming = draft ? await first(env, `SELECT id FROM manager_events WHERE customer_id=? AND direction='customer' AND processed_at IS NULL LIMIT 1`, draft.customer_id) : null;
       if (incoming) return;
+      if(draft && await commercialReplyError(draft,env)) {
+        await statement(env,"UPDATE manager_outbox SET status='cancelled',last_error='unreviewed_commercial_promise' WHERE id=? AND first_attempt_at IS NULL",item.id).run();
+        return;
+      }
       if (draft?.approved_by === 'system:intake' && !managerFeatureEnabled(env, 'auto_intake')) {
         await env.DB.batch([
           statement(env, `UPDATE manager_outbox SET status='cancelled',last_error='auto_intake_disabled' WHERE id=? AND first_attempt_at IS NULL`, item.id),
@@ -470,6 +485,8 @@ export async function handleManagerCommand(text, actor, env, now = iso(), notifi
 }
 
 async function executeManagerCommand(text, actor, env, now, notificationEventId = null) {
+  const proposalCommand=text.match(/^提案作成\s+(M[A-F0-9]{16})\s+([\s\S]+)$/iu);
+  if(proposalCommand)return createReviewedProposal(proposalCommand[1].toUpperCase(),proposalCommand[2],actor,env,now);
   const notificationReview = text.match(/^通知確認\s+(D[A-F0-9]{16})$/u);
   if (notificationReview) {
     if (notificationEventId && await first(env, 'SELECT event_id FROM manager_notification_events WHERE event_id=?', notificationEventId)) {
@@ -681,7 +698,7 @@ async function executeManagerCommand(text, actor, env, now, notificationEventId 
   if (text === '統括状況') {
     const inbox = await first(env, `SELECT COUNT(*) AS n FROM manager_events WHERE processed_at IS NULL`);
     const delivery = await rows(env, `SELECT status,COUNT(*) AS n FROM manager_outbox GROUP BY status`);
-    return `【対応状況】\n整理中のご連絡：${inbox.n}件\n返信：${delivery.map(x => `${STATUS_LABELS[x.status]||'確認が必要'} ${x.n}件`).join('／')}\n${env.MANAGER_SEND_PAUSED === 'true' ? '現在は返信を止めています' : '店長の確認後に返信します'}\n注文を見る：「案件一覧」\n返信を確認：「返信待ち」`;
+    return `【対応状況】\n整理中のご連絡：${inbox.n}件\n返信：${delivery.map(x => `${STATUS_LABELS[x.status]||'確認が必要'} ${x.n}件`).join('／')}\n${env.MANAGER_SEND_PAUSED === 'true' ? '現在は返信を止めています' : '店長の確認後に返信します'}\n注文を見る：「案件一覧」\n返信を確認：「返信待ち」\n構成・税込総額・名入れ料金・受取変更の店長提案：「提案作成 M番号 JSON」（運用手順書参照）`;
   }
   let match = text.match(/^カルテ\s+(M[A-F0-9]{16})$/iu);
   if (match) {
@@ -728,12 +745,14 @@ async function executeManagerCommand(text, actor, env, now, notificationEventId 
     if (draft.order_id) {
       const manualReview=await first(env,`SELECT id FROM manager_tasks WHERE order_id=? AND kind='manual_review' AND status='open' LIMIT 1`,draft.order_id);
       if(manualReview)return '電話・店頭での対応後の確認が必要です。「案件一覧」で注文を選び、最新の内容を確認してから「対応確認」を選んでください。返信と受注確定は別の判断です。';
-      const changes = await first(env, `SELECT COUNT(*) AS n FROM manager_changes WHERE order_id=? AND status='pending'`, draft.order_id);
+      const changes = await first(env, `SELECT COUNT(*) AS n FROM manager_changes WHERE order_id=? AND status='pending' AND NOT EXISTS(SELECT 1 FROM manager_changes proposal WHERE proposal.source_event_id=? AND proposal.field_key='reviewed_proposal' AND proposal.status='pending')`, draft.order_id,draft.source_event_id);
       if (changes.n) return '注文内容の変更が確認待ちです。「案件一覧」で注文を選び、「変更確認」で判断してください。';
     }
     if(draft.customer_id.startsWith('manual:'))return '電話・来店のカルテはLINE送信先に接続していません。電話または店頭でご案内ください。';
     const incoming = await first(env, `SELECT id FROM manager_events WHERE customer_id=? AND direction='customer' AND processed_at IS NULL LIMIT 1`, draft.customer_id);
     if (incoming) return '新しいお客様の連絡を整理中です。最新内容を確認してから返信を承認してください。';
+    const commercialError=await commercialReplyError(draft,env);
+    if(commercialError)return commercialError;
     await env.DB.batch([
       statement(env, `UPDATE manager_drafts SET status='approved',approved_by=?,approved_at=? WHERE id=? AND status IN ('pending','held')`, actor, now, draft.id),
       outboxStatement(env, `customer:${draft.id}`, draft.customer_id, 'customer', draft.message, now, draft.id),
@@ -745,6 +764,7 @@ async function executeManagerCommand(text, actor, env, now, notificationEventId 
   if (match) {
     const change = await first(env, `SELECT c.*,o.revision FROM manager_changes c JOIN manager_orders o ON o.id=c.order_id WHERE c.id=?`, match[2].toUpperCase());
     if (!change || change.status !== 'pending') return 'この変更は処理済み、または存在しません。';
+    if(change.field_key==='reviewed_proposal')return '店長提案はお客様の同じ版への承諾で反映します。「返信待ち」で提案を確認してください。';
     const current = await first(env, `SELECT value_text FROM manager_fields WHERE order_id=? AND field_key=?`, change.order_id, change.field_key);
     if (current?.value_text !== change.old_value) return '元の値が更新されています。最新のカルテと変更候補を確認してください。';
     const approved = match[1] === '変更承認';
@@ -784,7 +804,7 @@ async function executeManagerCommand(text, actor, env, now, notificationEventId 
     ]);
     return '対象の注文に紐付け、再整理待ちにしました。';
   }
-  match = text.match(/^項目確定\s+(M[A-F0-9]{16})\s+(\S+)\s*[:：]\s*([\s\S]+)$/iu);
+  match = text.match(/^項目確定\s+(M[A-F0-9]{16})\s+([^\s:：]+)\s*[:：]\s*([\s\S]+)$/iu);
   if (match) {
     const order = await first(env, `SELECT * FROM manager_orders WHERE id=? AND status='open'`, match[1].toUpperCase());
     const key = Object.entries(LABELS).find(([k,v])=>k===match[2]||v===match[2])?.[0];
@@ -897,7 +917,9 @@ async function lifecycle(action, orderId, actor, env, now) {
     if (pending.n) return '変更判断待ちがあります。確認が済むまで制作開始には進めません。';
     const detail=await rows(env,`SELECT field_key,value_text,status FROM manager_fields WHERE order_id=?`,orderId);
     const verified=Object.fromEntries(detail.map(f=>[f.field_key,f]));
-    const required=['product_type','quantity','budget','receive_date','fulfillment_method'];
+    const agreementError=await reviewedAgreementError(order,env);
+    if(agreementError)return agreementError;
+    const required=['product_type','quantity','receive_date','receive_time','use_date','fulfillment_method'];
     const missing=required.filter(key=>verified[key]?.status!=='confirmed'||/未定/u.test(verified[key]?.value_text||''));
     if(missing.length) return `制作開始前に店長確認が必要です：${missing.map(k=>LABELS[k]).join('、')}\n項目確定 ${orderId} 項目名：内容`;
     const reserved=await rows(env,`SELECT date,revision,production_minutes,delivery_count,order_count FROM manager_capacity_reservations WHERE order_id=?`,orderId);

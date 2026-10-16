@@ -157,8 +157,8 @@ test('signed test intake runs via maintenance without approval, then completed o
   await customer('娘の誕生日にバルーンをお願いしたいです','INTAKE-INITIAL');
   assert.equal(sent.filter(s=>s.body.to==='CUSTOMER').length,1);
   assert.equal(sent.filter(s=>s.body.to==='OWNER').length,0);
-  assert.match(sent[0].body.messages[0].text,/いつ頃/);
-  await customer('2027年10月10日にブーケ3個、合計10000円、店頭受取、色はおまかせでお願いします','INTAKE-COMPLETE');
+  assert.match(sent[0].body.messages[0].text,/いつご使用/);
+  await customer('使用日：2027年10月10日\n受取希望日：2027年10月10日\nブーケ3個、合計10000円、店頭受取、色はおまかせでお願いします','INTAKE-COMPLETE');
   assert.equal(sent.filter(s=>s.body.to==='CUSTOMER').length,1);
   const notice=sent.find(s=>s.body.to==='OWNER').body.messages[0];
   const data=notice.quickReply.items[0].action.data;

@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 import { DatabaseSync } from 'node:sqlite';
 import fs from 'node:fs';
 import vm from 'node:vm';
+import {seedAcceptedProposal} from './helpers/reviewed-proposal-fixture.mjs';
 import { managerApi, managerConsole } from '../workers/admin-line-secretary/src/manager-console.js';
 import { buildBundle } from './build-order-knowledge.mjs';
 import { createManagerLoginLink, managerSessionEndpoint, authorizeManagerRequest } from '../workers/admin-line-secretary/src/manager-auth.js';
@@ -196,7 +197,9 @@ test('confirmed changes require explicit review, and production is blocked while
   f.db.exec("UPDATE manager_fields SET status='confirmed',confirmed_at='2026-09-30T00:00:00Z' WHERE field_key='budget'");
   await f.receive('予算5000円に変更','E2');
   const change=f.get('SELECT * FROM manager_changes'); assert.ok(change);
-  assert.equal(f.get("SELECT COUNT(*) n FROM manager_questions q JOIN manager_drafts d ON d.id=q.draft_id WHERE d.source_event_id='E2'").n,0,'replaced reply must not mark unsent intake questions as asked');
+  const updatedDraft=f.get("SELECT * FROM manager_drafts WHERE source_event_id='E2'");
+  const actualQuestions=f.all('SELECT question_text FROM manager_questions WHERE draft_id=?',updatedDraft.id);
+  assert.ok(actualQuestions.every(q=>updatedDraft.message.includes(q.question_text)),'only questions present in the actual change reply may be recorded');
   const notice=f.get("SELECT text FROM manager_outbox WHERE channel='owner' ORDER BY rowid DESC LIMIT 1").text;
   assert.match(notice,/予算の変更希望/);assert.doesNotMatch(notice,/C[A-F0-9]{16}|変更承認|budget/);
   assert.match(f.get("SELECT value_text FROM manager_fields WHERE field_key='budget'").value_text,/3,000/);
@@ -258,9 +261,9 @@ test('test-only auto intake asks missing facts without owner noise and escalates
  const sent=[];const fetcher=async(_,init)=>{sent.push(JSON.parse(init.body));return new Response('{}',{status:200})};
  await flushManagerOutbox(f.env,f.later,fetcher);
  assert.equal(sent.length,1);assert.equal(sent[0].to,'CUSTOMER');
- assert.match(sent[0].messages[0].text,/いつ頃/);
+  assert.match(sent[0].messages[0].text,/いつご使用/);
  assert.equal(f.get("SELECT COUNT(*) n FROM manager_audit WHERE action='intake.auto_queued'").n,1);
- await f.receive('10月10日、ブーケ3個、店頭受取、合計10000円、色はおまかせ','AUTO-DETAILS');
+ await f.receive('使用日：10月10日\n受取希望日：10月10日\nブーケ3個、店頭受取、合計10000円、色はおまかせ','AUTO-DETAILS');
  const draft=f.get("SELECT * FROM manager_drafts WHERE source_event_id='AUTO-DETAILS'");
  assert.equal(draft.status,'pending');
  assert.ok(JSON.parse(draft.reasons_json).includes('review_collected_details'));
@@ -454,10 +457,12 @@ test('completion cannot bypass production confirmation or restart completed prod
 
 test('production requires individually confirmed facts and generates a tracked production task',async()=>{
   const f=fixture();await f.receive('ブーケ');const order=f.get('SELECT id FROM manager_orders');
-  assert.match(await handleManagerCommand(`制作開始 ${order.id}`,'OWNER',f.env,f.later),/店長確認が必要/);
+  assert.match(await handleManagerCommand(`制作開始 ${order.id}`,'OWNER',f.env,f.later),/店長確認済みの商品構成/);
   for(const [key,value] of Object.entries({product_type:'ブーケ',quantity:'3',budget:'3000円',receive_date:'2026-10-10',fulfillment_method:'店頭受取'})) {
     assert.match(await handleManagerCommand(`項目確定 ${order.id} ${key}：${value}`,'OWNER',f.env,f.later),/保存しました/);
   }
+  assert.match(await handleManagerCommand(`制作開始 ${order.id}`,'OWNER',f.env,f.later),/店長確認済みの商品構成/);
+  await seedAcceptedProposal(f,order.id,{now:f.later});
   assert.match(await handleManagerCommand(`制作開始 ${order.id}`,'OWNER',f.env,f.later),/枠が未確認/);
   assert.match(await handleManagerCommand('受付上限 2026-10-10 480 3 8','OWNER',f.env,f.later),/記録しました/);
   assert.match(await handleManagerCommand(`受注枠 ${order.id} 2026-10-10 60 0 1`,'OWNER',f.env,f.later),/枠を確保/);

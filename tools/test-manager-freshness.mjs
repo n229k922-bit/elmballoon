@@ -2,6 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { DatabaseSync } from 'node:sqlite';
 import fs from 'node:fs';
+import {seedAcceptedProposal} from './helpers/reviewed-proposal-fixture.mjs';
 import { receiveManagerEvents, drainManagerInbox, handleManagerCommand, flushManagerOutbox } from '../workers/admin-line-secretary/src/manager-runtime.js';
 
 function fixture() {
@@ -73,13 +74,15 @@ test('capacity commands reject unauthorized configuration, zero-day accepts clos
   assert.match(await handleManagerCommand('受付上限 2026-10-10 0 0 0','OWNER',f.env,f.now),/記録しました/);
   assert.match(await handleManagerCommand(`受注枠 ${order.id} 2026-10-10 60 0 1`,'OWNER',f.env,f.now),/上限を超え/);
   for(const [key,value] of Object.entries({product_type:'ブーケ',quantity:'3',budget:'3000円',receive_date:'2026-10-10',fulfillment_method:'配達'}))await handleManagerCommand(`項目確定 ${order.id} ${key}：${value}`,'OWNER',f.env,f.now);
+  await seedAcceptedProposal(f,order.id,{now:f.now});
   await handleManagerCommand('受付上限 2026-10-10 480 3 8','OWNER',f.env,f.now);
   await handleManagerCommand(`受注枠 ${order.id} 2026-10-10 60 0 1`,'OWNER',f.env,f.now);
   assert.match(await handleManagerCommand(`制作開始 ${order.id}`,'OWNER',f.env,f.now),/配達日の配達枠が未確認/);
   await handleManagerCommand(`受注枠 ${order.id} 2026-10-10 60 1 1`,'OWNER',f.env,f.now);
   assert.match(await handleManagerCommand('受付上限 2026-10-10 10 1 1','OWNER',f.env,f.now),/予約済み/);
   await handleManagerCommand(`項目確定 ${order.id} quantity：4`,'OWNER',f.env,f.now);
-  assert.match(await handleManagerCommand(`制作開始 ${order.id}`,'OWNER',f.env,f.now),/確認し直し/);
+  assert.match(await handleManagerCommand(`制作開始 ${order.id}`,'OWNER',f.env,f.now),/一致しません|条件が変わ/);
+  await seedAcceptedProposal(f,order.id,{now:f.now});
   await handleManagerCommand(`受注枠 ${order.id} 2026-10-10 80 1 1`,'OWNER',f.env,f.now);
   assert.match(await handleManagerCommand(`制作開始 ${order.id}`,'OWNER',f.env,f.now),/店長確認として記録/);
 });
@@ -87,6 +90,7 @@ test('capacity commands reject unauthorized configuration, zero-day accepts clos
 test('multiday booking reserves production before receipt and rejects bad JSON without partial updates',async()=>{
   const f=fixture();await receiveManagerEvents([f.event('E1','ブーケ希望')],f.env,f.now);await drainManagerInbox(f.env,'2026-10-02T01:01:00.000Z');const order=f.get('SELECT * FROM manager_orders');
   for(const [key,value] of Object.entries({product_type:'ブーケ',quantity:'3',budget:'3000円',receive_date:'2026-10-10',fulfillment_method:'店頭受取'}))await handleManagerCommand(`項目確定 ${order.id} ${key}：${value}`,'OWNER',f.env,f.now);
+  await seedAcceptedProposal(f,order.id,{now:f.now});
   for(const date of ['2026-10-09','2026-10-10'])await handleManagerCommand(`受付上限 ${date} 480 3 8`,'OWNER',f.env,f.now);
   const requirements=[{date:'2026-10-09',production_minutes:60,delivery_count:0,order_count:0},{date:'2026-10-10',production_minutes:0,delivery_count:0,order_count:1}];
   assert.match(await handleManagerCommand(`受注枠 ${order.id} ${JSON.stringify(requirements)}`,'OWNER',f.env,f.now),/全日程/);
@@ -109,6 +113,7 @@ test('lifecycle transitions rebase current booked work and do not block another 
   await handleManagerCommand('受付上限 2026-10-10 480 3 8','OWNER',f.env,f.now);
   for(const orderId of [first.id,second]) {
     for(const [key,value] of Object.entries({product_type:'ブーケ',quantity:'3',budget:'3000円',receive_date:'2026-10-10',fulfillment_method:'店頭受取'}))await handleManagerCommand(`項目確定 ${orderId} ${key}：${value}`,'OWNER',f.env,f.now);
+    await seedAcceptedProposal(f,orderId,{now:f.now});
     assert.match(await handleManagerCommand(`受注枠 ${orderId} 2026-10-10 60 0 1`,'OWNER',f.env,f.now),/枠を確保/);
     assert.match(await handleManagerCommand(`制作開始 ${orderId}`,'OWNER',f.env,f.now),/店長確認として記録/);
     assert.equal(f.get('SELECT revision FROM manager_capacity_reservations WHERE order_id=?',orderId).revision,f.get('SELECT revision FROM manager_orders WHERE id=?',orderId).revision);

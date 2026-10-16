@@ -2,6 +2,7 @@
 // availability, prices and acceptance always require shop confirmation.
 const QUESTIONS = {
   product_type: 'どのようなバルーンをご希望ですか？写真だけでも大丈夫です😊',
+  use_date: 'いつご使用の予定でしょうか？お受け取り希望日とは分けて確認いたします。未定でも大丈夫です。',
   receive_date: 'いつ頃のお受け取りをご希望ですか？未定でも大丈夫です。',
   fulfillment_method: 'お受け取りは、店頭・配達・発送のどちらをご希望ですか？',
   delivery_area: 'お届け先の市町村を教えていただけますか？',
@@ -36,8 +37,8 @@ export function classifyConversationIntent(value = '') {
 }
 
 const PRODUCT_OPTIONS = [[/スタンド/gu, 'バルーンスタンド'], [/ブーケ/gu, 'ブーケ'], [/おむつケーキ/gu, 'おむつケーキ'], [/ヘリウム|浮く/gu, 'ヘリウム（浮く）タイプ'], [/アレンジ/gu, '置き型アレンジメント'], [/リリース/gu, 'バルーンリリース']];
-const COLOR_OPTIONS = [[/メタリックブラック|ゴールド|シルバー|ピンク|ブルー|ラベンダー|ライム|赤|青|白|黒|黄色|紫|緑/gu, null]];
-const METHOD_OPTIONS = [[/店頭|取りに|受け取りに|引き取り/gu, '店頭受取'], [/発送|郵送/gu, '発送'], [/配達|配送|届けて|お届け/gu, '配達']];
+const COLOR_OPTIONS = [[/メタリックブラック|ゴールド|シルバー|ピンク|ブルー|ラベンダー|ライム|水色|赤|青|白|黒|黄色|紫|緑/gu, null]];
+const METHOD_OPTIONS = [[/店頭|取りに|受け取りに|引き取り|お店に(?:伺い|行き|行く|伺う)/gu, '店頭受取'], [/発送|郵送/gu, '発送'], [/配達|配送|届けて|お届け/gu, '配達']];
 // A mentioned option is not necessarily a request. Keep explicit corrections,
 // but do not turn rejected options or conditional alternatives into facts.
 function requestedOptions(text, options, allowCombination = false, numeric = false) {
@@ -54,6 +55,7 @@ function requestedOptions(text, options, allowCombination = false, numeric = fal
 
 const DATE_TOKEN = /明後日|あさって|明日|今日|(?<![\d-])(?:(?:\d{4})[年/-])?\d{1,2}[月/-]\d{1,2}日?(?![\d-])|(?<!\d)\d{1,2}日/gu;
 const dateTokens = text => [...text.matchAll(DATE_TOKEN)];
+const businessHoursQuestion = text => /営業|何時(?:まで|から)|(?:開店|閉店)(?:時間|時刻)|(?:お店|店舗).{0,12}(?:開いて|空いて|閉ま|やって)/u.test(text) && /[?？]|ですか|ますか|でしょうか|教えて|知りたい/u.test(text);
 const ambiguousDateWording = text => /ではなく|じゃなく|ではない|ではありません|じゃない|以外|なら|場合|変更前|(?:日|あさって)(?:は|が)?(?:無理|不可|だめ|ダメ|難し)/u.test(text);
 const dateRole = text => {
   const use = /使用|利用|使う|使って|使い|式|誕生日|イベント/u.test(text);
@@ -90,7 +92,7 @@ export function resolveConversationDate(value, timestamp) {
   return date&&(explicit[1]||date>=day)?date:null;
 }
 
-export function extractConversationFacts({ text = '', sourceTimestamp, lastQuestions = [], hasImage = false } = {}) {
+export function extractConversationFacts({ text = '', sourceTimestamp, lastQuestions = [], hasImage = false, history = [], fields = {} } = {}) {
   const rawText = String(text);
   text = normalize(text);
   const updates = [];
@@ -138,6 +140,8 @@ export function extractConversationFacts({ text = '', sourceTimestamp, lastQuest
   }
   const lastKey = typeof lastQuestions.at(-1) === 'string' ? lastQuestions.at(-1) : lastQuestions.at(-1)?.key;
   const questionKeys = lastQuestions.map(q => typeof q === 'string' ? q : q.key);
+  const priorQuestionKeys = history.flatMap(item => item.questions || []).map(q => typeof q === 'string' ? q : q.key);
+  if (!questionKeys.some(key => ['use_date', 'receive_date', 'use_date_confirmation'].includes(key)) && !known(fields.use_date) && priorQuestionKeys.includes('use_date')) questionKeys.push('use_date');
   if (text.trim().length < 80 && /おまかせ|お任せ/u.test(text)
       && (questionKeys.includes('color_vibe') || /色(?:味)?(?:は|を|も|について)|お色/u.test(text))
       && !/(?:おまかせ|お任せ)(?:ではなく|じゃなく|ではない|ではありません|じゃない|にしない|にしません)/u.test(text)) add('color_vibe', 'おまかせ', 1);
@@ -145,6 +149,12 @@ export function extractConversationFacts({ text = '', sourceTimestamp, lastQuest
   if (lastQuestions.length === 1 && text.trim().length < 80) {
     if (lastKey === 'quantity' && /^\d+[。！!]?$/u.test(text.trim())) add('quantity', text.trim().replace(/[。！!]/g,''), 1);
     if (lastKey === 'budget' && /^\d[\d,]*$/u.test(text.trim())) add('budget',`${Number(text.trim().replaceAll(',','')).toLocaleString('ja-JP')}円（単価・合計未確認）`,0.9);
+    // Only a short answer to the explicit lettering question is a name to
+    // print. Do not turn other names or questions into personalization.
+    if (lastKey === 'balloon_message') {
+      const lettering = text.trim().match(/^(?:名入れ(?:は)?[：:\s]*)?[「『"]?([A-Za-z][A-Za-z0-9 ._-]{0,39})[」』"]?(?:で(?:お願いします)?|です)?[。!！]?$/u);
+      if (lettering) add('balloon_message', lettering[1].trim(), 1);
+    }
   }
   if (lastQuestions.length === 1 && lastKey && undecided.test(text) && text.length < 30) add(lastKey, '未定', 0.95);
   const reference = text.match(/(?:商品番号|品番|商品No\.?|HP(?:の)?(?:商品)?番号)\s*[:：#]?\s*([A-Za-z0-9_-]+)/iu);
@@ -157,8 +167,9 @@ export function extractConversationFacts({ text = '', sourceTimestamp, lastQuest
     const [min, max] = choices.budget.values[0].split('|').map(Number);
     const scope = /単価|あたり|当たり|(?:1[つ個束基台本]|一つ|ひとつ)\s*\d[\d,]*(?:万|千)?\s*円/u.test(text) ? 'unit' : /合計|全体|総額|全部で/u.test(text) ? 'total' : 'unknown';
     if (min <= max && Number.isFinite(max)) {
-      facts.budget = { min, max, currency: 'JPY', scope, evidence: choices.budget.evidence };
-      add('budget', `${min.toLocaleString('ja-JP')}${max !== min ? `〜${max.toLocaleString('ja-JP')}` : ''}円${scope === 'unit' ? '／1つ' : scope === 'total' ? '（合計）' : '（単価・合計未確認）'}`);
+      const qualifier = /(?:円|万|千)\s*(?:以内|以下|まで|を超えない)/u.test(text) ? 'upper_bound' : /(?:円|万|千)\s*(?:程度|くらい|位|前後)/u.test(text) ? 'approximate' : 'unspecified';
+      facts.budget = { min, max, currency: 'JPY', scope, qualifier, evidence: choices.budget.evidence };
+      add('budget', `${min.toLocaleString('ja-JP')}${max !== min ? `〜${max.toLocaleString('ja-JP')}` : ''}円${qualifier === 'upper_bound' ? '以内' : qualifier === 'approximate' ? '程度' : ''}${scope === 'unit' ? '／1つ' : scope === 'total' ? '（合計）' : '（単価・合計未確認）'}`);
       if (scope !== 'unknown') add('budget_scope', scope);
     }
   }
@@ -178,6 +189,7 @@ export function extractConversationFacts({ text = '', sourceTimestamp, lastQuest
     for (const clause of clauses) {
       const dates = dateTokens(clause);
       if (!dates.length) continue;
+      if (businessHoursQuestion(clause)) continue;
       // Relative dates in courtesy phrases describe the conversation, not
       // pickup. Keep bare answers such as "明日です" available to intake.
       if (!dateRole(clause) && /(?:今日|明日|明後日|あさって)(?:も|は)?[^。\n]*(?:ありがとう|お忙し|よろしく|こんにちは|お世話)/u.test(clause)) continue;
@@ -188,13 +200,16 @@ export function extractConversationFacts({ text = '', sourceTimestamp, lastQuest
       if (!resolved || (tokens.length > 1 && !role)
           || (/使用|利用|式|誕生日|イベント/u.test(clause) && /受取|受け取|配達|届|引取|引き取/u.test(clause))
           || ambiguousDateWording(clause)) facts.dateAmbiguities.push(clause.trim());
-      else candidates.push({ key: role || 'receive_date', value: resolved, evidence: clause.trim() });
+      else {
+        const dateQuestions = questionKeys.map(key => key === 'use_date_confirmation' ? 'use_date' : key).filter(key => ['use_date', 'receive_date'].includes(key));
+        candidates.push({ key: role || (new Set(dateQuestions).size === 1 ? dateQuestions[0] : 'receive_date'), value: resolved, evidence: clause.trim() });
+      }
     }
     if (candidates.some((candidate, index) => candidates.some((other, otherIndex) => otherIndex !== index && other.key === candidate.key && other.value !== candidate.value))) facts.dateAmbiguities.push(text);
     if (!facts.dateAmbiguities.length) for (const candidate of candidates) add(candidate.key, candidate.value, 0.95, candidate.evidence);
   } else if (!hasLabeledDate && /来週|来月|週末/u.test(text)) facts.dateAmbiguities.push(text);
   const timePattern = /(午前|午後)?\s*(\d{1,2})(?:時(?:(\d{1,2})分?|半)?|:(\d{2}))/gu;
-  const timeCandidates = text.split(/[、,。\n；;]/u).filter(clause => dateRole(clause) !== 'use_date').flatMap(clause => [...clause.matchAll(timePattern)]);
+  const timeCandidates = text.split(/[、,。\n；;]/u).filter(clause => dateRole(clause) !== 'use_date' && !businessHoursQuestion(clause)).flatMap(clause => [...clause.matchAll(timePattern)]);
   if (timeCandidates.length > 1) facts.dateAmbiguities.push('お受け取りの時間が複数あります');
   const dateChangeUnresolved = /変更|変え|ではなく|じゃなく/u.test(text) && tokens.length > 0 && facts.dateAmbiguities.length > 0;
   if (dateChangeUnresolved) for (let i = updates.length - 1; i >= 0; i--) if (['receive_date', 'use_date', 'receive_time'].includes(updates[i].key)) updates.splice(i, 1);
@@ -209,7 +224,7 @@ export function extractConversationFacts({ text = '', sourceTimestamp, lastQuest
 }
 
 export function planConversation({ text = '', fields = {}, history = [], sourceTimestamp, lastQuestions = [], hasImage = false } = {}) {
-  const { updates, facts } = extractConversationFacts({ text, sourceTimestamp, lastQuestions, hasImage });
+  const { updates, facts } = extractConversationFacts({ text, sourceTimestamp, lastQuestions, hasImage, history, fields });
   const merged = { ...fields };
   const intent = facts.intent;
   if (intent.suppressFacts) return { updates: [], fields: merged, facts, intent, questions: [], message: intent.message, requiresOwner: intent.requiresOwner, ownerReasons: intent.reason ? [intent.reason] : [], evidence: [], clarificationNeeded: false, approvalRequired: intent.requiresOwner };
@@ -227,12 +242,19 @@ export function planConversation({ text = '', fields = {}, history = [], sourceT
   }
   if (/昨年|去年|前回|いつもの/u.test(text)) ownerReasons.push('verify_previous_order');
   if (/変更|キャンセル|返金|間違|届か|まだ来/u.test(text)) ownerReasons.push('order_exception');
+  const hoursInquiry = businessHoursQuestion(normalize(text));
+  if (hoursInquiry) ownerReasons.push('business_hours_confirmation');
   if (facts.choiceAmbiguities.length) ownerReasons.push('order_exception');
   if (facts.items.length > 1) ownerReasons.push('per_item_specifications');
   // Old unanswered questions remain unresolved. Suppress only the immediate
   // repetition; when all other questions are exhausted, clarify them again.
   const asked = new Set(lastQuestions.map(item => typeof item === 'string' ? item : item.key));
   const questions = [];
+  const receiveChanged = updates.some(update => update.key === 'receive_date' && valueOf(fields.receive_date) && update.value !== valueOf(fields.receive_date));
+  const answeredUseConfirmation = updates.some(update => update.key === 'use_date') || /^(?:はい[、,。\s]*)?(?:変更なし|変更ありません|そのまま|同じ日|使用日はそのまま|ご使用日はそのまま)(?:です|でお願いします)?[。!！\s]*$/u.test(normalize(text).trim());
+  const confirmationPending = lastQuestions.some(q => (typeof q === 'string' ? q : q.key) === 'use_date_confirmation');
+  const useDateNeedsConfirmation = !answeredUseConfirmation && (receiveChanged || confirmationPending);
+  if (useDateNeedsConfirmation) questions.push({ key: 'use_date_confirmation', text: known(fields.use_date) ? 'お受け取り希望日の変更ですね。ご使用日は以前お知らせいただいた日から変更なしでよろしいでしょうか？' : 'お受け取り希望日の変更ですね。ご使用日はいつでしょうか？お受け取り日から推測せず確認いたします。' });
   const deferred = [];
   const ask = key => {
     if (known(merged[key]) || questions.some(question => question.key === key)) return;
@@ -243,7 +265,11 @@ export function planConversation({ text = '', fields = {}, history = [], sourceT
   const choiceQuestions = { product_type: 'ご希望の商品はどのタイプでしょうか？複数の場合は、それぞれ教えてください。', color_vibe: '最終的にご希望のお色を教えていただけますか？', fulfillment_method: 'お受け取り方法のご希望を確認させてください。配達・発送の可否は確認いたします。', quantity: '最終的にご希望の数量を教えていただけますか？複数の商品は、それぞれの数量をお願いします。', budget: '最終的なご予算を教えていただけますか？1つあたりか、全体の合計かもお願いします。' };
   for (const ambiguity of facts.choiceAmbiguities) if (questions.length < 2) questions.push({ key: ambiguity.key, text: choiceQuestions[ambiguity.key] });
   if (/配達|発送/u.test(method)) ask('delivery_area');
-  if (!known(merged.use_date)) ask('receive_date');
+  if (!known(merged.use_date)) {
+    // Usage is a separate prerequisite. Keep this unanswered question in the
+    // immediate context even when the customer first answers another detail.
+    if (!useDateNeedsConfirmation && questions.length < 2 && !questions.some(q => q.key === 'use_date')) questions.push({ key: 'use_date', text: QUESTIONS.use_date });
+  } else ask('receive_date');
   if (!known(merged.product_source)) ask('product_type');
   ask('fulfillment_method');
   if (!ownerReasons.includes('urgent_capacity') && !ownerReasons.includes('delivery_feasibility')) {
@@ -263,6 +289,6 @@ export function planConversation({ text = '', fields = {}, history = [], sourceT
     if (photoRefused) questionText = questionText.replace(/写真だけでも大丈夫です😊?/u, '');
     return { ...q, text: questionText };
   });
-  const message = [intent.kind === 'bereavement' ? intent.message : updates.length ? `ご回答ありがとうございます${restrained ? '。' : '😊'}` : `ご連絡ありがとうございます${restrained ? '。' : '😊'}`, historyCheck, ...selectedQuestions.map(question => question.text), ownerReasons.length && intent.kind !== 'bereavement' ? 'いただいた内容で対応できるか確認いたします。' : ''].filter(Boolean).join('\n\n');
-  return { updates, fields: merged, facts, intent, questions: selectedQuestions, message, requiresOwner: ownerReasons.length > 0, ownerReasons, evidence: updates.map(({ key, evidence, sourceTimestamp: timestamp }) => ({ key, text: evidence, sourceTimestamp: timestamp })), clarificationNeeded: facts.dateAmbiguities.length > 0 || facts.choiceAmbiguities.length > 0, approvalRequired: true };
+  const message = [intent.kind === 'bereavement' ? intent.message : updates.length ? `ご回答ありがとうございます${restrained ? '。' : '😊'}` : `ご連絡ありがとうございます${restrained ? '。' : '😊'}`, historyCheck, hoursInquiry ? '営業時間は店舗の担当者に確認してご案内します。' : '', ...selectedQuestions.map(question => question.text), ownerReasons.length && intent.kind !== 'bereavement' ? 'いただいた内容で対応できるか確認いたします。' : ''].filter(Boolean).join('\n\n');
+  return { updates, fields: merged, facts, intent, questions: selectedQuestions, message, requiresOwner: ownerReasons.length > 0, ownerReasons, evidence: updates.map(({ key, evidence, sourceTimestamp: timestamp }) => ({ key, text: evidence, sourceTimestamp: timestamp })), clarificationNeeded: useDateNeedsConfirmation || facts.dateAmbiguities.length > 0 || facts.choiceAmbiguities.length > 0, approvalRequired: true };
 }
