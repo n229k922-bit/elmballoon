@@ -1,0 +1,703 @@
+{
+  "synthetic": true,
+  "scope": "customer_utterance_replay_in_memory",
+  "notLiveLine": true,
+  "roleplayRepliesAreNotSystemOutputs": true,
+  "managerRoleDecisionsApplied": false,
+  "rounds": 4,
+  "customers": 6,
+  "customerTurns": 24,
+  "deliveries": {
+    "customer": 7,
+    "owner": 17
+  },
+  "realKnowledgeImports": 0,
+  "findings": [
+    {
+      "id": "SIM-F01",
+      "severity": "high",
+      "caseId": "SIM02",
+      "status": "reproduced_in_memory",
+      "message": "自然な「別件なんですが」を別注文として分離できず、同じ顧客の注文が混ざる。",
+      "evidence": [
+        "customer-round3.json#SIM02"
+      ]
+    },
+    {
+      "id": "SIM-F02",
+      "severity": "high",
+      "caseId": "SIM03",
+      "status": "reproduced_in_memory",
+      "message": "「今回は見送ります」を相談の終了として扱えず、注文の聞き取りを続ける。",
+      "evidence": [
+        "customer-round3.json#SIM03"
+      ]
+    }
+  ],
+  "records": [
+    {
+      "caseId": "SIM01",
+      "customerId": "SIM-C01",
+      "snapshots": [
+        {
+          "round": 1,
+          "caseId": "SIM01",
+          "source": "customer-round1.json#SIM01",
+          "customerText": "こんにちは😊 娘の誕生日にバルーンお願いしたいです。1万円くらいでできますか？取りに行く予定ですが日にちはまだ相談中です",
+          "orders": [
+            {
+              "orderLabel": "SIM01-ORDER-1",
+              "title": "誕生日",
+              "revision": 1,
+              "status": "open",
+              "fields": {
+                "budget": "10,000円（単価・合計未確認）",
+                "fulfillment_method": "店頭受取",
+                "purpose": "誕生日"
+              }
+            }
+          ],
+          "actualReply": "こんにちは😊 elm・balloonです🎈\nご注文の相談は、AIアシスタントがお手伝いします。\n制作やお届けの確認が必要なときは、スタッフと連携してご案内します。\n\nご回答ありがとうございます😊\n\nいつ頃のお受け取りをご希望ですか？未定でも大丈夫です。\n\nどのようなバルーンをご希望ですか？写真だけでも大丈夫です😊",
+          "status": "sent",
+          "reasons": [],
+          "requiresRouting": false
+        },
+        {
+          "round": 2,
+          "caseId": "SIM01",
+          "source": "customer-round2.json#SIM01",
+          "customerText": "机に置けるアレンジみたいなのが1つほしいです。色はまだ娘に聞いてなくて💦 日にちは未定でお願いします",
+          "orders": [
+            {
+              "orderLabel": "SIM01-ORDER-1",
+              "title": "誕生日・置き型アレンジメント",
+              "revision": 2,
+              "status": "open",
+              "fields": {
+                "budget": "10,000円（単価・合計未確認）",
+                "fulfillment_method": "店頭受取",
+                "product_type": "置き型アレンジメント",
+                "purpose": "誕生日",
+                "quantity": "1"
+              }
+            }
+          ],
+          "actualReply": "ご回答ありがとうございます😊\n\nその金額は、1つあたりと全体の合計のどちらでしょうか？\n\nご希望のお色はありますか？おまかせでも大丈夫です。",
+          "status": "sent",
+          "reasons": [],
+          "requiresRouting": false
+        },
+        {
+          "round": 3,
+          "caseId": "SIM01",
+          "source": "customer-round3.json#SIM01",
+          "customerText": "はい、1つで合計1万円くらいです。娘に聞けたのでピンクと紫で、赤は入れないでほしいです。25日の午後に取りに行くのはどうでしょう？1万円は税込みですか？",
+          "orders": [
+            {
+              "orderLabel": "SIM01-ORDER-1",
+              "title": "誕生日・置き型アレンジメント",
+              "revision": 3,
+              "status": "open",
+              "fields": {
+                "budget": "10,000円（合計）",
+                "budget_scope": "total",
+                "color_vibe": "ピンク・紫・赤",
+                "fulfillment_method": "店頭受取",
+                "product_type": "置き型アレンジメント",
+                "purpose": "誕生日",
+                "quantity": "1"
+              }
+            }
+          ],
+          "actualReply": "ご回答ありがとうございます😊\n\n「25日の午後に取りに行くのはどうでしょう?1万円は税込みですか?」は何年何月何日のご予定でしょうか？\n\nいつ頃のお受け取りをご希望ですか？未定でも大丈夫です。",
+          "status": "pending",
+          "reasons": [],
+          "requiresRouting": false
+        },
+        {
+          "round": 4,
+          "caseId": "SIM01",
+          "source": "customer-round4.json#SIM01",
+          "customerText": "10月25日です！14時ごろに行きたいです。税込みで1万円以内だとうれしいです。赤なしのピンクと紫で、できる内容を教えてください😊",
+          "orders": [
+            {
+              "orderLabel": "SIM01-ORDER-1",
+              "title": "誕生日・置き型アレンジメント",
+              "revision": 4,
+              "status": "open",
+              "fields": {
+                "budget": "10,000円（単価・合計未確認）",
+                "budget_scope": "total",
+                "color_vibe": "ピンク・紫",
+                "fulfillment_method": "店頭受取",
+                "product_type": "置き型アレンジメント",
+                "purpose": "誕生日",
+                "quantity": "1",
+                "receive_date": "2026-10-25",
+                "receive_time": "14:00"
+              }
+            }
+          ],
+          "actualReply": "ご回答ありがとうございます😊\n\nいただいた内容で対応できるか確認いたします。\n\n確認が取れ次第、ご返信いたします。店休日・営業時間外は、次の営業時間内のご返信となる場合がございます。",
+          "status": "pending",
+          "reasons": [
+            "review_collected_details"
+          ],
+          "requiresRouting": false
+        }
+      ]
+    },
+    {
+      "caseId": "SIM02",
+      "customerId": "SIM-C02",
+      "snapshots": [
+        {
+          "round": 1,
+          "caseId": "SIM02",
+          "source": "customer-round1.json#SIM02",
+          "customerText": "卒部する子に渡すブーケ、3つお願いできますか？小学生です。予算は全部で3000円くらいです",
+          "orders": [
+            {
+              "orderLabel": "SIM02-ORDER-1",
+              "title": "ブーケ",
+              "revision": 1,
+              "status": "open",
+              "fields": {
+                "budget": "3,000円（合計）",
+                "budget_scope": "total",
+                "product_type": "ブーケ",
+                "quantity": "3"
+              }
+            }
+          ],
+          "actualReply": "こんにちは😊 elm・balloonです🎈\nご注文の相談は、AIアシスタントがお手伝いします。\n制作やお届けの確認が必要なときは、スタッフと連携してご案内します。\n\nご回答ありがとうございます😊\n\nいつ頃のお受け取りをご希望ですか？未定でも大丈夫です。\n\nお受け取りは、店頭・配達・発送のどちらをご希望ですか？",
+          "status": "sent",
+          "reasons": [],
+          "requiresRouting": false
+        },
+        {
+          "round": 2,
+          "caseId": "SIM02",
+          "source": "customer-round2.json#SIM02",
+          "customerText": "11月7日の午前中に取りに行きたいです！色は3つともおまかせで大丈夫です😊",
+          "orders": [
+            {
+              "orderLabel": "SIM02-ORDER-1",
+              "title": "ブーケ",
+              "revision": 2,
+              "status": "open",
+              "fields": {
+                "budget": "3,000円（合計）",
+                "budget_scope": "total",
+                "color_vibe": "おまかせ",
+                "fulfillment_method": "店頭受取",
+                "product_type": "ブーケ",
+                "quantity": "3",
+                "receive_date": "2026-11-07"
+              }
+            }
+          ],
+          "actualReply": "ご回答ありがとうございます😊\n\nいただいた内容で対応できるか確認いたします。\n\n確認が取れ次第、ご返信いたします。店休日・営業時間外は、次の営業時間内のご返信となる場合がございます。",
+          "status": "pending",
+          "reasons": [
+            "review_collected_details"
+          ],
+          "requiresRouting": false
+        },
+        {
+          "round": 3,
+          "caseId": "SIM02",
+          "source": "customer-round3.json#SIM02",
+          "customerText": "ブーケは7日の10時希望です😊 あと別件なんですが、お店の周年祝いにスタンドも1台お願いできますか？こっちは15000円くらいで、11月14日の夕方に配達希望です",
+          "orders": [
+            {
+              "orderLabel": "SIM02-ORDER-1",
+              "title": "周年・ブーケ",
+              "revision": 3,
+              "status": "open",
+              "fields": {
+                "budget": "15,000円（単価・合計未確認）",
+                "budget_scope": "total",
+                "color_vibe": "おまかせ",
+                "fulfillment_method": "配達",
+                "product_type": "ブーケ",
+                "purpose": "周年",
+                "quantity": "1",
+                "receive_date": "2026-11-07"
+              }
+            }
+          ],
+          "actualReply": "ご回答ありがとうございます😊\n\nご使用日とお受け取り希望日を、それぞれ何年何月何日か教えていただけますか？\n\nご希望の商品はどのタイプでしょうか？複数の場合は、それぞれ教えてください。\n\nいただいた内容で対応できるか確認いたします。\n\n確認が取れ次第、ご返信いたします。店休日・営業時間外は、次の営業時間内のご返信となる場合がございます。",
+          "status": "pending",
+          "reasons": [
+            "delivery_feasibility",
+            "order_exception"
+          ],
+          "requiresRouting": false
+        },
+        {
+          "round": 4,
+          "caseId": "SIM02",
+          "source": "customer-round4.json#SIM02",
+          "customerText": "ブーケは小さめで大丈夫です！3つで3000円、11月7日10時に取りに行く希望でお願いします。別のスタンドは架空A市の『サンプル喫茶』です。11月14日の17時希望で、配達代も入れて15000円以内だと助かります。難しければ先に教えてほしいです",
+          "orders": [
+            {
+              "orderLabel": "SIM02-ORDER-1",
+              "title": "周年・ブーケ",
+              "revision": 4,
+              "status": "open",
+              "fields": {
+                "budget": "15,000円（単価・合計未確認）",
+                "budget_scope": "total",
+                "color_vibe": "おまかせ",
+                "fulfillment_method": "配達",
+                "product_type": "ブーケ",
+                "purpose": "周年",
+                "quantity": "3",
+                "receive_date": "2026-11-07"
+              }
+            }
+          ],
+          "actualReply": "ご回答ありがとうございます😊\n\nご使用日とお受け取り希望日を、それぞれ何年何月何日か教えていただけますか？\n\nご希望の商品はどのタイプでしょうか？複数の場合は、それぞれ教えてください。\n\nいただいた内容で対応できるか確認いたします。\n\n確認が取れ次第、ご返信いたします。店休日・営業時間外は、次の営業時間内のご返信となる場合がございます。",
+          "status": "pending",
+          "reasons": [
+            "delivery_feasibility",
+            "order_exception"
+          ],
+          "requiresRouting": false
+        }
+      ]
+    },
+    {
+      "caseId": "SIM03",
+      "customerId": "SIM-C03",
+      "snapshots": [
+        {
+          "round": 1,
+          "caseId": "SIM03",
+          "source": "customer-round1.json#SIM03",
+          "customerText": "お久しぶりです！去年と同じ感じのを明日お願いしたいです。前の注文わかりますか？",
+          "orders": [
+            {
+              "orderLabel": "SIM03-ORDER-1",
+              "title": "ご相談",
+              "revision": 1,
+              "status": "open",
+              "fields": {
+                "receive_date": "2026-10-17"
+              }
+            }
+          ],
+          "actualReply": "こんにちは😊 elm・balloonです🎈\nご注文の相談は、AIアシスタントがお手伝いします。\n制作やお届けの確認が必要なときは、スタッフと連携してご案内します。\n\nご回答ありがとうございます😊\n\n以前のご注文を確認します。変更したい点があれば、その点だけお知らせください。\n\nどのようなバルーンをご希望ですか？写真だけでも大丈夫です😊\n\nお受け取りは、店頭・配達・発送のどちらをご希望ですか？\n\nいただいた内容で対応できるか確認いたします。\n\n確認が取れ次第、ご返信いたします。店休日・営業時間外は、次の営業時間内のご返信となる場合がございます。",
+          "status": "pending",
+          "reasons": [
+            "urgent_capacity",
+            "verify_previous_order",
+            "過去注文の確認済み記録なし。昨年と同じ仕様を推測しない"
+          ],
+          "requiresRouting": false
+        },
+        {
+          "round": 2,
+          "caseId": "SIM03",
+          "source": "customer-round2.json#SIM03",
+          "customerText": "山田です。明日17日の午後に取りに行きたいです。去年は数字の8で星がついたやつだったと思います。今回もゴールド系で、全部で4000円くらい希望です",
+          "orders": [
+            {
+              "orderLabel": "SIM03-ORDER-1",
+              "title": "ご相談",
+              "revision": 2,
+              "status": "open",
+              "fields": {
+                "budget": "4,000円（合計）",
+                "budget_scope": "total",
+                "color_vibe": "ゴールド",
+                "fulfillment_method": "店頭受取",
+                "receive_date": "2026-10-17"
+              }
+            }
+          ],
+          "actualReply": "ご回答ありがとうございます😊\n\n以前のご注文を確認します。変更したい点があれば、その点だけお知らせください。\n\nご使用日とお受け取り希望日を、それぞれ何年何月何日か教えていただけますか？\n\nどのようなバルーンをご希望ですか？写真だけでも大丈夫です😊\n\nいただいた内容で対応できるか確認いたします。\n\n確認が取れ次第、ご返信いたします。店休日・営業時間外は、次の営業時間内のご返信となる場合がございます。",
+          "status": "pending",
+          "reasons": [
+            "urgent_capacity",
+            "verify_previous_order",
+            "過去注文の確認済み記録なし。昨年と同じ仕様を推測しない"
+          ],
+          "requiresRouting": false
+        },
+        {
+          "round": 3,
+          "caseId": "SIM03",
+          "source": "customer-round3.json#SIM03",
+          "customerText": "明日のお祝いで渡したいので、今回は見送ります😭 前回の説明が曖昧ですみません。今年なら数字は9でした。また余裕をもって連絡します",
+          "orders": [
+            {
+              "orderLabel": "SIM03-ORDER-1",
+              "title": "ご相談",
+              "revision": 3,
+              "status": "open",
+              "fields": {
+                "budget": "4,000円（合計）",
+                "budget_scope": "total",
+                "color_vibe": "ゴールド",
+                "fulfillment_method": "店頭受取",
+                "receive_date": "2026-10-17"
+              }
+            }
+          ],
+          "actualReply": "こんにちは😊 elm・balloonです🎈\nご注文の相談は、AIアシスタントがお手伝いします。\n制作やお届けの確認が必要なときは、スタッフと連携してご案内します。\n\nご回答ありがとうございます😊\n\n以前のご注文を確認します。変更したい点があれば、その点だけお知らせください。\n\nどのようなバルーンをご希望ですか？写真だけでも大丈夫です😊\n\nいただいた内容で対応できるか確認いたします。\n\n確認が取れ次第、ご返信いたします。店休日・営業時間外は、次の営業時間内のご返信となる場合がございます。",
+          "status": "pending",
+          "reasons": [
+            "urgent_capacity",
+            "verify_previous_order",
+            "過去注文の確認済み記録なし。昨年と同じ仕様を推測しない"
+          ],
+          "requiresRouting": false
+        },
+        {
+          "round": 4,
+          "caseId": "SIM03",
+          "source": "customer-round4.json#SIM03",
+          "customerText": "ありがとうございます。また必要なときに相談します😊",
+          "orders": [
+            {
+              "orderLabel": "SIM03-ORDER-1",
+              "title": "ご相談",
+              "revision": 4,
+              "status": "open",
+              "fields": {
+                "budget": "4,000円（合計）",
+                "budget_scope": "total",
+                "color_vibe": "ゴールド",
+                "fulfillment_method": "店頭受取",
+                "receive_date": "2026-10-17"
+              }
+            }
+          ],
+          "actualReply": "ご連絡ありがとうございます😊\n\nどのようなバルーンをご希望ですか？写真だけでも大丈夫です😊\n\nいくつご希望ですか？\n\nいただいた内容で対応できるか確認いたします。\n\n確認が取れ次第、ご返信いたします。店休日・営業時間外は、次の営業時間内のご返信となる場合がございます。",
+          "status": "pending",
+          "reasons": [
+            "past_date"
+          ],
+          "requiresRouting": false
+        }
+      ]
+    },
+    {
+      "caseId": "SIM04",
+      "customerId": "SIM-C04",
+      "snapshots": [
+        {
+          "round": 1,
+          "caseId": "SIM04",
+          "source": "customer-round1.json#SIM04",
+          "customerText": "インスタの写真みたいなのが欲しいんですけど、写真送って相談できますか？色はちょっと変えたいです",
+          "orders": [
+            {
+              "orderLabel": "SIM04-ORDER-1",
+              "title": "ご相談",
+              "revision": 1,
+              "status": "open",
+              "fields": {}
+            }
+          ],
+          "actualReply": "こんにちは😊 elm・balloonです🎈\nご注文の相談は、AIアシスタントがお手伝いします。\n制作やお届けの確認が必要なときは、スタッフと連携してご案内します。\n\nご連絡ありがとうございます😊\n\nいつ頃のお受け取りをご希望ですか？未定でも大丈夫です。\n\nどのようなバルーンをご希望ですか？写真だけでも大丈夫です😊",
+          "status": "sent",
+          "reasons": [],
+          "requiresRouting": false
+        },
+        {
+          "round": 2,
+          "caseId": "SIM04",
+          "source": "customer-round2.json#SIM04",
+          "customerText": "まだ写真送れてないです💦 赤い大きなハートを青にしたい感じです。同じ材料でできますか？",
+          "orders": [
+            {
+              "orderLabel": "SIM04-ORDER-1",
+              "title": "ご相談",
+              "revision": 2,
+              "status": "open",
+              "fields": {
+                "color_vibe": "赤・青"
+              }
+            }
+          ],
+          "actualReply": "ご回答ありがとうございます😊\n\nお受け取りは、店頭・配達・発送のどちらをご希望ですか？\n\nいくつご希望ですか？\n\n確認が取れ次第、ご返信いたします。店休日・営業時間外は、次の営業時間内のご返信となる場合がございます。",
+          "status": "pending",
+          "reasons": [
+            "過去注文の確認済み記録なし。昨年と同じ仕様を推測しない"
+          ],
+          "requiresRouting": false
+        },
+        {
+          "round": 3,
+          "caseId": "SIM04",
+          "source": "customer-round3.json#SIM04",
+          "customerText": "写真はあとで送りますね。11月3日に取りに行きたいです。ハートのを1つ、全部で6000円くらい希望です。写真ないとまだ材料わからないですよね💦",
+          "orders": [
+            {
+              "orderLabel": "SIM04-ORDER-1",
+              "title": "ご相談",
+              "revision": 3,
+              "status": "open",
+              "fields": {
+                "budget": "6,000円（合計）",
+                "budget_scope": "total",
+                "color_vibe": "赤・青",
+                "fulfillment_method": "店頭受取",
+                "quantity": "1",
+                "receive_date": "2026-11-03"
+              }
+            }
+          ],
+          "actualReply": "ご回答ありがとうございます😊\n\n念のため、どのようなバルーンをご希望ですか？写真だけでも大丈夫です😊",
+          "status": "sent",
+          "reasons": [],
+          "requiresRouting": false
+        },
+        {
+          "round": 4,
+          "caseId": "SIM04",
+          "source": "customer-round4.json#SIM04",
+          "customerText": "11月3日の13時希望です。まだ写真は送れてないので、送ってから確認お願いします！青のハート1つで6000円くらいという希望だけ先に伝えておきます",
+          "orders": [
+            {
+              "orderLabel": "SIM04-ORDER-1",
+              "title": "ご相談",
+              "revision": 4,
+              "status": "open",
+              "fields": {
+                "budget": "6,000円（単価・合計未確認）",
+                "budget_scope": "total",
+                "color_vibe": "青",
+                "fulfillment_method": "店頭受取",
+                "quantity": "1",
+                "receive_date": "2026-11-03",
+                "receive_time": "13:00"
+              }
+            }
+          ],
+          "actualReply": "ご回答ありがとうございます😊\n\n念のため、どのようなバルーンをご希望ですか？写真だけでも大丈夫です😊",
+          "status": "sent",
+          "reasons": [],
+          "requiresRouting": false
+        }
+      ]
+    },
+    {
+      "caseId": "SIM05",
+      "customerId": "SIM-C05",
+      "snapshots": [
+        {
+          "round": 1,
+          "caseId": "SIM05",
+          "source": "customer-round1.json#SIM05",
+          "customerText": "来週の土曜くらいにお祝いのブーケ2つほしいです。予算2000円でピンク系がいいです",
+          "orders": [
+            {
+              "orderLabel": "SIM05-ORDER-1",
+              "title": "ブーケ",
+              "revision": 1,
+              "status": "open",
+              "fields": {
+                "budget": "2,000円（単価・合計未確認）",
+                "color_vibe": "ピンク",
+                "product_type": "ブーケ",
+                "quantity": "2"
+              }
+            }
+          ],
+          "actualReply": "こんにちは😊 elm・balloonです🎈\nご注文の相談は、AIアシスタントがお手伝いします。\n制作やお届けの確認が必要なときは、スタッフと連携してご案内します。\n\nご回答ありがとうございます😊\n\n「来週の土曜くらいにお祝いのブーケ2つほしいです。予算2000円でピンク系がいいです」は何年何月何日のご予定でしょうか？\n\nいつ頃のお受け取りをご希望ですか？未定でも大丈夫です。",
+          "status": "pending",
+          "reasons": [],
+          "requiresRouting": false
+        },
+        {
+          "round": 2,
+          "caseId": "SIM05",
+          "source": "customer-round2.json#SIM05",
+          "customerText": "24日で合ってます！ひとつ2000円です。すみません2つじゃなくて3つで、ピンクじゃなくて薄紫に変えたいです🙏",
+          "orders": [
+            {
+              "orderLabel": "SIM05-ORDER-1",
+              "title": "ブーケ",
+              "revision": 2,
+              "status": "open",
+              "fields": {
+                "budget": "2,000円／1つ",
+                "budget_scope": "unit",
+                "color_vibe": "紫",
+                "product_type": "ブーケ",
+                "quantity": "3"
+              }
+            }
+          ],
+          "actualReply": "ご回答ありがとうございます😊\n\n「24日で合ってます!ひとつ2000円です」は何年何月何日のご予定でしょうか？\n\nいつ頃のお受け取りをご希望ですか？未定でも大丈夫です。",
+          "status": "pending",
+          "reasons": [],
+          "requiresRouting": false
+        },
+        {
+          "round": 3,
+          "caseId": "SIM05",
+          "source": "customer-round3.json#SIM05",
+          "customerText": "薄紫3つで合ってます！使うのは24日なんですが、取りに行くのは前日の23日15時がいいです。予算も3つで6000円で大丈夫です",
+          "orders": [
+            {
+              "orderLabel": "SIM05-ORDER-1",
+              "title": "ブーケ",
+              "revision": 3,
+              "status": "open",
+              "fields": {
+                "budget": "6,000円（単価・合計未確認）",
+                "budget_scope": "unit",
+                "color_vibe": "紫",
+                "fulfillment_method": "店頭受取",
+                "product_type": "ブーケ",
+                "quantity": "3"
+              }
+            }
+          ],
+          "actualReply": "こんにちは😊 elm・balloonです🎈\nご注文の相談は、AIアシスタントがお手伝いします。\n制作やお届けの確認が必要なときは、スタッフと連携してご案内します。\n\nご回答ありがとうございます😊\n\n「薄紫3つで合ってます!使うのは24日なんですが」は何年何月何日のご予定でしょうか？\n\nいつ頃のお受け取りをご希望ですか？未定でも大丈夫です。",
+          "status": "pending",
+          "reasons": [],
+          "requiresRouting": false
+        },
+        {
+          "round": 4,
+          "caseId": "SIM05",
+          "source": "customer-round4.json#SIM05",
+          "customerText": "はい、その内容で確認お願いします。使うのが10月24日で、取りに行く希望が10月23日15時です。薄紫を3つ、合計予算6000円です。できるかのお返事を待ってます😊",
+          "orders": [
+            {
+              "orderLabel": "SIM05-ORDER-1",
+              "title": "ブーケ",
+              "revision": 4,
+              "status": "open",
+              "fields": {
+                "budget": "6,000円（合計）",
+                "budget_scope": "total",
+                "color_vibe": "紫",
+                "fulfillment_method": "店頭受取",
+                "product_type": "ブーケ",
+                "quantity": "3"
+              }
+            }
+          ],
+          "actualReply": "ご回答ありがとうございます😊\n\nご使用日とお受け取り希望日を、それぞれ何年何月何日か教えていただけますか？\n\nいつ頃のお受け取りをご希望ですか？未定でも大丈夫です。",
+          "status": "pending",
+          "reasons": [],
+          "requiresRouting": false
+        }
+      ]
+    },
+    {
+      "caseId": "SIM06",
+      "customerId": "SIM-C06",
+      "snapshots": [
+        {
+          "round": 1,
+          "caseId": "SIM06",
+          "source": "customer-round1.json#SIM06",
+          "customerText": "お忙しいところすみません、今返信もらえなくても大丈夫です。11月1日の誕生日に使うバルーン、前日の昼に受け取れますか？5000円くらいで考えてます",
+          "orders": [
+            {
+              "orderLabel": "SIM06-ORDER-1",
+              "title": "誕生日",
+              "revision": 1,
+              "status": "open",
+              "fields": {
+                "budget": "5,000円（単価・合計未確認）",
+                "purpose": "誕生日",
+                "use_date": "2026-11-01"
+              }
+            }
+          ],
+          "actualReply": "こんにちは😊 elm・balloonです🎈\nご注文の相談は、AIアシスタントがお手伝いします。\n制作やお届けの確認が必要なときは、スタッフと連携してご案内します。\n\nご回答ありがとうございます😊\n\nどのようなバルーンをご希望ですか？写真だけでも大丈夫です😊\n\nお受け取りは、店頭・配達・発送のどちらをご希望ですか？",
+          "status": "sent",
+          "reasons": [],
+          "requiresRouting": false
+        },
+        {
+          "round": 2,
+          "caseId": "SIM06",
+          "source": "customer-round2.json#SIM06",
+          "customerText": "店頭で受け取りです。10月31日の12時希望です！机に置くタイプを1つ、合計5000円くらいでお願いします。使うのは11月1日です",
+          "orders": [
+            {
+              "orderLabel": "SIM06-ORDER-1",
+              "title": "誕生日",
+              "revision": 2,
+              "status": "open",
+              "fields": {
+                "budget": "5,000円（合計）",
+                "budget_scope": "total",
+                "fulfillment_method": "店頭受取",
+                "purpose": "誕生日",
+                "quantity": "1",
+                "use_date": "2026-11-01"
+              }
+            }
+          ],
+          "actualReply": "ご回答ありがとうございます😊\n\nご使用日とお受け取り希望日を、それぞれ何年何月何日か教えていただけますか？\n\nご希望のお色はありますか？おまかせでも大丈夫です。",
+          "status": "pending",
+          "reasons": [],
+          "requiresRouting": false
+        },
+        {
+          "round": 3,
+          "caseId": "SIM06",
+          "source": "customer-round3.json#SIM06",
+          "customerText": "夜分にすみません、色はおまかせでお願いします。それと受け取りだけ10月30日の18時に変えられますか？使うのは11月1日のままです。お返事は営業時間になってからで大丈夫です",
+          "orders": [
+            {
+              "orderLabel": "SIM06-ORDER-1",
+              "title": "誕生日",
+              "revision": 3,
+              "status": "open",
+              "fields": {
+                "budget": "5,000円（合計）",
+                "budget_scope": "total",
+                "fulfillment_method": "店頭受取",
+                "purpose": "誕生日",
+                "quantity": "1",
+                "use_date": "2026-11-01"
+              }
+            }
+          ],
+          "actualReply": "ご連絡ありがとうございます😊\n\nご使用日とお受け取り希望日を、それぞれ何年何月何日か教えていただけますか？\n\nご希望のお色はありますか？おまかせでも大丈夫です。",
+          "status": "pending",
+          "reasons": [],
+          "requiresRouting": false
+        },
+        {
+          "round": 4,
+          "caseId": "SIM06",
+          "source": "customer-round4.json#SIM06",
+          "customerText": "ありがとうございます。10月30日の18時が可能か、確認を待ってます。11月1日に使うのは変わりません。18時が難しければ、別の受け取り方を相談させてください",
+          "orders": [
+            {
+              "orderLabel": "SIM06-ORDER-1",
+              "title": "誕生日",
+              "revision": 4,
+              "status": "open",
+              "fields": {
+                "budget": "5,000円（合計）",
+                "budget_scope": "total",
+                "fulfillment_method": "店頭受取",
+                "purpose": "誕生日",
+                "quantity": "1",
+                "use_date": "2026-11-01"
+              }
+            }
+          ],
+          "actualReply": "ご連絡ありがとうございます😊\n\nご使用日とお受け取り希望日を、それぞれ何年何月何日か教えていただけますか？\n\nご希望のお色はありますか？おまかせでも大丈夫です。",
+          "status": "pending",
+          "reasons": [],
+          "requiresRouting": false
+        }
+      ]
+    }
+  ]
+}

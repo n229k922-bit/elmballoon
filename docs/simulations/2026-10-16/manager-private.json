@@ -1,0 +1,50 @@
+{
+  "synthetic": true,
+  "role": "store_manager",
+  "purpose": "架空の多者会話シミュレーション専用。実店舗の営業規則・価格・受注可能枠ではない。",
+  "knowledgePolicy": "実顧客カルテ、商品マスター、本番判断に転用禁止。検証で得た会話設計上の示唆だけを候補ナレッジとして分離する。",
+  "cases": [
+    {
+      "caseId": "SIM01",
+      "scenario": "birthday_budget10000",
+      "privatePremise": "架空店舗では予算10000円程度の誕生日用卓上バルーンは検討可能。ただし商品、受取日、受取方法未確定では受注を承諾しない。",
+      "decisionBoundary": "必要情報の聞き取りは注文担当。制作可否・確約は店長判断。",
+      "allowedDecisionAfterClarification": "日付と仕様を確認してから、条件付きで具体案を提示できる。"
+    },
+    {
+      "caseId": "SIM02",
+      "scenario": "graduation_bouquets3_total3000",
+      "privatePremise": "架空の制作条件では合計3000円で3束は簡易構成に限り検討可能。画像と同一の豪華さ・特殊文字・在庫は保証しない。同一顧客の別件スタンド1台は独立注文とする。別件の遠方会場配達はこのケースでは対応不可。店頭受取の別形態は検討可能だが運搬条件の確認が必要。",
+      "decisionBoundary": "数量3、予算合計3000円を明確に保持し、単価3000円へ変換しない。",
+      "allowedDecisionAfterClarification": "日付確認後、簡易案を顧客へ提案。顧客の同意前に仕様確定しない。別件スタンドの配達不可を店頭受取へ自動変更せず、代案の相談可否を聞く。"
+    },
+    {
+      "caseId": "SIM03",
+      "scenario": "repeat_tomorrow",
+      "privatePremise": "本人確認済みの過去注文記録は提供されていない。この架空ケースでは明日の制作枠は埋まっている。",
+      "decisionBoundary": "去年と同じという依頼でも、仕様を推測せず、明日の受注を約束しない。",
+      "allowedDecisionAfterClarification": "希望日の対応不可と別日の相談を案内。過去注文の存在や内容を捏造しない。"
+    },
+    {
+      "caseId": "SIM04",
+      "scenario": "unknown_image",
+      "privatePremise": "お客様は画像を参照するが添付画像は届いていない。商品識別・サイズ・価格照合は不可能。見ていない画像の内容や正確な見積額や完全再現を承諾しない。",
+      "decisionBoundary": "参考画像と確定商品を区別。優先する特徴、予算、必要日を確認する。",
+      "allowedDecisionAfterClarification": "実物確認または店長の画像確認待ち。代案は顧客同意が必要。"
+    },
+    {
+      "caseId": "SIM05",
+      "scenario": "vague_date_unitbudget_quantity_color_correction",
+      "privatePremise": "予算が単価か合計か、数量、使用日と受取日が曖昧。色の訂正は最新の明示指示を優先する。未確定情報のまま制作可否を確約しない。",
+      "decisionBoundary": "古い色を残さず、否定された色を希望として扱わない。金額単位と数量を推測しない。",
+      "allowedDecisionAfterClarification": "確定した希望を短く復唱し、必要な条件が整った後に店長判断。"
+    },
+    {
+      "caseId": "SIM06",
+      "scenario": "vague_budget_date_outsidehours",
+      "privatePremise": "初回は架空の営業時間外で店長は即応不可。後の架空営業時間内ターンで判断可能。予算の単価/合計、使用日/受取日が曖昧なら確認する。",
+      "decisionBoundary": "営業時間外を理由に自動受注しない。次の返信時刻を保証せず、店休日・営業時間外は次の営業時間内になる場合がある旨を自然に案内する。",
+      "allowedDecisionAfterClarification": "初回 unavailable、情報が整った後の別ターンで具体的な可否判断を行う。"
+    }
+  ]
+}

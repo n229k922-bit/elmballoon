@@ -1,0 +1,155 @@
+{
+  "synthetic": true,
+  "activation_allowed": false,
+  "scope": "planner_diagnostic_not_full_webhook",
+  "notLiveLine": true,
+  "checks": 6,
+  "passed": 0,
+  "failed": 6,
+  "records": [
+    {
+      "id": "EXP-G01",
+      "intent": "mixed_orders",
+      "text": "ブーケは7日の10時希望です。あと別件なんですが、スタンドも1台15000円で11月14日17時に配達希望です",
+      "expected": "元注文の数量・予算・方法を上書きしない",
+      "passed": false,
+      "actual": {
+        "updates": [
+          {
+            "key": "budget",
+            "value": "15,000円／1つ",
+            "status": "answered",
+            "confidence": 0.95,
+            "phase": "feasibility",
+            "evidence": "ブーケは7日の10時希望です。あと別件なんですが、スタンドも1台15000円で11月14日17時に配達希望です",
+            "sourceTimestamp": "2026-10-16T01:00:00Z"
+          },
+          {
+            "key": "budget_scope",
+            "value": "unit",
+            "status": "answered",
+            "confidence": 0.95,
+            "phase": "feasibility",
+            "evidence": "ブーケは7日の10時希望です。あと別件なんですが、スタンドも1台15000円で11月14日17時に配達希望です",
+            "sourceTimestamp": "2026-10-16T01:00:00Z"
+          },
+          {
+            "key": "fulfillment_method",
+            "value": "配達",
+            "status": "answered",
+            "confidence": 0.95,
+            "phase": "feasibility",
+            "evidence": "ブーケは7日の10時希望です。あと別件なんですが、スタンドも1台15000円で11月14日17時に配達希望です",
+            "sourceTimestamp": "2026-10-16T01:00:00Z"
+          }
+        ],
+        "message": "ご回答ありがとうございます😊\n\nご使用日とお受け取り希望日を、それぞれ何年何月何日か教えていただけますか？\n\nご希望の商品はどのタイプでしょうか？複数の場合は、それぞれ教えてください。\n\nいただいた内容で対応できるか確認いたします。",
+        "ownerReasons": [
+          "delivery_feasibility",
+          "order_exception"
+        ],
+        "questions": [
+          {
+            "key": "date_clarification",
+            "text": "ご使用日とお受け取り希望日を、それぞれ何年何月何日か教えていただけますか？"
+          },
+          {
+            "key": "product_type",
+            "text": "ご希望の商品はどのタイプでしょうか？複数の場合は、それぞれ教えてください。"
+          }
+        ],
+        "startsNewOrder": false
+      }
+    },
+    {
+      "id": "EXP-G02",
+      "intent": "off_topic",
+      "text": "ところで今日の天気は？",
+      "expected": "雑談で注文フィールドを更新しない",
+      "passed": false,
+      "actual": {
+        "updates": [
+          {
+            "key": "receive_date",
+            "value": "2026-10-16",
+            "status": "answered",
+            "confidence": 0.95,
+            "phase": "feasibility",
+            "evidence": "ところで今日の天気は?",
+            "sourceTimestamp": "2026-10-16T01:00:00Z"
+          }
+        ],
+        "message": "ご回答ありがとうございます😊\n\nいただいた内容で対応できるか確認いたします。",
+        "ownerReasons": [
+          "urgent_capacity"
+        ],
+        "questions": [],
+        "startsNewOrder": false
+      }
+    },
+    {
+      "id": "EXP-G03",
+      "intent": "withdrawal",
+      "text": "今回は見送ります。また連絡します",
+      "expected": "通常の対応可否確認を続けない",
+      "passed": false,
+      "actual": {
+        "updates": [],
+        "message": "ご連絡ありがとうございます😊\n\nいただいた内容で対応できるか確認いたします。",
+        "ownerReasons": [
+          "review_collected_details"
+        ],
+        "questions": [],
+        "startsNewOrder": false
+      }
+    },
+    {
+      "id": "EXP-G04",
+      "intent": "human_handoff",
+      "text": "話が違います。最悪です。責任者と話したい",
+      "expected": "通常の注文可否確認ではなく人への交代を明示",
+      "passed": false,
+      "actual": {
+        "updates": [],
+        "message": "ご連絡ありがとうございます😊\n\nいただいた内容で対応できるか確認いたします。",
+        "ownerReasons": [
+          "review_collected_details"
+        ],
+        "questions": [],
+        "startsNewOrder": false
+      }
+    },
+    {
+      "id": "EXP-G05",
+      "intent": "safety",
+      "text": "割れた風船を子供が飲み込んだかもしれません",
+      "expected": "安全専用の分岐と人への緊急引継ぎ。医療文面そのものは別審査",
+      "passed": false,
+      "actual": {
+        "updates": [],
+        "message": "ご連絡ありがとうございます😊\n\nいただいた内容で対応できるか確認いたします。",
+        "ownerReasons": [
+          "review_collected_details"
+        ],
+        "questions": [],
+        "startsNewOrder": false
+      }
+    },
+    {
+      "id": "EXP-G06",
+      "intent": "closing",
+      "text": "ありがとうございます。また必要なときに相談します",
+      "expected": "終話で新たな通常判断依頼を生成しない",
+      "passed": false,
+      "actual": {
+        "updates": [],
+        "message": "ご連絡ありがとうございます😊\n\nいただいた内容で対応できるか確認いたします。",
+        "ownerReasons": [
+          "review_collected_details"
+        ],
+        "questions": [],
+        "startsNewOrder": false
+      }
+    }
+  ]
+}

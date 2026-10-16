@@ -1,0 +1,21 @@
+{
+  "synthetic": true,
+  "sourceType": "multi_agent_roleplay_and_local_runtime_replay",
+  "activation_allowed": false,
+  "review_status": "synthetic_needs_review",
+  "notice": "実顧客の発言・実店舗の価格や受付条件ではない。モデルの再学習ではなく、応対設計とテストに参照する候補。",
+  "candidates": [
+    {"id":"SYN-K01","category":"conversation_pattern","title":"予算の単価と合計を分ける","proposal":"単価2000円・3個なら算術上6000円と整理するが、確定見積や税込総額とは呼ばない。","validation":"roleplay_hypothesis","activation_allowed":false,"sources":[{"file":"customer-round2.json","caseId":"SIM05"},{"file":"clerk-round2.json","caseId":"SIM05"}]},
+    {"id":"SYN-K02","category":"system_gap","priority":"high","title":"一通の途中に入る別注文を混ぜない","proposal":"元のブーケの追記と『あと別件なんですが』のスタンドを区切り、数量・予算・日付・方法をそれぞれ保持する。","validation":"reproduced_in_memory_SIM-F01","activation_allowed":false,"sources":[{"file":"customer-round3.json","caseId":"SIM02"},{"file":"clerk-round3.json","caseId":"SIM02"}]},
+    {"id":"SYN-K03","category":"system_gap","priority":"high","title":"注文見送り後に聞き取りを続けない","proposal":"『今回は見送ります』を受け止め、数字や過去仕様が同じ文にあっても新規注文・再開と推測しない。確定注文の取消とは区別する。","validation":"reproduced_in_memory_SIM-F02","activation_allowed":false,"sources":[{"file":"customer-round3.json","caseId":"SIM03"},{"file":"clerk-round3.json","caseId":"SIM03"}]},
+    {"id":"SYN-K04","category":"conversation_pattern","title":"写真未受領と写真確認済みを分ける","proposal":"『あとで送る』は画像受信ではない。材料・再現性を断言せず、受領待ちを残して写真の催促を毎回繰り返さない。","validation":"roleplay_hypothesis","activation_allowed":false,"sources":[{"file":"customer-round3.json","caseId":"SIM04"},{"file":"clerk-round3.json","caseId":"SIM04"}]},
+    {"id":"SYN-K05","category":"safety_rule_candidate","title":"前回と同じでも本人と仕様を推測しない","proposal":"確認済みの本人紐付け履歴がなければその旨を伝え、今年の数字・色・用途を確認する。似た名前だけで過去カルテを確定しない。","validation":"roleplay_hypothesis","activation_allowed":false,"sources":[{"file":"customer-round1.json","caseId":"SIM03"},{"file":"manager-round1.json","caseId":"SIM03"}]},
+    {"id":"SYN-K06","category":"safety_rule_candidate","title":"使用日と受取変更を別々に保持","proposal":"使用日は11月1日のまま、旧受取候補31日12時、新希望30日18時と分ける。変更可否と顧客同意前に新日時を予約済みにしない。日付の数値自体は架空例。","validation":"roleplay_hypothesis","activation_allowed":false,"sources":[{"file":"customer-round3.json","caseId":"SIM06"},{"file":"clerk-round3.json","caseId":"SIM06"},{"file":"manager-round3.json","caseId":"SIM06"}]},
+    {"id":"SYN-K07","category":"ux_hypothesis","title":"希望受付と受注確定の言葉を分ける","proposal":"『ご希望として控えました』『可否を確認中です』などで未確定状態を示す。『承りました』だけで予約済みと誤解させない。","validation":"synthetic_customer_feedback_only","activation_allowed":false,"sources":[{"file":"customer-feedback.json","caseId":"SIM01"},{"file":"customer-feedback.json","caseId":"SIM06"}]},
+    {"id":"SYN-K08","category":"conversation_pattern","title":"税込かという質問は予算と確定価格を混同しない","proposal":"顧客の上限予算を記録し、税・送料込みの確定見積は担当者へ確認する。架空店長の金額を実店舗の価格表に追加しない。","validation":"roleplay_hypothesis","activation_allowed":false,"sources":[{"file":"customer-round3.json","caseId":"SIM01"},{"file":"manager-round3.json","caseId":"SIM01"}]},
+    {"id":"SYN-K09","category":"process_candidate","title":"店長不在の判断依頼をまとめる","proposal":"同じ案件の追加情報を追記し、同じ確認を連投しない。次の対応時刻は実際の営業日と担当者の状況で判断し、仮想条件から推測しない。","validation":"roleplay_hypothesis_not_notification_benchmark","activation_allowed":false,"sources":[{"file":"manager-round1.json","caseId":"SIM06"},{"file":"manager-round2.json","caseId":"SIM06"},{"file":"customer-feedback.json","caseId":"SIM06"}]},
+    {"id":"SYN-K10","category":"safety_rule_candidate","title":"断る場合も代案を勝手に確定しない","proposal":"翌日不可なら、別日の希望があるか相談する。顧客が見送ったらそのまま終了し、無理に受注へ戻さない。架空の満枠条件を営業情報として再利用しない。","validation":"roleplay_hypothesis","activation_allowed":false,"sources":[{"file":"manager-round1.json","caseId":"SIM03"},{"file":"customer-round3.json","caseId":"SIM03"}]},
+    {"id":"SYN-K11","category":"conversation_pattern","title":"否定色と訂正数量の最終希望を復唱","proposal":"『ピンクではなく薄紫』『2つでなく3つ』を否定前の値と混ぜず整理し、曖昧なら確認する。","validation":"roleplay_hypothesis","activation_allowed":false,"sources":[{"file":"customer-round2.json","caseId":"SIM05"},{"file":"clerk-round2.json","caseId":"SIM05"}]},
+    {"id":"SYN-K12","category":"validation_rule","title":"エージェントのうまい返答を実装合格にしない","proposal":"顧客発言を現行コードへ再入力し、カルテと返信を比較する。店長役の判断を再生していない部分や、実LINE未検証を明記する。","validation":"local_runtime_replay_performed","activation_allowed":false,"sources":[{"file":"customer-round3.json","caseId":"SIM02"},{"file":"customer-round3.json","caseId":"SIM03"}]}
+  ]
+}

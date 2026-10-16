@@ -1,0 +1,13 @@
+{
+ "synthetic":true,"role":"store_manager","actualSystemOutput":false,
+ "notice":"合成会話の判断例。以下の税込提案額・制作枠・配達可否はこのケース限りの架空条件であり、実店舗の価格・営業情報・受注承諾ではない。",
+ "turns":[
+  {"caseId":"SIM01","status":"proposal_ready","fictional":true,"sameCaseUpdated":true,"decision":{"option":1,"label":"税込総額と内容を提案・顧客了承待ち"},"proposal":{"product":"小さめ卓上の置き型アレンジメント1つ","colors":["ピンク","紫"],"excludedColors":["赤"],"taxIncludedTotal":9800,"pickup":"2026-10-25 14:00頃","fictional":true},"textForClerk":"【架空の提案】ピンクと紫・赤なしの小さめ卓上アレンジ1つ、税込9,800円で提案します。10月25日14時頃の店頭受取で仮提案可能です。この具体案でよいか確認し、了承前に予約確定しないでください。","requiresCustomerConsent":true,"bookingStatus":"提案了承待ち・未確定","reason":"月・時刻・税込上限が明確になったため個別案を追加。9,800円は今回の創作見積で実価格ではない。"},
+  {"caseId":"SIM02","orderKey":"SIM02-BOUQUET","status":"conditional_acceptance","fictional":true,"decision":{"label":"簡易構成3束・税込合計3,000円を提案"},"proposal":{"product":"小さめ簡易構成ブーケ3束・色おまかせ","taxIncludedTotal":3000,"pickup":"2026-11-07 10:00","fictional":true},"textForClerk":"【架空の個別判断】小さめ簡易構成3束・色おまかせ、税込合計3,000円、11月7日10時店頭受取の案を承諾できます。顧客は簡易構成には同意済みですが、今回明示した税込最終提案への了承は別に確認してください。了承までは予約未確定です。","requiresCustomerConsent":true,"bookingStatus":"最終提案への顧客了承待ち","reason":"数量・予算・簡易構成同意・日時が揃った。スタンドの判断を兼ねない。"},
+  {"caseId":"SIM02","orderKey":"SIM02-STAND","status":"need_more_info","fictional":true,"decision":{"label":"配達地域の対応範囲とルートを確認"},"textForClerk":"【架空の個別判断】架空A市サンプル喫茶、11月14日17時、スタンド1台、配達料込み上限15,000円の希望を保持します。市名だけでは架空の対応範囲や移動時間を判断できないため、詳細住所を確認してから配達可否と税込総額を回答します。遠方と断定せず、夕方だから一律不可とも案内しないでください。店頭受取への変更もまだ提案承諾されていません。","requiresCustomerConsent":false,"bookingStatus":"住所・配達可否・見積未確定","reason":"前提には遠方配達不可があるが、架空A市が遠方である証拠はない。別注文の承諾に巻き込まない。"},
+  {"caseId":"SIM03","status":"closed_no_action","fictional":true,"decision":null,"textForClerk":null,"requiresCustomerConsent":false,"reason":"見送り後のお礼。新規質問・確認通知・再開は不要。"},
+  {"caseId":"SIM04","status":"waiting_for_image","fictional":true,"decision":null,"textForClerk":null,"requiresCustomerConsent":false,"bookingStatus":"写真待ち・未確定","reason":"写真未送信を顧客自身が明示。見たふりや定期的な再催促はしない。"},
+  {"caseId":"SIM05","status":"decision_pending","fictional":true,"sameCaseUpdated":true,"decision":null,"textForClerk":null,"requiresCustomerConsent":false,"bookingStatus":"既存の店長確認待ち","reason":"同じ確認依頼の繰り返しで新規通知にしない。前回の材料・枠・税込見積確認がまだ完了した証拠はなく、承諾を創作しない。","openDecision":{"product":"薄紫ブーケ3束","budgetTotal":6000,"pickup":"2026-10-23 15:00","useDate":"2026-10-24"}},
+  {"caseId":"SIM06","status":"waiting_customer_selection","fictional":true,"decision":null,"textForClerk":null,"requiresCustomerConsent":true,"bookingStatus":"代案選択待ち・未確定","reason":"18時不可の返答が今回顧客へ届いた段階。顧客は16時も旧候補も選択していない。","unavailable":"2026-10-30 18:00","alternatives":["2026-10-30 16:00","2026-10-31 12:00"],"useDate":"2026-11-01","selectedAlternative":null}
+ ]
+}

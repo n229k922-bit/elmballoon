@@ -1,0 +1,268 @@
+{
+  "synthetic": true,
+  "activation_allowed": false,
+  "review_status": "synthetic_needs_review",
+  "notice": "合成検証からの改善候補。実価格・在庫・返金条件・顧客の事実ではなく、本番へ自動適用しない。",
+  "candidates": [
+    {
+      "id": "EXP-K01",
+      "title": "注文の途中の別件を分ける",
+      "proposal": "旧相談と別注文の数量・予算・日付・方法を独立保持する。",
+      "caseId": "EXP10",
+      "sources": [
+        "customer-scenarios.json#EXP10",
+        "runtime-replay.json#EXP10",
+        "customer-runtime-review.json#EXP10"
+      ],
+      "activation_allowed": false,
+      "validation": "local_runtime_observation_and_synthetic_agent_review_not_live_line"
+    },
+    {
+      "id": "EXP-K02",
+      "title": "片方だけ見送りを扱う",
+      "proposal": "対象注文を確認し、他方の相談を終了させない。",
+      "caseId": "EXP24",
+      "sources": [
+        "customer-scenarios.json#EXP24",
+        "runtime-replay.json#EXP24",
+        "customer-runtime-review.json#EXP24"
+      ],
+      "activation_allowed": false,
+      "validation": "local_runtime_observation_and_synthetic_agent_review_not_live_line"
+    },
+    {
+      "id": "EXP-K03",
+      "title": "使用日と受取日と変更案を分ける",
+      "proposal": "旧日時・新希望日時・使用日を別状態にし、一部だけ合成しない。",
+      "caseId": "EXP20",
+      "sources": [
+        "customer-scenarios.json#EXP20",
+        "runtime-replay.json#EXP20",
+        "customer-runtime-review.json#EXP20"
+      ],
+      "activation_allowed": false,
+      "validation": "local_runtime_observation_and_synthetic_agent_review_not_live_line"
+    },
+    {
+      "id": "EXP-K04",
+      "title": "回答期限を納品日へ転記しない",
+      "proposal": "今日中に返事がほしいは回答期限として扱う。",
+      "caseId": "EXP04",
+      "sources": [
+        "customer-scenarios.json#EXP04",
+        "runtime-replay.json#EXP04",
+        "customer-runtime-review.json#EXP04"
+      ],
+      "activation_allowed": false,
+      "validation": "local_runtime_observation_and_synthetic_agent_review_not_live_line"
+    },
+    {
+      "id": "EXP-K05",
+      "title": "除外色を保持する",
+      "proposal": "赤なし等を希望色と同列に保存しない。",
+      "caseId": "EXP01",
+      "sources": [
+        "customer-scenarios.json#EXP01",
+        "runtime-replay.json#EXP01",
+        "customer-runtime-review.json#EXP01"
+      ],
+      "activation_allowed": false,
+      "validation": "local_runtime_observation_and_synthetic_agent_review_not_live_line"
+    },
+    {
+      "id": "EXP-K06",
+      "title": "比較質問と決定を分ける",
+      "proposal": "浮くものと置くものの比較から選択済みと推測しない。",
+      "caseId": "EXP02",
+      "sources": [
+        "customer-scenarios.json#EXP02",
+        "runtime-replay.json#EXP02",
+        "customer-runtime-review.json#EXP02"
+      ],
+      "activation_allowed": false,
+      "validation": "local_runtime_observation_and_synthetic_agent_review_not_live_line"
+    },
+    {
+      "id": "EXP-K07",
+      "title": "数字と商品番号の否定を扱う",
+      "proposal": "米寿88や商品番号ではないという訂正を商品参照へしない。",
+      "caseId": "EXP03",
+      "sources": [
+        "customer-scenarios.json#EXP03",
+        "runtime-replay.json#EXP03",
+        "customer-runtime-review.json#EXP03"
+      ],
+      "activation_allowed": false,
+      "validation": "local_runtime_observation_and_synthetic_agent_review_not_live_line"
+    },
+    {
+      "id": "EXP-K08",
+      "title": "子明細の個別訂正を扱う",
+      "proposal": "特定の人の名前・番号訂正だけを当該明細に適用する。",
+      "caseId": "EXP05",
+      "sources": [
+        "customer-scenarios.json#EXP05",
+        "runtime-replay.json#EXP05",
+        "customer-runtime-review.json#EXP05"
+      ],
+      "activation_allowed": false,
+      "validation": "local_runtime_observation_and_synthetic_agent_review_not_live_line"
+    },
+    {
+      "id": "EXP-K09",
+      "title": "金額幅と単価合計を保持する",
+      "proposal": "2万から3万の下限上限を保持し、税送料の確定価格とは区別する。",
+      "caseId": "EXP06",
+      "sources": [
+        "customer-scenarios.json#EXP06",
+        "runtime-replay.json#EXP06",
+        "customer-runtime-review.json#EXP06"
+      ],
+      "activation_allowed": false,
+      "validation": "local_runtime_observation_and_synthetic_agent_review_not_live_line"
+    },
+    {
+      "id": "EXP-K10",
+      "title": "匿名札と公開同意を分ける",
+      "proposal": "贈答札の匿名希望と連絡用本人情報、SNS許可を混同しない。",
+      "caseId": "EXP07",
+      "sources": [
+        "customer-scenarios.json#EXP07",
+        "runtime-replay.json#EXP07",
+        "customer-runtime-review.json#EXP07"
+      ],
+      "activation_allowed": false,
+      "validation": "local_runtime_observation_and_synthetic_agent_review_not_live_line"
+    },
+    {
+      "id": "EXP-K11",
+      "title": "リピーター照合は本人紐付けを使う",
+      "proposal": "名前だけで別顧客の履歴を開示しない。過去価格等は今回の確約にしない。",
+      "caseId": "EXP08",
+      "sources": [
+        "customer-scenarios.json#EXP08",
+        "runtime-replay.json#EXP08",
+        "customer-runtime-review.json#EXP08"
+      ],
+      "activation_allowed": false,
+      "validation": "local_runtime_observation_and_synthetic_agent_review_not_live_line"
+    },
+    {
+      "id": "EXP-K12",
+      "title": "写真待ちと受領済みを分ける",
+      "proposal": "後で送るは未受領。構成・素材を断言せず再催促を抑える。",
+      "caseId": "EXP09",
+      "sources": [
+        "customer-scenarios.json#EXP09",
+        "runtime-replay.json#EXP09",
+        "customer-runtime-review.json#EXP09"
+      ],
+      "activation_allowed": false,
+      "validation": "local_runtime_observation_and_synthetic_agent_review_not_live_line"
+    },
+    {
+      "id": "EXP-K13",
+      "title": "相談見送り後の終話を維持する",
+      "proposal": "お礼や仕様訂正だけで再開せず、新規受注質問を止める。",
+      "caseId": "EXP11",
+      "sources": [
+        "customer-scenarios.json#EXP11",
+        "runtime-replay.json#EXP11",
+        "customer-runtime-review.json#EXP11"
+      ],
+      "activation_allowed": false,
+      "validation": "local_runtime_observation_and_synthetic_agent_review_not_live_line"
+    },
+    {
+      "id": "EXP-K14",
+      "title": "返金相談を通常注文へ戻さない",
+      "proposal": "成立・本人・支払・条件確認を人へ引継ぎ、返金を確約しない。",
+      "caseId": "EXP12",
+      "sources": [
+        "customer-scenarios.json#EXP12",
+        "runtime-replay.json#EXP12",
+        "customer-runtime-review.json#EXP12"
+      ],
+      "activation_allowed": false,
+      "validation": "local_runtime_observation_and_synthetic_agent_review_not_live_line"
+    },
+    {
+      "id": "EXP-K15",
+      "title": "破損相談で原因と責任を即断しない",
+      "proposal": "顧客を非難せず事実確認と店長引継ぎを優先する。",
+      "caseId": "EXP13",
+      "sources": [
+        "customer-scenarios.json#EXP13",
+        "runtime-replay.json#EXP13",
+        "customer-runtime-review.json#EXP13"
+      ],
+      "activation_allowed": false,
+      "validation": "local_runtime_observation_and_synthetic_agent_review_not_live_line"
+    },
+    {
+      "id": "EXP-K16",
+      "title": "強い圧力で補償を変更しない",
+      "proposal": "レビューへの言及等で根拠のない返品返金を約束しない。",
+      "caseId": "EXP14",
+      "sources": [
+        "customer-scenarios.json#EXP14",
+        "runtime-replay.json#EXP14",
+        "customer-runtime-review.json#EXP14"
+      ],
+      "activation_allowed": false,
+      "validation": "local_runtime_observation_and_synthetic_agent_review_not_live_line"
+    },
+    {
+      "id": "EXP-K17",
+      "title": "雨天の代案と仮数量を確定しない",
+      "proposal": "会場許可と安全・取消条件を確認し、未選択の案を受注扱いしない。",
+      "caseId": "EXP15",
+      "sources": [
+        "customer-scenarios.json#EXP15",
+        "runtime-replay.json#EXP15",
+        "customer-runtime-review.json#EXP15"
+      ],
+      "activation_allowed": false,
+      "validation": "local_runtime_observation_and_synthetic_agent_review_not_live_line"
+    },
+    {
+      "id": "EXP-K18",
+      "title": "支払予定と書類依頼を完了にしない",
+      "proposal": "入金・発行・受渡しの実確認を別々に保持する。",
+      "caseId": "EXP16",
+      "sources": [
+        "customer-scenarios.json#EXP16",
+        "runtime-replay.json#EXP16",
+        "customer-runtime-review.json#EXP16"
+      ],
+      "activation_allowed": false,
+      "validation": "local_runtime_observation_and_synthetic_agent_review_not_live_line"
+    },
+    {
+      "id": "EXP-K19",
+      "title": "装飾と発送を同条件にしない",
+      "proposal": "会場許可・設営枠・配送費・温度条件を個別確認する。",
+      "caseId": "EXP18",
+      "sources": [
+        "customer-scenarios.json#EXP18",
+        "runtime-replay.json#EXP18",
+        "customer-runtime-review.json#EXP18"
+      ],
+      "activation_allowed": false,
+      "validation": "local_runtime_observation_and_synthetic_agent_review_not_live_line"
+    },
+    {
+      "id": "EXP-K20",
+      "title": "現在在店と過去営業例外を混同しない",
+      "proposal": "過去の開店例から今の来店可否を推測しない。",
+      "caseId": "EXP19",
+      "sources": [
+        "customer-scenarios.json#EXP19",
+        "runtime-replay.json#EXP19",
+        "customer-runtime-review.json#EXP19"
+      ],
+      "activation_allowed": false,
+      "validation": "local_runtime_observation_and_synthetic_agent_review_not_live_line"
+    }
+  ]
+}

@@ -1,0 +1,12 @@
+{
+  "synthetic": true,
+  "anchorTime": "2026-10-16T01:05:00.000Z",
+  "turns": [
+    {"caseId":"SIM01","customerId":"SIM-C01","role":"customer","text":"机に置けるアレンジみたいなのが1つほしいです。色はまだ娘に聞いてなくて💦 日にちは未定でお願いします"},
+    {"caseId":"SIM02","customerId":"SIM-C02","role":"customer","text":"11月7日の午前中に取りに行きたいです！色は3つともおまかせで大丈夫です😊"},
+    {"caseId":"SIM03","customerId":"SIM-C03","role":"customer","text":"山田です。明日17日の午後に取りに行きたいです。去年は数字の8で星がついたやつだったと思います。今回もゴールド系で、全部で4000円くらい希望です"},
+    {"caseId":"SIM04","customerId":"SIM-C04","role":"customer","text":"まだ写真送れてないです💦 赤い大きなハートを青にしたい感じです。同じ材料でできますか？"},
+    {"caseId":"SIM05","customerId":"SIM-C05","role":"customer","text":"24日で合ってます！ひとつ2000円です。すみません2つじゃなくて3つで、ピンクじゃなくて薄紫に変えたいです🙏"},
+    {"caseId":"SIM06","customerId":"SIM-C06","role":"customer","text":"店頭で受け取りです。10月31日の12時希望です！机に置くタイプを1つ、合計5000円くらいでお願いします。使うのは11月1日です"}
+  ]
+}

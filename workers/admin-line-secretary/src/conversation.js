@@ -17,6 +17,23 @@ const undecided = /未定|まだ決まって|分からない|わからない|決
 const NUMBER = '(\\d[\\d,]*(?:\\.\\d+)?)\\s*(万|千)?';
 const amount = (digits, unit) => Number(digits.replaceAll(',', '')) * (unit === '万' ? 10000 : unit === '千' ? 1000 : 1);
 
+// Intent precedes extraction: dates, colours and money mentioned in complaints,
+// greetings or unrelated chat must never mutate an order.
+export function classifyConversationIntent(value = '') {
+  const text = normalize(value).trim();
+  const result = (kind, suppressFacts, requiresOwner, reason, message) => ({ kind, suppressFacts, requiresOwner, reason, message });
+  if (/誤飲|飲み込|のみ込|窒息|息ができ|呼吸が|意識が|ヘリウム.{0,8}(?:吸った|吸い込|吸って)|火傷|やけど|怪我|(?:^|[。\s、])けが|けがを|けがした|出血/u.test(text)) return result('safety', true, true, 'safety_incident', '安全に関わるご相談として、人の担当へ優先して引き継ぎます。差し迫った危険がある場合は、店舗の返信を待たず地域の緊急窓口や医療機関へご相談ください。');
+  if (/責任者|人間|人の担当|スタッフ|店長/u.test(text) && /話したい|代わって|かわって|つないで|繋いで|直接/u.test(text)) return result('handoff', true, true, 'human_handoff', '人の担当へ引き継ぎます。確認前に対応内容や返金などを確約せず、担当からご案内します。');
+  if (/苦情|クレーム|ひどい|酷い|最悪|話が違|納得でき|返品|返金|交換して|しぼみ|萎み|色が.{0,8}違|届か|まだ来/u.test(text)) return result('complaint', true, true, 'customer_complaint', 'ご不便をおかけし申し訳ありません。人の担当へ引き継ぎ、注文内容と状況を確認して対応をご案内します。交換・返金などは確認後のご案内となります。');
+  if (/見送|注文(?:は|を)?しない|今回は(?:やめ|止め|不要)|相談.{0,6}(?:終了|やめ)/u.test(text)) return result('withdrawal', true, true, 'consultation_withdrawal', '見送りのご希望として承りました。対象のご相談と正式注文の状況を確認し、ほかのご相談を変えずに扱います。');
+  if (/葬儀|葬式|お葬式|告別式|法要|追悼|亡くな|亡くし|死ん|死去|(?:子供|子ども|娘|息子).{0,5}死/u.test(text)) return result('bereavement', false, true, 'sensitive_occasion', 'ご事情をお聞かせいただきありがとうございます。ご希望に沿えるか、内容を慎重に確認いたします。');
+  if (/^(?:(?:どうも|こちらこそ|はい)[、,。\s]*)?(?:ありがとうございます|ありがとうございました|ありがとう|了解です|承知しました|わかりました|分かりました|助かりました)[😊🙏👍✨!！。\s]*(?:また(?:必要な|機会|今度|よろしく|連絡|相談)[\s\S]*)?$/u.test(text) || /^(?:また必要な(?:とき|時)に相談します|今回はここまで)[😊🙏👍。!！\s]*$/u.test(text)) return result('closing', true, false, null, 'こちらこそ、ありがとうございます。また必要なときにお声がけください。');
+  const unrelated = /天気|天候|ニュース|株価|選挙|政治|占い|晩ご飯|夕飯|冗談|ジョーク/u.test(text);
+  const orderClause = /注文|バルーン|ブーケ|スタンド|配達|受取|受け取|取りに|色は|予算|葬儀|飾り/u.test(text);
+  if (unrelated && !orderClause) return result('smalltalk', true, false, null, 'こちらではバルーンのご注文・ご相談をお手伝いしています。ご注文の内容は変更せずにおきます。');
+  return result('order', false, false, null, null);
+}
+
 const PRODUCT_OPTIONS = [[/スタンド/gu, 'バルーンスタンド'], [/ブーケ/gu, 'ブーケ'], [/おむつケーキ/gu, 'おむつケーキ'], [/ヘリウム|浮く/gu, 'ヘリウム（浮く）タイプ'], [/アレンジ/gu, '置き型アレンジメント'], [/リリース/gu, 'バルーンリリース']];
 const COLOR_OPTIONS = [[/メタリックブラック|ゴールド|シルバー|ピンク|ブルー|ラベンダー|ライム|赤|青|白|黒|黄色|紫|緑/gu, null]];
 const METHOD_OPTIONS = [[/店頭|取りに|受け取りに|引き取り/gu, '店頭受取'], [/発送|郵送/gu, '発送'], [/配達|配送|届けて|お届け/gu, '配達']];
@@ -25,11 +42,11 @@ const METHOD_OPTIONS = [[/店頭|取りに|受け取りに|引き取り/gu, '店
 function requestedOptions(text, options, allowCombination = false, numeric = false) {
   const mentions = options.flatMap(([pattern, value]) => [...text.matchAll(pattern)].map(match => ({ value: typeof value === 'function' ? value(match) : value || match[0], index: match.index, end: match.index + match[0].length, evidence: match[0] })));
   mentions.sort((a, b) => a.index - b.index);
-  const rejected = mention => /^(?:色)?(?:は|を|が|には)?\s*(?:ではなく|じゃなく|でなく|ではない|ではありません|じゃない|不要|いらない|なし|無し|以外|やめ|使わない|使わず|避け|抜き|希望しない|希望しません|できない|出来ない|できません|出来ません|行けない|行けません)/u.test(text.slice(mention.end));
+  const rejected = mention => /^(?:色)?(?:は|を|が|には)?\s*(?:ではなく|じゃなく|でなく|ではない|ではありません|じゃない|不要|いらない|なし|無し|以外|やめ|使わない|使わず|入れない|入れず|入れません|避け|抜き|希望しない|希望しません|できない|出来ない|できません|出来ません|行けない|行けません)/u.test(text.slice(mention.end));
   const accepted = mentions.filter(mention => !rejected(mention));
   const values = [...new Set(accepted.map(mention => mention.value))];
   const conditional = accepted.some(mention => /^(?:は|が|を|で|も)?\s*(?:無理|難し|できな|出来な|不可|なら|だったら|の場合)/u.test(text.slice(mention.end)) || (!numeric && /^(?:は|が|を|で|も)?\s*(?:可能(?:です)?か|でき(?:ます)?か|出来(?:ます)?か)/u.test(text.slice(mention.end))) || /(?:なら|場合)[^、,。\n；;]*$/u.test(text.slice(0, mention.index)));
-  const alternative = accepted.some((mention, index) => index && /か|または|又は|どちら/u.test(text.slice(accepted[index - 1].end, mention.index)));
+  const alternative = accepted.some((mention, index) => index && /か|または|又は|どちら|と/u.test(text.slice(accepted[index - 1].end, mention.index)) && (!allowCombination || /どちら|どっち|迷|比較/u.test(text))) || /どちら|どっち|比較|比べ/u.test(text) && mentions.length > 0;
   const ambiguous = conditional || alternative || (!allowCombination && values.length > 1) || (mentions.length > 0 && values.length === 0);
   return { values: ambiguous ? [] : values, ambiguous, evidence: accepted.map(mention => mention.evidence).join('／') };
 }
@@ -76,7 +93,9 @@ export function extractConversationFacts({ text = '', sourceTimestamp, lastQuest
   const rawText = String(text);
   text = normalize(text);
   const updates = [];
-  const facts = { budget: null, items: [], dateAmbiguities: [], choiceAmbiguities: [] };
+  const intent = classifyConversationIntent(text);
+  const facts = { budget: null, items: [], dateAmbiguities: [], choiceAmbiguities: [], intent };
+  if (intent.suppressFacts) return { updates, facts };
   const quantityLabel = text.match(/(?:^|\n)\s*(?:数量|個数)\s*[:：]\s*([^\n]+)/u);
   const budgetLabel = text.match(/(?:^|\n)\s*(?:ご予算|予算)\s*[:：]\s*([^\n]+)/u);
   const budgetPattern = new RegExp(`${NUMBER}(?:\\s*[〜~～−–-]\\s*${NUMBER})?\\s*${budgetLabel ? '円?' : '円'}`, 'gu');
@@ -125,9 +144,9 @@ export function extractConversationFacts({ text = '', sourceTimestamp, lastQuest
   }
   if (lastQuestions.length === 1 && lastKey && undecided.test(text) && text.length < 30) add(lastKey, '未定', 0.95);
   const reference = text.match(/(?:商品番号|品番|商品No\.?|HP(?:の)?(?:商品)?番号)\s*[:：#]?\s*([A-Za-z0-9_-]+)/iu);
-  if (reference) add('product_source', reference[1], 1, reference[0]);
+  if (reference && !/^(?:は|が)?\s*(?:ではなく|じゃなく|ではない|ではありません|じゃない)/u.test(text.slice(reference.index + reference[0].length))) add('product_source', reference[1], 1, reference[0]);
   if (choices.product_type.values.length) add('product_type', choices.product_type.values[0]);
-  const purpose = text.match(/卒団|卒業|誕生日|周年|開店|開業|移転|結婚|発表会|退職|還暦/u);
+  const purpose = text.match(/卒団|卒業|卒部|誕生日|周年|開店|開業|移転|結婚|発表会|退職|還暦|喜寿|米寿|プロポーズ|葬儀|告別式|法要|追悼|受付飾り/u);
   if (purpose) add('purpose', purpose[0]);
   if (choices.quantity.values.length) add('quantity', choices.quantity.values[0], 0.95, choices.quantity.evidence);
   if (choices.budget.values.length) {
@@ -170,6 +189,8 @@ export function extractConversationFacts({ text = '', sourceTimestamp, lastQuest
   const timePattern = /(午前|午後)?\s*(\d{1,2})(?:時(?:(\d{1,2})分?|半)?|:(\d{2}))/gu;
   const timeCandidates = text.split(/[、,。\n；;]/u).filter(clause => dateRole(clause) !== 'use_date').flatMap(clause => [...clause.matchAll(timePattern)]);
   if (timeCandidates.length > 1) facts.dateAmbiguities.push('お受け取りの時間が複数あります');
+  const dateChangeUnresolved = /変更|変え|ではなく|じゃなく/u.test(text) && tokens.length > 0 && facts.dateAmbiguities.length > 0;
+  if (dateChangeUnresolved) for (let i = updates.length - 1; i >= 0; i--) if (['receive_date', 'use_date', 'receive_time'].includes(updates[i].key)) updates.splice(i, 1);
   const time = !facts.dateAmbiguities.length && timeCandidates.length === 1 ? timeCandidates[0] : null;
   if(time) {
     let hour=Number(time[2]);const minute=time[3]?Number(time[3]):time[4]?Number(time[4]):/半/u.test(time[0])?30:0;
@@ -183,8 +204,11 @@ export function extractConversationFacts({ text = '', sourceTimestamp, lastQuest
 export function planConversation({ text = '', fields = {}, history = [], sourceTimestamp, lastQuestions = [], hasImage = false } = {}) {
   const { updates, facts } = extractConversationFacts({ text, sourceTimestamp, lastQuestions, hasImage });
   const merged = { ...fields };
+  const intent = facts.intent;
+  if (intent.suppressFacts) return { updates: [], fields: merged, facts, intent, questions: [], message: intent.message, requiresOwner: intent.requiresOwner, ownerReasons: intent.reason ? [intent.reason] : [], evidence: [], clarificationNeeded: false, approvalRequired: intent.requiresOwner };
   for (const update of updates) merged[update.key] = { value_text: update.value, status: update.status };
   const ownerReasons = [];
+  if (intent.requiresOwner && intent.reason) ownerReasons.push(intent.reason);
   const method = valueOf(merged.fulfillment_method);
   if (/配達|発送/u.test(method)) ownerReasons.push('delivery_feasibility');
   const day = anchorDay(sourceTimestamp);
@@ -225,6 +249,8 @@ export function planConversation({ text = '', fields = {}, history = [], sourceT
   const waiting = !questions.length && !ownerReasons.length;
   if (waiting) ownerReasons.push('review_collected_details');
   const historyCheck=ownerReasons.includes('verify_previous_order') ? '以前のご注文を確認します。変更したい点があれば、その点だけお知らせください。' : '';
-  const message = [updates.length ? 'ご回答ありがとうございます😊' : 'ご連絡ありがとうございます😊', historyCheck, ...questions.map(question => question.text), ownerReasons.length ? 'いただいた内容で対応できるか確認いたします。' : ''].filter(Boolean).join('\n\n');
-  return { updates, fields: merged, facts, questions, message, requiresOwner: ownerReasons.length > 0, ownerReasons, evidence: updates.map(({ key, evidence, sourceTimestamp: timestamp }) => ({ key, text: evidence, sourceTimestamp: timestamp })), clarificationNeeded: facts.dateAmbiguities.length > 0 || facts.choiceAmbiguities.length > 0, approvalRequired: true };
+  const restrained = intent.kind === 'bereavement' || /葬儀|法要|追悼|受付飾り|還暦|喜寿|米寿|プロポーズ/u.test(text + valueOf(merged.purpose));
+  const selectedQuestions = restrained ? questions.slice(0, 1).map(q => ({ ...q, text: q.text.replaceAll('😊', '') })) : questions;
+  const message = [intent.kind === 'bereavement' ? intent.message : updates.length ? `ご回答ありがとうございます${restrained ? '。' : '😊'}` : `ご連絡ありがとうございます${restrained ? '。' : '😊'}`, historyCheck, ...selectedQuestions.map(question => question.text), ownerReasons.length && intent.kind !== 'bereavement' ? 'いただいた内容で対応できるか確認いたします。' : ''].filter(Boolean).join('\n\n');
+  return { updates, fields: merged, facts, intent, questions: selectedQuestions, message, requiresOwner: ownerReasons.length > 0, ownerReasons, evidence: updates.map(({ key, evidence, sourceTimestamp: timestamp }) => ({ key, text: evidence, sourceTimestamp: timestamp })), clarificationNeeded: facts.dateAmbiguities.length > 0 || facts.choiceAmbiguities.length > 0, approvalRequired: true };
 }

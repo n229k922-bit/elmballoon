@@ -1,0 +1,14 @@
+{
+  "synthetic":true,
+  "role":"store_manager",
+  "actualSystemOutput":false,
+  "fictionalPolicyNotice":"個別の金額・枠・営業時間・代案はすべて模擬判断。実店舗の価格や営業時間として利用禁止。",
+  "turns":[
+    {"caseId":"SIM01","status":"need_more_info","decision":{"option":3,"fictional":true,"label":"月と時刻を確認後、税込総額を回答"},"textForClerk":"【架空の個別判断】置き型1つ、ピンクと紫・赤なし、税込合計10,000円以内を目標に内容を検討します。ただし実際の税込見積と受取可否は未確定です。25日の月と午後の希望時刻を先に確認してください。全商品の税込ルールや制作可能日を推測して案内しないでください。","requiresCustomerConsent":false,"reason":"日付の月が未確定で、税込の確定見積もない。予算を確定価格として回答しない。"},
+    {"caseId":"SIM02","orderKey":"SIM02-STAND","status":"need_more_info","decision":{"option":1,"fictional":true,"label":"地域・会場・正確な時刻と送料範囲を確認して判断"},"textForClerk":"【架空の別件判断】スタンド1台・予算15,000円ほど・11月14日夕方の配達として、ブーケ3束の相談とは分けてください。配達先の市町村・会場名、希望時刻、15,000円に配達料も含めたいかを確認してください。地域未確認なので、遠方と決め付けて断ったり配達可能と承諾したりしないでください。","requiresCustomerConsent":false,"reason":"配達地域未確認。架空の遠方配達不可条件は地域確認後にのみ適用する。","otherOrderPreserved":{"orderKey":"SIM02-BOUQUET","quantity":3,"budgetTotal":3000,"receiveDate":"2026-11-07","receiveTime":"10:00","status":"簡易構成への顧客同意待ち・未確定"}},
+    {"caseId":"SIM03","status":"not_requested","decision":null,"textForClerk":null,"requiresCustomerConsent":false,"reason":"相談終了済み。数字9の訂正で再開せず、受注済み注文の取消とも混同しない。"},
+    {"caseId":"SIM04","status":"not_requested","decision":null,"textForClerk":null,"requiresCustomerConsent":false,"reason":"画像未受領と時刻確認の聞き取り中。材料・完全再現・価格を推測しない。"},
+    {"caseId":"SIM05","status":"decision_pending","decision":{"option":3,"fictional":true,"label":"仕様と枠確認後に税込見積を回答"},"textForClerk":"【架空の個別判断】薄紫のブーケ3束、合計予算6,000円、10月23日15時店頭受取・10月24日使用として確認を進めます。希望条件は揃いましたが、具体構成・材料と枠、税込総額の確認はまだです。確認前に6,000円で受注確定とは伝えないでください。","requiresCustomerConsent":false,"reason":"入力が揃ったことと、制作・価格・枠が確認済みであることは別。"},
+    {"caseId":"SIM06","status":"alternative_proposal","sameCaseUpdated":true,"decision":{"option":2,"fictional":true,"label":"10月30日18時は不可・16時または旧候補を相談"},"textForClerk":"【このケースだけの架空条件】10月30日18時の受取は対応できません。同日の16時、または旧候補の10月31日12時なら引き続き相談できます。使用日は11月1日のままです。どちらがよいかお客様に確認し、了解前に受取日時を変更しないでください。具体構成・税込総額と受注はまだ確定していません。","requiresCustomerConsent":true,"reason":"18時不可・16時代案はこのケース用に追加した架空前提。実店舗営業時間ではない。","suggestedCustomerText":"10月30日の18時は対応が難しいため、同日16時か、先ほどの10月31日12時はいかがでしょうか？ご使用日は11月1日のままで確認しています。ご都合を教えてください😊","newFictionalPremise":{"appliesTo":"SIM06のみ","unavailable":"2026-10-30 18:00","alternatives":["2026-10-30 16:00","2026-10-31 12:00"],"confirmedBooking":false}}
+  ]
+}

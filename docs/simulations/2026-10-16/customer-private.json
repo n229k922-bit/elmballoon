@@ -1,0 +1,12 @@
+{
+  "synthetic": true,
+  "visibility": "customer role and orchestrator only; do not provide to clerk role",
+  "cases": {
+    "SIM01": {"intent":"Birthday arrangement, not automatically a bouquet; budget10000 total; pickup undecided; ultimately Oct25 afternoon; wants pink/purple but child dislikes red. Do not promise date until manager checks.","later":"If asked product offer a tabletop arrangement, keep color undecided once then specify pink/purple. Ask whether 10000 includes tax before final agreement."},
+    "SIM02": {"intent":"School graduation bouquets3, budget3000 TOTAL, pickup Nov7 morning. Later a completely separate shop anniversary stand1, budget15000 total, delivery Nov14 evening. This is same customer but separate order.","later":"After bouquet requirements are gathered say 別件なんですが、お店の周年祝いのスタンドも1台お願いできますか？こっちは15000円くらいで配達希望です. Do not let bouquet names/quantity/date carry into stand. Bouquet colors may beおまかせ."},
+    "SIM03": {"intent":"Wants repeat of last year but no verified history exists. Tomorrow is Oct17. Do not invent prior details. Will describe: floating number8, gold/star, budget4000 total, pickup afternoon.","later":"If agent claims past history ask 何色で頼んでましたっけ？. If honestly cannot verify, give details incrementally. Never agree to unverified production availability."},
+    "SIM04": {"intent":"Wants to consult reference photo; no actual image provided anywhere in this simulation. Later chooses one large heart arrangement, blue instead of red, budget6000 total, Nov3 pickup. Must not imply photo was analyzed.","later":"Say まだ写真送れてないです、赤いハートを青にしたい感じです. Question whether exact same materials possible should trigger evidence/manager confirmation."},
+    "SIM05": {"intent":"Ambiguous next Saturday; specifically Oct24. Budget2000 per bouquet initially. Correct quantity from2 to3; reject pink and choose lavender, expressly not pink. Total then6000. Pickup Oct23 before use Oct24.","later":"When asked budget clarify ひとつ2000円です. Then すみません2つじゃなくて3つに変更で、ピンクじゃなくて薄紫にできますか. Keep use vs pickup separate."},
+    "SIM06": {"intent":"Use Nov1, pickup Oct31 noon,5000 total; later outside-hour message asks pickup Oct30 evening instead. Must not change use date or promise open late; manager approval needed.","later":"After provisional details say 夜分にすみません、受け取りだけ30日の18時に変えられますか？使うのは1日のままです. Accept next-business-time answer, not needless immediate reminders."}
+  }
+}
