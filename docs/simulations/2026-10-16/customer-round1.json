@@ -1,0 +1,12 @@
+{
+  "synthetic": true,
+  "anchorTime": "2026-10-16T01:00:00.000Z",
+  "turns": [
+    {"caseId":"SIM01","customerId":"SIM-C01","role":"customer","text":"こんにちは😊 娘の誕生日にバルーンお願いしたいです。1万円くらいでできますか？取りに行く予定ですが日にちはまだ相談中です"},
+    {"caseId":"SIM02","customerId":"SIM-C02","role":"customer","text":"卒部する子に渡すブーケ、3つお願いできますか？小学生です。予算は全部で3000円くらいです"},
+    {"caseId":"SIM03","customerId":"SIM-C03","role":"customer","text":"お久しぶりです！去年と同じ感じのを明日お願いしたいです。前の注文わかりますか？"},
+    {"caseId":"SIM04","customerId":"SIM-C04","role":"customer","text":"インスタの写真みたいなのが欲しいんですけど、写真送って相談できますか？色はちょっと変えたいです"},
+    {"caseId":"SIM05","customerId":"SIM-C05","role":"customer","text":"来週の土曜くらいにお祝いのブーケ2つほしいです。予算2000円でピンク系がいいです"},
+    {"caseId":"SIM06","customerId":"SIM-C06","role":"customer","text":"お忙しいところすみません、今返信もらえなくても大丈夫です。11月1日の誕生日に使うバルーン、前日の昼に受け取れますか？5000円くらいで考えてます"}
+  ]
+}

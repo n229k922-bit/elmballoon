@@ -1,0 +1,56 @@
+{
+  "synthetic": true,
+  "role": "order_clerk",
+  "actualSystemOutput": false,
+  "notice": "模擬会話の提案応答。店長判断と在庫・制作枠も架空条件であり、実店舗情報ではない。",
+  "turns": [
+    {
+      "caseId":"SIM01","customerId":"SIM-C01",
+      "text":"置き型のアレンジを1つですね😊 日にちは未定、お色もご相談中としておきます。ご予算1万円ほどは、こちら1つの合計ということでよろしいですか？",
+      "knownFacts":{"purpose":"娘の誕生日","productType":"置き型アレンジメント","quantity":1,"budget":"10000円程度","budgetScope":"未確認","fulfillmentMethod":"店頭受取","receiveDate":"未定","color":"未定・娘に確認予定"},
+      "pending":["予算が合計かの確認","受取日時・色の後日連絡","具体的デザインと価格・制作可否"],
+      "managerRequest":null,
+      "safetyNotes":["未定の日時や色を再質問しない","受注可能や価格を確約しない"]
+    },
+    {
+      "caseId":"SIM02","customerId":"SIM-C02",
+      "text":"ありがとうございます😊 11月7日の午前中に店頭受け取り、ブーケ3つ・合計3,000円ほど、お色はすべておまかせですね。こちらの内容で制作とお受け取りが可能か確認します。午前中の何時頃をご希望でしょうか？",
+      "knownFacts":{"purpose":"小学生の卒部","productType":"ブーケ","quantity":3,"budget":"3000円程度","budgetScope":"合計","receiveDate":"2026-11-07","receiveTime":"午前中・時刻未確認","fulfillmentMethod":"店頭受取","color":"3つともおまかせ"},
+      "pending":["正確な受取時刻","制作内容・受注可否・価格確認"],
+      "managerRequest":{"question":"小学生の卒部用ブーケ3つを合計3,000円ほど、11月7日午前中に店頭受取希望です。色はすべておまかせ。この予算で提案できる内容と受取可否をお願いします。時刻は聞き取り中です。","knownFacts":{"productType":"ブーケ","quantity":3,"budgetTotal":"3000円程度","receiveDate":"2026-11-07","receiveTime":"午前中・時刻未確認","fulfillmentMethod":"店頭受取","color":"おまかせ"},"options":["1：この条件で提案可能・内容を案内","2：予算または日時の変更を相談","3：確認後に回答"]},
+      "safetyNotes":["合計3000円と数量3を保持","時刻未確定で受注確定にしない"]
+    },
+    {
+      "caseId":"SIM03","customerId":"SIM-C03",
+      "text":"山田様、詳細ありがとうございます。申し訳ありませんが、明日17日は制作枠が埋まっており、お渡しが難しい状況です。別の日でもよろしければ、ご希望日を教えていただけますか？昨年の内容はまだ照合できていないため、数字の8と星は今回のご希望として合っているかも教えてください。",
+      "knownFacts":{"customerName":"山田・自己申告","previousOrder":"昨年の内容は未照合","requestedDate":"2026-10-17","requestedTime":"午後","fulfillmentMethod":"店頭受取","referenceRecollection":"数字の8・星が付いたものだったと思う","color":"ゴールド系","budget":"4000円程度","budgetScope":"合計","managerDecision":"架空条件：10月17日の新規制作不可"},
+      "pending":["別日を希望するかの顧客同意","今回の数字・星の仕様確認","履歴の本人照合","別日の制作可否"],
+      "managerRequest":null,
+      "safetyNotes":["架空店長判断をこの模擬会話内だけで使用","日時を勝手に別日に変更しない","名字だけで過去注文を本人確定しない","前年の数字8を今年にも流用しない"]
+    },
+    {
+      "caseId":"SIM04","customerId":"SIM-C04",
+      "text":"大きなハートを赤から青に変えたいというご希望ですね😊 まだお写真を確認できていないため、同じ材料で作れるかは確認が必要です。参考のお写真を送っていただけますか？お受け取り希望日も決まっていれば教えてください。",
+      "knownFacts":{"reference":"Instagramの写真・未受領","requestedChange":"大きなハートを赤から青に変更","requestedMaterial":"同じ材料で可能か相談中"},
+      "pending":["参考写真受領とスタッフ確認","受取日","商品・材料の特定","価格・数量・受取方法","材料変更可否"],
+      "managerRequest":null,
+      "safetyNotes":["写真は見ていないと明示","赤を希望色として保存しない","未特定商品の材料可否を断言しない"]
+    },
+    {
+      "caseId":"SIM05","customerId":"SIM-C05",
+      "text":"変更ありがとうございます😊 10月24日、薄紫系のブーケ3つ、1つ2,000円・合計のご予算6,000円ですね。お受け取りは店頭・配達・発送のどちらをご希望ですか？何時頃をご希望でしょうか？制作と日時の可否は確認してご案内します。",
+      "knownFacts":{"purpose":"お祝い","productType":"ブーケ","quantity":3,"supersededQuantity":2,"color":"薄紫系","supersededColor":"ピンク系","receiveDate":"2026-10-24・顧客確認済み","budgetUnit":"2000円","budgetScope":"単価","budgetTotalCalculated":"6000円・予算の算術合計で見積価格ではない"},
+      "pending":["受取方法・時刻","制作仕様・受注可否","最終見積"],
+      "managerRequest":null,
+      "safetyNotes":["訂正後の数量3・薄紫を有効値とする","1つ2000円を合計2000円と誤認しない","算術合計6000円は確定価格ではない"]
+    },
+    {
+      "caseId":"SIM06","customerId":"SIM-C06",
+      "text":"ありがとうございます😊 置き型を1つ・合計5,000円ほど、10月31日12時に店頭受け取り、11月1日にご使用ですね。日時の可否は、次の営業時間内に確認してご連絡します。ご希望のお色や雰囲気はありますか？おまかせでも大丈夫です。",
+      "knownFacts":{"purpose":"誕生日","productType":"置き型アレンジメント","quantity":1,"budget":"5000円程度","budgetScope":"合計","receiveDate":"2026-10-31","receiveTime":"12:00","useDate":"2026-11-01","fulfillmentMethod":"店頭受取","managerStatus":"架空条件：営業時間外で未確認"},
+      "pending":["色・雰囲気","日時と制作の可否・価格確認"],
+      "managerRequest":{"question":"先ほどの10月31日昼受取相談の詳細追記です。置き型1つ・合計5,000円ほど、店頭受取12時、使用日は11月1日。次の営業時間内に日時と制作可否の確認をお願いします。回答待ちの同じ案件で、重複した新規依頼にはしません。","knownFacts":{"productType":"置き型アレンジメント","quantity":1,"budgetTotal":"5000円程度","receiveDate":"2026-10-31","receiveTime":"12:00","useDate":"2026-11-01","fulfillmentMethod":"店頭受取","color":"未確認"},"options":["1：この日時で提案可能・内容を案内","2：別の受取日時を相談","3：確認後に回答"]},
+      "safetyNotes":["昼頃から12時への顧客回答で時刻更新","店長不在のまま可否を承諾しない","営業時間内の即時回答までは保証しない","同一判断依頼へ追記し通知連投しない"]
+    }
+  ]
+}

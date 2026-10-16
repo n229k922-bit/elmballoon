@@ -1,0 +1,13 @@
+{
+  "synthetic": true,
+  "activation_allowed": false,
+  "notLiveLine": true,
+  "scope": "in_memory_burst_queue_priority_diagnostic",
+  "customers": 25,
+  "ownerCount": 1,
+  "expected": "安全性の緊急相談を通常20件境界の後方へ放置しない",
+  "passed": false,
+  "emergencyPendingAfterFirstDrain": true,
+  "pendingAfterFirstDrain": 5,
+  "limits": "単一バッチの処理順診断。実時間の遅延秒数・実LINE送達・医療応答は検証しない"
+}

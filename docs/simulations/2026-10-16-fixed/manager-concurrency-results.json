@@ -1,0 +1,105 @@
+{
+  "synthetic": true,
+  "actualSystemOutput": true,
+  "actualLineDelivery": false,
+  "scope": "Actual imported runtime with in-memory SQLite fixture and mocked LINE fetch; concentrated batch not true distributed concurrency",
+  "anchorTime": "2026-10-16T01:00:00.000Z",
+  "customerCount": 24,
+  "managerCount": 1,
+  "checks": [
+    {
+      "name": "24 events stored before processing",
+      "passed": true,
+      "details": null
+    },
+    {
+      "name": "first drain respects LIMIT20 and leaves4 recoverable",
+      "passed": true,
+      "details": {
+        "orders": 20,
+        "pending": 4
+      }
+    },
+    {
+      "name": "second drain completes24 without cross-customer fields",
+      "passed": true,
+      "details": {
+        "orders": 24,
+        "pending": 0
+      }
+    },
+    {
+      "name": "repeated24 webhook events remain idempotent",
+      "passed": true,
+      "details": null
+    },
+    {
+      "name": "single owner list binds24 draft targets without customer transmission",
+      "passed": true,
+      "details": {
+        "listCharacters": 874,
+        "selectedTargets": 24
+      }
+    },
+    {
+      "name": "choosing number only reviews, does not approve",
+      "passed": true,
+      "details": null
+    },
+    {
+      "name": "approval and repeated1 never approve another customer",
+      "passed": true,
+      "details": null
+    },
+    {
+      "name": "customer queue stays pending while new evidence is unprocessed",
+      "passed": true,
+      "details": {
+        "pendingAfterTwoFlushes": true,
+        "reason": "Unprocessed customer evidence blocks first delivery without changing the pending payload"
+      }
+    },
+    {
+      "name": "repeated flush does not send an approval while changed evidence remains unprocessed",
+      "passed": true,
+      "details": {
+        "mockApiCalls": 24,
+        "customerCalls": 0
+      }
+    },
+    {
+      "name": "processed change cancels the now-stale unsent approval",
+      "passed": true,
+      "details": null
+    },
+    {
+      "name": "stale approval cannot release after changed quantity",
+      "passed": true,
+      "details": {
+        "reply": "この返信案は処理済み、または古い版です。カルテを確認してください。"
+      }
+    },
+    {
+      "name": "same person second order has independent quantity date and budget",
+      "passed": true,
+      "details": {
+        "orders": 2,
+        "newOrderFields": {
+          "budget": "15,000円（合計）",
+          "budget_scope": "total",
+          "fulfillment_method": "配達",
+          "product_type": "バルーンスタンド",
+          "quantity": "1"
+        }
+      }
+    }
+  ],
+  "passed": 12,
+  "failed": 0,
+  "limits": [
+    "No live LINE, production, D1 or deployed Worker accessed",
+    "No distributed lock expiry or network timing stress",
+    "No emergency-priority or afterhours initial-notification acceptance asserted",
+    "Synchronous SQLite fixture serializes DB access; this is burst/target integrity, not distributed race proof"
+  ]
+}

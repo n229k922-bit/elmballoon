@@ -1,0 +1,2759 @@
+{
+  "synthetic": true,
+  "activation_allowed": false,
+  "scope": "interleaved_customer_utterance_replay",
+  "adaptiveCustomerFollowup": true,
+  "notLiveLine": true,
+  "managerRoleDecisionsApplied": false,
+  "sharedDatabase": true,
+  "ownerCount": 1,
+  "customers": 24,
+  "utterances": 120,
+  "realKnowledgeImports": 0,
+  "deliveries": 120,
+  "records": [
+    {
+      "caseId": "EXP01",
+      "turn": 1,
+      "customerText": "娘の誕生日用に1万円で置くタイプお願いしたいです",
+      "actualReply": "こんにちは😊 elm・balloonです🎈\nご注文の相談は、AIアシスタントがお手伝いします。\n制作やお届けの確認が必要なときは、スタッフと連携してご案内します。\n\nご回答ありがとうございます😊\n\nいつ頃のお受け取りをご希望ですか？未定でも大丈夫です。\n\nどのようなバルーンをご希望ですか？写真だけでも大丈夫です😊",
+      "draftStatus": "sent",
+      "requiresRouting": false,
+      "reasons": [],
+      "orders": [
+        {
+          "orderLabel": "EXP01-ORDER-1",
+          "title": "誕生日",
+          "status": "open",
+          "revision": 1,
+          "fields": {
+            "budget": "10,000円（単価・合計未確認）",
+            "purpose": "誕生日"
+          }
+        }
+      ]
+    },
+    {
+      "caseId": "EXP02",
+      "turn": 1,
+      "customerText": "母に贈りたいけど何がいいか分からないです。5000円くらい",
+      "actualReply": "こんにちは😊 elm・balloonです🎈\nご注文の相談は、AIアシスタントがお手伝いします。\n制作やお届けの確認が必要なときは、スタッフと連携してご案内します。\n\nご回答ありがとうございます😊\n\nいつ頃のお受け取りをご希望ですか？未定でも大丈夫です。\n\nどのようなバルーンをご希望ですか？写真だけでも大丈夫です😊",
+      "draftStatus": "sent",
+      "requiresRouting": false,
+      "reasons": [],
+      "orders": [
+        {
+          "orderLabel": "EXP02-ORDER-1",
+          "title": "ご相談",
+          "status": "open",
+          "revision": 1,
+          "fields": {
+            "budget": "5,000円（単価・合計未確認）"
+          }
+        }
+      ]
+    },
+    {
+      "caseId": "EXP03",
+      "turn": 1,
+      "customerText": "父の米寿祝いに数字の88が欲しいです",
+      "actualReply": "こんにちは😊 elm・balloonです🎈\nご注文の相談は、AIアシスタントがお手伝いします。\n制作やお届けの確認が必要なときは、スタッフと連携してご案内します。\n\nご連絡ありがとうございます😊\n\nいつ頃のお受け取りをご希望ですか？未定でも大丈夫です。\n\nどのようなバルーンをご希望ですか？写真だけでも大丈夫です😊",
+      "draftStatus": "sent",
+      "requiresRouting": false,
+      "reasons": [],
+      "orders": [
+        {
+          "orderLabel": "EXP03-ORDER-1",
+          "title": "ご相談",
+          "status": "open",
+          "revision": 1,
+          "fields": {}
+        }
+      ]
+    },
+    {
+      "caseId": "EXP04",
+      "turn": 1,
+      "customerText": "明日の送別会用に2500円のブーケ1つできますか",
+      "actualReply": "こんにちは😊 elm・balloonです🎈\nご注文の相談は、AIアシスタントがお手伝いします。\n制作やお届けの確認が必要なときは、スタッフと連携してご案内します。\n\nご回答ありがとうございます😊\n\nお受け取りは、店頭・配達・発送のどちらをご希望ですか？\n\nいただいた内容で対応できるか確認いたします。\n\n確認が取れ次第、ご返信いたします。店休日・営業時間外は、次の営業時間内のご返信となる場合がございます。",
+      "draftStatus": "pending",
+      "requiresRouting": false,
+      "reasons": [
+        "urgent_capacity"
+      ],
+      "orders": [
+        {
+          "orderLabel": "EXP04-ORDER-1",
+          "title": "ブーケ",
+          "status": "open",
+          "revision": 1,
+          "fields": {
+            "budget": "2,500円（単価・合計未確認）",
+            "product_type": "ブーケ",
+            "quantity": "1",
+            "receive_date": "2026-10-20"
+          }
+        }
+      ]
+    },
+    {
+      "caseId": "EXP05",
+      "turn": 1,
+      "customerText": "卒部のブーケ3つ、1つ1500円くらいで",
+      "actualReply": "こんにちは😊 elm・balloonです🎈\nご注文の相談は、AIアシスタントがお手伝いします。\n制作やお届けの確認が必要なときは、スタッフと連携してご案内します。\n\nご回答ありがとうございます😊\n\nいつ頃のお受け取りをご希望ですか？未定でも大丈夫です。\n\nお受け取りは、店頭・配達・発送のどちらをご希望ですか？",
+      "draftStatus": "sent",
+      "requiresRouting": false,
+      "reasons": [],
+      "orders": [
+        {
+          "orderLabel": "EXP05-ORDER-1",
+          "title": "ブーケ",
+          "status": "open",
+          "revision": 1,
+          "fields": {
+            "budget": "1,500円／1つ",
+            "budget_scope": "unit",
+            "product_type": "ブーケ",
+            "quantity": "3"
+          }
+        }
+      ]
+    },
+    {
+      "caseId": "EXP06",
+      "turn": 1,
+      "customerText": "お店のママの周年にスタンド贈りたいです",
+      "actualReply": "こんにちは😊 elm・balloonです🎈\nご注文の相談は、AIアシスタントがお手伝いします。\n制作やお届けの確認が必要なときは、スタッフと連携してご案内します。\n\nご回答ありがとうございます😊\n\nいつ頃のお受け取りをご希望ですか？未定でも大丈夫です。\n\nお受け取りは、店頭・配達・発送のどちらをご希望ですか？",
+      "draftStatus": "sent",
+      "requiresRouting": false,
+      "reasons": [],
+      "orders": [
+        {
+          "orderLabel": "EXP06-ORDER-1",
+          "title": "周年・バルーンスタンド",
+          "status": "open",
+          "revision": 1,
+          "fields": {
+            "product_type": "バルーンスタンド",
+            "purpose": "周年"
+          }
+        }
+      ]
+    },
+    {
+      "caseId": "EXP07",
+      "turn": 1,
+      "customerText": "推しのホストの誕生日に大きなスタンド1台お願いします",
+      "actualReply": "こんにちは😊 elm・balloonです🎈\nご注文の相談は、AIアシスタントがお手伝いします。\n制作やお届けの確認が必要なときは、スタッフと連携してご案内します。\n\nご回答ありがとうございます😊\n\nいつ頃のお受け取りをご希望ですか？未定でも大丈夫です。\n\nお受け取りは、店頭・配達・発送のどちらをご希望ですか？",
+      "draftStatus": "sent",
+      "requiresRouting": false,
+      "reasons": [],
+      "orders": [
+        {
+          "orderLabel": "EXP07-ORDER-1",
+          "title": "誕生日・バルーンスタンド",
+          "status": "open",
+          "revision": 1,
+          "fields": {
+            "product_type": "バルーンスタンド",
+            "purpose": "誕生日",
+            "quantity": "1"
+          }
+        }
+      ]
+    },
+    {
+      "caseId": "EXP08",
+      "turn": 1,
+      "customerText": "去年と同じ風船を孫に頼みたいです",
+      "actualReply": "こんにちは😊 elm・balloonです🎈\nご注文の相談は、AIアシスタントがお手伝いします。\n制作やお届けの確認が必要なときは、スタッフと連携してご案内します。\n\nご連絡ありがとうございます😊\n\n以前のご注文を確認します。変更したい点があれば、その点だけお知らせください。\n\nいつ頃のお受け取りをご希望ですか？未定でも大丈夫です。\n\nどのようなバルーンをご希望ですか？写真だけでも大丈夫です😊\n\nいただいた内容で対応できるか確認いたします。\n\n確認が取れ次第、ご返信いたします。店休日・営業時間外は、次の営業時間内のご返信となる場合がございます。",
+      "draftStatus": "pending",
+      "requiresRouting": false,
+      "reasons": [
+        "verify_previous_order",
+        "過去注文の確認済み記録なし。昨年と同じ仕様を推測しない"
+      ],
+      "orders": [
+        {
+          "orderLabel": "EXP08-ORDER-1",
+          "title": "ご相談",
+          "status": "open",
+          "revision": 1,
+          "fields": {}
+        }
+      ]
+    },
+    {
+      "caseId": "EXP09",
+      "turn": 1,
+      "customerText": "インスタの青い大きなハートのやつ欲しいです",
+      "actualReply": "こんにちは😊 elm・balloonです🎈\nご注文の相談は、AIアシスタントがお手伝いします。\n制作やお届けの確認が必要なときは、スタッフと連携してご案内します。\n\nご回答ありがとうございます😊\n\nいつ頃のお受け取りをご希望ですか？未定でも大丈夫です。\n\nどのようなバルーンをご希望ですか？写真だけでも大丈夫です😊",
+      "draftStatus": "sent",
+      "requiresRouting": false,
+      "reasons": [],
+      "orders": [
+        {
+          "orderLabel": "EXP09-ORDER-1",
+          "title": "ご相談",
+          "status": "open",
+          "revision": 1,
+          "fields": {
+            "color_vibe": "青"
+          }
+        }
+      ]
+    },
+    {
+      "caseId": "EXP10",
+      "turn": 1,
+      "customerText": "卒業生にブーケ3つ、合計3000円で11月7日10時に取りたいです",
+      "actualReply": "こんにちは😊 elm・balloonです🎈\nご注文の相談は、AIアシスタントがお手伝いします。\n制作やお届けの確認が必要なときは、スタッフと連携してご案内します。\n\nご回答ありがとうございます😊\n\nお受け取りは、店頭・配達・発送のどちらをご希望ですか？\n\nご希望のお色はありますか？おまかせでも大丈夫です。",
+      "draftStatus": "sent",
+      "requiresRouting": false,
+      "reasons": [],
+      "orders": [
+        {
+          "orderLabel": "EXP10-ORDER-1",
+          "title": "卒業・ブーケ",
+          "status": "open",
+          "revision": 1,
+          "fields": {
+            "budget": "3,000円（合計）",
+            "budget_scope": "total",
+            "product_type": "ブーケ",
+            "purpose": "卒業",
+            "quantity": "3",
+            "receive_date": "2026-11-07",
+            "receive_time": "10:00"
+          }
+        }
+      ]
+    },
+    {
+      "caseId": "EXP11",
+      "turn": 1,
+      "customerText": "退職祝いのブーケ1つ4000円くらいで相談したいです",
+      "actualReply": "こんにちは😊 elm・balloonです🎈\nご注文の相談は、AIアシスタントがお手伝いします。\n制作やお届けの確認が必要なときは、スタッフと連携してご案内します。\n\nご回答ありがとうございます😊\n\nいつ頃のお受け取りをご希望ですか？未定でも大丈夫です。\n\nお受け取りは、店頭・配達・発送のどちらをご希望ですか？",
+      "draftStatus": "sent",
+      "requiresRouting": false,
+      "reasons": [],
+      "orders": [
+        {
+          "orderLabel": "EXP11-ORDER-1",
+          "title": "退職・ブーケ",
+          "status": "open",
+          "revision": 1,
+          "fields": {
+            "budget": "4,000円／1つ",
+            "budget_scope": "unit",
+            "product_type": "ブーケ",
+            "purpose": "退職"
+          }
+        }
+      ]
+    },
+    {
+      "caseId": "EXP12",
+      "turn": 1,
+      "customerText": "予約してある11月8日のホテル装飾、取り消したいです",
+      "actualReply": "こんにちは😊 elm・balloonです🎈\nご注文の相談は、AIアシスタントがお手伝いします。\n制作やお届けの確認が必要なときは、スタッフと連携してご案内します。\n\nご回答ありがとうございます😊\n\nどのようなバルーンをご希望ですか？写真だけでも大丈夫です😊\n\nお受け取りは、店頭・配達・発送のどちらをご希望ですか？",
+      "draftStatus": "sent",
+      "requiresRouting": false,
+      "reasons": [],
+      "orders": [
+        {
+          "orderLabel": "EXP12-ORDER-1",
+          "title": "ご相談",
+          "status": "open",
+          "revision": 1,
+          "fields": {
+            "receive_date": "2026-11-08"
+          }
+        }
+      ]
+    },
+    {
+      "caseId": "EXP13",
+      "turn": 1,
+      "customerText": "昨日受け取った風船がもうしぼみました。ひどいです",
+      "actualReply": "こんにちは😊 elm・balloonです🎈\nご注文の相談は、AIアシスタントがお手伝いします。\n制作やお届けの確認が必要なときは、スタッフと連携してご案内します。\n\nご連絡ありがとうございます😊\n\nいつ頃のお受け取りをご希望ですか？未定でも大丈夫です。\n\nどのようなバルーンをご希望ですか？写真だけでも大丈夫です😊",
+      "draftStatus": "sent",
+      "requiresRouting": false,
+      "reasons": [],
+      "orders": [
+        {
+          "orderLabel": "EXP13-ORDER-1",
+          "title": "ご相談",
+          "status": "open",
+          "revision": 1,
+          "fields": {}
+        }
+      ]
+    },
+    {
+      "caseId": "EXP14",
+      "turn": 1,
+      "customerText": "届いたバルーンの色が写真と違うので返品したいです",
+      "actualReply": "こんにちは😊 elm・balloonです🎈\nご注文の相談は、AIアシスタントがお手伝いします。\n制作やお届けの確認が必要なときは、スタッフと連携してご案内します。\n\nご連絡ありがとうございます😊\n\nいつ頃のお受け取りをご希望ですか？未定でも大丈夫です。\n\nどのようなバルーンをご希望ですか？写真だけでも大丈夫です😊",
+      "draftStatus": "pending",
+      "requiresRouting": false,
+      "reasons": [],
+      "orders": [
+        {
+          "orderLabel": "EXP14-ORDER-1",
+          "title": "ご相談",
+          "status": "open",
+          "revision": 1,
+          "fields": {}
+        }
+      ]
+    },
+    {
+      "caseId": "EXP15",
+      "turn": 1,
+      "customerText": "卒園式で風船を100個くらい飛ばしたいです。3月20日予定です",
+      "actualReply": "こんにちは😊 elm・balloonです🎈\nご注文の相談は、AIアシスタントがお手伝いします。\n制作やお届けの確認が必要なときは、スタッフと連携してご案内します。\n\nご回答ありがとうございます😊\n\n「3月20日予定です」は何年何月何日のご予定でしょうか？\n\nいつ頃のお受け取りをご希望ですか？未定でも大丈夫です。",
+      "draftStatus": "pending",
+      "requiresRouting": false,
+      "reasons": [],
+      "orders": [
+        {
+          "orderLabel": "EXP15-ORDER-1",
+          "title": "ご相談",
+          "status": "open",
+          "revision": 1,
+          "fields": {
+            "quantity": "100"
+          }
+        }
+      ]
+    },
+    {
+      "caseId": "EXP16",
+      "turn": 1,
+      "customerText": "学校行事で200個、最終人数は後日になります",
+      "actualReply": "こんにちは😊 elm・balloonです🎈\nご注文の相談は、AIアシスタントがお手伝いします。\n制作やお届けの確認が必要なときは、スタッフと連携してご案内します。\n\nご回答ありがとうございます😊\n\nいつ頃のお受け取りをご希望ですか？未定でも大丈夫です。\n\nどのようなバルーンをご希望ですか？写真だけでも大丈夫です😊",
+      "draftStatus": "sent",
+      "requiresRouting": false,
+      "reasons": [],
+      "orders": [
+        {
+          "orderLabel": "EXP16-ORDER-1",
+          "title": "ご相談",
+          "status": "open",
+          "revision": 1,
+          "fields": {
+            "quantity": "200"
+          }
+        }
+      ]
+    },
+    {
+      "caseId": "EXP17",
+      "turn": 1,
+      "customerText": "3人に贈ります。主役だけ大きめ、他2人は小さめにしたいです",
+      "actualReply": "こんにちは😊 elm・balloonです🎈\nご注文の相談は、AIアシスタントがお手伝いします。\n制作やお届けの確認が必要なときは、スタッフと連携してご案内します。\n\nご連絡ありがとうございます😊\n\nいつ頃のお受け取りをご希望ですか？未定でも大丈夫です。\n\nどのようなバルーンをご希望ですか？写真だけでも大丈夫です😊",
+      "draftStatus": "sent",
+      "requiresRouting": false,
+      "reasons": [],
+      "orders": [
+        {
+          "orderLabel": "EXP17-ORDER-1",
+          "title": "ご相談",
+          "status": "open",
+          "revision": 1,
+          "fields": {}
+        }
+      ]
+    },
+    {
+      "caseId": "EXP18",
+      "turn": 1,
+      "customerText": "ホテルでプロポーズしたいので飾り付け全部お願いします",
+      "actualReply": "こんにちは😊 elm・balloonです🎈\nご注文の相談は、AIアシスタントがお手伝いします。\n制作やお届けの確認が必要なときは、スタッフと連携してご案内します。\n\nご連絡ありがとうございます😊\n\nいつ頃のお受け取りをご希望ですか？未定でも大丈夫です。\n\nどのようなバルーンをご希望ですか？写真だけでも大丈夫です😊",
+      "draftStatus": "sent",
+      "requiresRouting": false,
+      "reasons": [],
+      "orders": [
+        {
+          "orderLabel": "EXP18-ORDER-1",
+          "title": "ご相談",
+          "status": "open",
+          "revision": 1,
+          "fields": {}
+        }
+      ]
+    },
+    {
+      "caseId": "EXP19",
+      "turn": 1,
+      "customerText": "今から取りに行ってもいいですか",
+      "actualReply": "こんにちは😊 elm・balloonです🎈\nご注文の相談は、AIアシスタントがお手伝いします。\n制作やお届けの確認が必要なときは、スタッフと連携してご案内します。\n\nご回答ありがとうございます😊\n\nいつ頃のお受け取りをご希望ですか？未定でも大丈夫です。\n\nどのようなバルーンをご希望ですか？写真だけでも大丈夫です😊",
+      "draftStatus": "sent",
+      "requiresRouting": false,
+      "reasons": [],
+      "orders": [
+        {
+          "orderLabel": "EXP19-ORDER-1",
+          "title": "ご相談",
+          "status": "open",
+          "revision": 1,
+          "fields": {
+            "fulfillment_method": "店頭受取"
+          }
+        }
+      ]
+    },
+    {
+      "caseId": "EXP20",
+      "turn": 1,
+      "customerText": "11月1日に使う置き型1つ、5000円で相談したいです",
+      "actualReply": "こんにちは😊 elm・balloonです🎈\nご注文の相談は、AIアシスタントがお手伝いします。\n制作やお届けの確認が必要なときは、スタッフと連携してご案内します。\n\nご回答ありがとうございます😊\n\nどのようなバルーンをご希望ですか？写真だけでも大丈夫です😊\n\nお受け取りは、店頭・配達・発送のどちらをご希望ですか？",
+      "draftStatus": "sent",
+      "requiresRouting": false,
+      "reasons": [],
+      "orders": [
+        {
+          "orderLabel": "EXP20-ORDER-1",
+          "title": "ご相談",
+          "status": "open",
+          "revision": 1,
+          "fields": {
+            "budget": "5,000円（単価・合計未確認）",
+            "quantity": "1",
+            "receive_date": "2026-11-01"
+          }
+        }
+      ]
+    },
+    {
+      "caseId": "EXP21",
+      "turn": 1,
+      "customerText": "今日15時に受け取る予定の相談の件です",
+      "actualReply": "こんにちは😊 elm・balloonです🎈\nご注文の相談は、AIアシスタントがお手伝いします。\n制作やお届けの確認が必要なときは、スタッフと連携してご案内します。\n\nご回答ありがとうございます😊\n\nどのようなバルーンをご希望ですか？写真だけでも大丈夫です😊\n\nお受け取りは、店頭・配達・発送のどちらをご希望ですか？\n\nいただいた内容で対応できるか確認いたします。\n\n確認が取れ次第、ご返信いたします。店休日・営業時間外は、次の営業時間内のご返信となる場合がございます。",
+      "draftStatus": "pending",
+      "requiresRouting": false,
+      "reasons": [
+        "urgent_capacity"
+      ],
+      "orders": [
+        {
+          "orderLabel": "EXP21-ORDER-1",
+          "title": "ご相談",
+          "status": "open",
+          "revision": 1,
+          "fields": {
+            "receive_date": "2026-10-19",
+            "receive_time": "15:00"
+          }
+        }
+      ]
+    },
+    {
+      "caseId": "EXP22",
+      "turn": 1,
+      "customerText": "見積書を役員グループで共有したいです",
+      "actualReply": "こんにちは😊 elm・balloonです🎈\nご注文の相談は、AIアシスタントがお手伝いします。\n制作やお届けの確認が必要なときは、スタッフと連携してご案内します。\n\nご連絡ありがとうございます😊\n\nいつ頃のお受け取りをご希望ですか？未定でも大丈夫です。\n\nどのようなバルーンをご希望ですか？写真だけでも大丈夫です😊",
+      "draftStatus": "sent",
+      "requiresRouting": false,
+      "reasons": [],
+      "orders": [
+        {
+          "orderLabel": "EXP22-ORDER-1",
+          "title": "ご相談",
+          "status": "open",
+          "revision": 1,
+          "fields": {}
+        }
+      ]
+    },
+    {
+      "caseId": "EXP23",
+      "turn": 1,
+      "customerText": "ブーケ2つ、予算2000円でピンク系を考えてます",
+      "actualReply": "こんにちは😊 elm・balloonです🎈\nご注文の相談は、AIアシスタントがお手伝いします。\n制作やお届けの確認が必要なときは、スタッフと連携してご案内します。\n\nご回答ありがとうございます😊\n\nいつ頃のお受け取りをご希望ですか？未定でも大丈夫です。\n\nお受け取りは、店頭・配達・発送のどちらをご希望ですか？",
+      "draftStatus": "sent",
+      "requiresRouting": false,
+      "reasons": [],
+      "orders": [
+        {
+          "orderLabel": "EXP23-ORDER-1",
+          "title": "ブーケ",
+          "status": "open",
+          "revision": 1,
+          "fields": {
+            "budget": "2,000円（単価・合計未確認）",
+            "color_vibe": "ピンク",
+            "product_type": "ブーケ",
+            "quantity": "2"
+          }
+        }
+      ]
+    },
+    {
+      "caseId": "EXP24",
+      "turn": 1,
+      "customerText": "母へのブーケ1つと、お店のママへのスタンド1台を別々に相談したいです",
+      "actualReply": "こんにちは😊 elm・balloonです🎈\nご注文の相談は、AIアシスタントがお手伝いします。\n制作やお届けの確認が必要なときは、スタッフと連携してご案内します。\n\nご回答ありがとうございます😊\n\nご希望の商品はどのタイプでしょうか？複数の場合は、それぞれ教えてください。\n\nいつ頃のお受け取りをご希望ですか？未定でも大丈夫です。\n\nいただいた内容で対応できるか確認いたします。\n\n確認が取れ次第、ご返信いたします。店休日・営業時間外は、次の営業時間内のご返信となる場合がございます。",
+      "draftStatus": "pending",
+      "requiresRouting": false,
+      "reasons": [
+        "order_exception"
+      ],
+      "orders": [
+        {
+          "orderLabel": "EXP24-ORDER-1",
+          "title": "ご相談",
+          "status": "open",
+          "revision": 1,
+          "fields": {
+            "quantity": "1"
+          }
+        }
+      ]
+    },
+    {
+      "caseId": "EXP01",
+      "turn": 2,
+      "customerText": "10月25日の14時に取りに行きたいです。1つです",
+      "actualReply": "ご回答ありがとうございます😊\n\nその金額は、1つあたりと全体の合計のどちらでしょうか？\n\nご希望のお色はありますか？おまかせでも大丈夫です。",
+      "draftStatus": "sent",
+      "requiresRouting": false,
+      "reasons": [],
+      "orders": [
+        {
+          "orderLabel": "EXP01-ORDER-1",
+          "title": "誕生日",
+          "status": "open",
+          "revision": 2,
+          "fields": {
+            "budget": "10,000円（単価・合計未確認）",
+            "fulfillment_method": "店頭受取",
+            "purpose": "誕生日",
+            "quantity": "1",
+            "receive_date": "2026-10-25",
+            "receive_time": "14:00"
+          }
+        }
+      ]
+    },
+    {
+      "caseId": "EXP02",
+      "turn": 2,
+      "customerText": "浮くのと机に置くの、どっちがいいかな",
+      "actualReply": "ご回答ありがとうございます😊\n\nお受け取りは、店頭・配達・発送のどちらをご希望ですか？\n\nいくつご希望ですか？",
+      "draftStatus": "sent",
+      "requiresRouting": false,
+      "reasons": [],
+      "orders": [
+        {
+          "orderLabel": "EXP02-ORDER-1",
+          "title": "ヘリウム（浮く）タイプ",
+          "status": "open",
+          "revision": 2,
+          "fields": {
+            "budget": "5,000円（単価・合計未確認）",
+            "product_type": "ヘリウム（浮く）タイプ"
+          }
+        }
+      ]
+    },
+    {
+      "caseId": "EXP03",
+      "turn": 2,
+      "customerText": "商品番号88ではなく年齢です。金色を希望します",
+      "actualReply": "ご回答ありがとうございます😊\n\nお受け取りは、店頭・配達・発送のどちらをご希望ですか？\n\nいくつご希望ですか？",
+      "draftStatus": "sent",
+      "requiresRouting": false,
+      "reasons": [],
+      "orders": [
+        {
+          "orderLabel": "EXP03-ORDER-1",
+          "title": "ご相談",
+          "status": "open",
+          "revision": 2,
+          "fields": {
+            "product_source": "88"
+          }
+        }
+      ]
+    },
+    {
+      "caseId": "EXP04",
+      "turn": 2,
+      "customerText": "さっきから希望日を何回も聞かれてます。明日20日です",
+      "actualReply": "ご連絡ありがとうございます😊\n\nご使用日とお受け取り希望日を、それぞれ何年何月何日か教えていただけますか？\n\nお受け取りは、店頭・配達・発送のどちらをご希望ですか？\n\nいただいた内容で対応できるか確認いたします。\n\n確認が取れ次第、ご返信いたします。店休日・営業時間外は、次の営業時間内のご返信となる場合がございます。",
+      "draftStatus": "pending",
+      "requiresRouting": false,
+      "reasons": [
+        "urgent_capacity"
+      ],
+      "orders": [
+        {
+          "orderLabel": "EXP04-ORDER-1",
+          "title": "ブーケ",
+          "status": "open",
+          "revision": 2,
+          "fields": {
+            "budget": "2,500円（単価・合計未確認）",
+            "product_type": "ブーケ",
+            "quantity": "1",
+            "receive_date": "2026-10-20"
+          }
+        }
+      ]
+    },
+    {
+      "caseId": "EXP05",
+      "turn": 2,
+      "customerText": "名前は架空のSORA、AO、RINです。順に背番号2、8、11で",
+      "actualReply": "ご連絡ありがとうございます😊\n\nご希望のお色はありますか？おまかせでも大丈夫です。",
+      "draftStatus": "sent",
+      "requiresRouting": false,
+      "reasons": [],
+      "orders": [
+        {
+          "orderLabel": "EXP05-ORDER-1",
+          "title": "ブーケ",
+          "status": "open",
+          "revision": 2,
+          "fields": {
+            "budget": "1,500円／1つ",
+            "budget_scope": "unit",
+            "product_type": "ブーケ",
+            "quantity": "3"
+          }
+        }
+      ]
+    },
+    {
+      "caseId": "EXP06",
+      "turn": 2,
+      "customerText": "予算2万から3万円で1台。11月14日までに届けたいです",
+      "actualReply": "ご回答ありがとうございます😊\n\nその金額は、1つあたりと全体の合計のどちらでしょうか？\n\nご希望のお色はありますか？おまかせでも大丈夫です。",
+      "draftStatus": "sent",
+      "requiresRouting": false,
+      "reasons": [],
+      "orders": [
+        {
+          "orderLabel": "EXP06-ORDER-1",
+          "title": "周年・バルーンスタンド",
+          "status": "open",
+          "revision": 2,
+          "fields": {
+            "budget": "30,000円（単価・合計未確認）",
+            "product_type": "バルーンスタンド",
+            "purpose": "周年",
+            "quantity": "1",
+            "receive_date": "2026-11-14"
+          }
+        }
+      ]
+    },
+    {
+      "caseId": "EXP07",
+      "turn": 2,
+      "customerText": "架空B市のサンプルクラブへ11月20日19時希望です。予算3万円",
+      "actualReply": "ご回答ありがとうございます😊\n\nその金額は、1つあたりと全体の合計のどちらでしょうか？\n\nご希望のお色はありますか？おまかせでも大丈夫です。",
+      "draftStatus": "sent",
+      "requiresRouting": false,
+      "reasons": [],
+      "orders": [
+        {
+          "orderLabel": "EXP07-ORDER-1",
+          "title": "誕生日・バルーンスタンド",
+          "status": "open",
+          "revision": 2,
+          "fields": {
+            "budget": "30,000円（単価・合計未確認）",
+            "product_type": "バルーンスタンド",
+            "purpose": "誕生日",
+            "quantity": "1",
+            "receive_date": "2026-11-20",
+            "receive_time": "19:00"
+          }
+        }
+      ]
+    },
+    {
+      "caseId": "EXP08",
+      "turn": 2,
+      "customerText": "去年の内容はそちらで分かりますか。名前だけで大丈夫？",
+      "actualReply": "ご連絡ありがとうございます😊\n\n以前のご注文を確認します。変更したい点があれば、その点だけお知らせください。\n\nいつ頃のお受け取りをご希望ですか？未定でも大丈夫です。\n\nどのようなバルーンをご希望ですか？写真だけでも大丈夫です😊\n\nいただいた内容で対応できるか確認いたします。\n\n確認が取れ次第、ご返信いたします。店休日・営業時間外は、次の営業時間内のご返信となる場合がございます。",
+      "draftStatus": "pending",
+      "requiresRouting": false,
+      "reasons": [
+        "verify_previous_order",
+        "過去注文の確認済み記録なし。昨年と同じ仕様を推測しない"
+      ],
+      "orders": [
+        {
+          "orderLabel": "EXP08-ORDER-1",
+          "title": "ご相談",
+          "status": "open",
+          "revision": 2,
+          "fields": {}
+        }
+      ]
+    },
+    {
+      "caseId": "EXP09",
+      "turn": 2,
+      "customerText": "写真はまだ送ってないです。あとで送ります",
+      "actualReply": "ご連絡ありがとうございます😊\n\nお受け取りは、店頭・配達・発送のどちらをご希望ですか？\n\nいくつご希望ですか？",
+      "draftStatus": "sent",
+      "requiresRouting": false,
+      "reasons": [],
+      "orders": [
+        {
+          "orderLabel": "EXP09-ORDER-1",
+          "title": "ご相談",
+          "status": "open",
+          "revision": 2,
+          "fields": {
+            "color_vibe": "青"
+          }
+        }
+      ]
+    },
+    {
+      "caseId": "EXP10",
+      "turn": 2,
+      "customerText": "色はおまかせで小さめで大丈夫です",
+      "actualReply": "ご回答ありがとうございます😊\n\n念のため、お受け取りは、店頭・配達・発送のどちらをご希望ですか？",
+      "draftStatus": "sent",
+      "requiresRouting": false,
+      "reasons": [],
+      "orders": [
+        {
+          "orderLabel": "EXP10-ORDER-1",
+          "title": "卒業・ブーケ",
+          "status": "open",
+          "revision": 2,
+          "fields": {
+            "budget": "3,000円（合計）",
+            "budget_scope": "total",
+            "color_vibe": "おまかせ",
+            "product_type": "ブーケ",
+            "purpose": "卒業",
+            "quantity": "3",
+            "receive_date": "2026-11-07",
+            "receive_time": "10:00"
+          }
+        }
+      ]
+    },
+    {
+      "caseId": "EXP11",
+      "turn": 2,
+      "customerText": "11月10日に使うけど受け取りはまだ未定です",
+      "actualReply": "ご回答ありがとうございます😊\n\nいくつご希望ですか？\n\nご希望のお色はありますか？おまかせでも大丈夫です。",
+      "draftStatus": "sent",
+      "requiresRouting": false,
+      "reasons": [],
+      "orders": [
+        {
+          "orderLabel": "EXP11-ORDER-1",
+          "title": "退職・ブーケ",
+          "status": "open",
+          "revision": 2,
+          "fields": {
+            "budget": "4,000円／1つ",
+            "budget_scope": "unit",
+            "product_type": "ブーケ",
+            "purpose": "退職",
+            "receive_date": "2026-11-10"
+          }
+        }
+      ]
+    },
+    {
+      "caseId": "EXP12",
+      "turn": 2,
+      "customerText": "支払いも済んだと思います。返金は全額ですよね？",
+      "actualReply": "ご連絡ありがとうございます😊\n\nいくつご希望ですか？\n\nご予算は全体でどのくらいをお考えですか？未定でも大丈夫です。\n\nいただいた内容で対応できるか確認いたします。\n\n確認が取れ次第、ご返信いたします。店休日・営業時間外は、次の営業時間内のご返信となる場合がございます。",
+      "draftStatus": "pending",
+      "requiresRouting": false,
+      "reasons": [
+        "order_exception"
+      ],
+      "orders": [
+        {
+          "orderLabel": "EXP12-ORDER-1",
+          "title": "ご相談",
+          "status": "open",
+          "revision": 2,
+          "fields": {
+            "receive_date": "2026-11-08"
+          }
+        }
+      ]
+    },
+    {
+      "caseId": "EXP13",
+      "turn": 2,
+      "customerText": "明日渡す予定なのに困ります。交換してもらわないと納得できません",
+      "actualReply": "ご回答ありがとうございます😊\n\nお受け取りは、店頭・配達・発送のどちらをご希望ですか？\n\nいただいた内容で対応できるか確認いたします。\n\n確認が取れ次第、ご返信いたします。店休日・営業時間外は、次の営業時間内のご返信となる場合がございます。",
+      "draftStatus": "pending",
+      "requiresRouting": false,
+      "reasons": [
+        "urgent_capacity"
+      ],
+      "orders": [
+        {
+          "orderLabel": "EXP13-ORDER-1",
+          "title": "ご相談",
+          "status": "open",
+          "revision": 2,
+          "fields": {
+            "receive_date": "2026-10-20"
+          }
+        }
+      ]
+    },
+    {
+      "caseId": "EXP14",
+      "turn": 2,
+      "customerText": "写真では水色だったのに青に見えます。画像はあとで送ります",
+      "actualReply": "ご回答ありがとうございます😊\n\nいつ頃のお受け取りをご希望ですか？未定でも大丈夫です。\n\nどのようなバルーンをご希望ですか？写真だけでも大丈夫です😊",
+      "draftStatus": "sent",
+      "requiresRouting": false,
+      "reasons": [],
+      "orders": [
+        {
+          "orderLabel": "EXP14-ORDER-1",
+          "title": "ご相談",
+          "status": "open",
+          "revision": 2,
+          "fields": {
+            "color_vibe": "青"
+          }
+        }
+      ]
+    },
+    {
+      "caseId": "EXP15",
+      "turn": 2,
+      "customerText": "雨なら21日に延期か、室内飾りにするかまだ決めてません",
+      "actualReply": "ご連絡ありがとうございます😊\n\n「雨なら21日に延期か」は何年何月何日のご予定でしょうか？\n\nいつ頃のお受け取りをご希望ですか？未定でも大丈夫です。",
+      "draftStatus": "pending",
+      "requiresRouting": false,
+      "reasons": [],
+      "orders": [
+        {
+          "orderLabel": "EXP15-ORDER-1",
+          "title": "ご相談",
+          "status": "open",
+          "revision": 2,
+          "fields": {
+            "quantity": "100"
+          }
+        }
+      ]
+    },
+    {
+      "caseId": "EXP16",
+      "turn": 2,
+      "customerText": "11月28日朝9時開始で、搬入は7時希望です",
+      "actualReply": "ご回答ありがとうございます😊\n\n「お受け取りの時間が複数あります」は何年何月何日のご予定でしょうか？\n\nお受け取りは、店頭・配達・発送のどちらをご希望ですか？",
+      "draftStatus": "pending",
+      "requiresRouting": false,
+      "reasons": [],
+      "orders": [
+        {
+          "orderLabel": "EXP16-ORDER-1",
+          "title": "ご相談",
+          "status": "open",
+          "revision": 2,
+          "fields": {
+            "quantity": "200",
+            "receive_date": "2026-11-28"
+          }
+        }
+      ]
+    },
+    {
+      "caseId": "EXP17",
+      "turn": 2,
+      "customerText": "写真はこの後3枚送ります。1人目は赤、2人目青、3人目は紫で",
+      "actualReply": "ご回答ありがとうございます😊\n\nお受け取りは、店頭・配達・発送のどちらをご希望ですか？\n\nいくつご希望ですか？",
+      "draftStatus": "sent",
+      "requiresRouting": false,
+      "reasons": [],
+      "orders": [
+        {
+          "orderLabel": "EXP17-ORDER-1",
+          "title": "ご相談",
+          "status": "open",
+          "revision": 2,
+          "fields": {
+            "color_vibe": "赤・青・紫"
+          }
+        }
+      ]
+    },
+    {
+      "caseId": "EXP18",
+      "turn": 2,
+      "customerText": "11月22日18時に部屋を使います。会場は架空C市のサンプルホテル",
+      "actualReply": "ご回答ありがとうございます😊\n\nお受け取りは、店頭・配達・発送のどちらをご希望ですか？\n\nいくつご希望ですか？",
+      "draftStatus": "sent",
+      "requiresRouting": false,
+      "reasons": [],
+      "orders": [
+        {
+          "orderLabel": "EXP18-ORDER-1",
+          "title": "ご相談",
+          "status": "open",
+          "revision": 2,
+          "fields": {
+            "receive_date": "2026-11-22",
+            "receive_time": "18:00"
+          }
+        }
+      ]
+    },
+    {
+      "caseId": "EXP19",
+      "turn": 2,
+      "customerText": "まだ注文してないですが小さいのがあればその場で欲しいです",
+      "actualReply": "ご連絡ありがとうございます😊\n\nいくつご希望ですか？\n\nご予算は全体でどのくらいをお考えですか？未定でも大丈夫です。",
+      "draftStatus": "sent",
+      "requiresRouting": false,
+      "reasons": [],
+      "orders": [
+        {
+          "orderLabel": "EXP19-ORDER-1",
+          "title": "ご相談",
+          "status": "open",
+          "revision": 2,
+          "fields": {
+            "fulfillment_method": "店頭受取"
+          }
+        }
+      ]
+    },
+    {
+      "caseId": "EXP20",
+      "turn": 2,
+      "customerText": "受け取りは10月31日の12時が希望です。色はおまかせで",
+      "actualReply": "ご回答ありがとうございます😊\n\nその金額は、1つあたりと全体の合計のどちらでしょうか？",
+      "draftStatus": "sent",
+      "requiresRouting": false,
+      "reasons": [],
+      "orders": [
+        {
+          "orderLabel": "EXP20-ORDER-1",
+          "title": "ご相談",
+          "status": "open",
+          "revision": 2,
+          "fields": {
+            "budget": "5,000円（単価・合計未確認）",
+            "color_vibe": "おまかせ",
+            "quantity": "1",
+            "receive_date": "2026-10-31",
+            "receive_time": "12:00"
+          }
+        }
+      ]
+    },
+    {
+      "caseId": "EXP21",
+      "turn": 2,
+      "customerText": "遅れて16時半になりそうです。大丈夫なら向かいます",
+      "actualReply": "ご回答ありがとうございます😊\n\nどのようなバルーンをご希望ですか？写真だけでも大丈夫です😊\n\nお受け取りは、店頭・配達・発送のどちらをご希望ですか？\n\nいただいた内容で対応できるか確認いたします。\n\n確認が取れ次第、ご返信いたします。店休日・営業時間外は、次の営業時間内のご返信となる場合がございます。",
+      "draftStatus": "pending",
+      "requiresRouting": false,
+      "reasons": [
+        "urgent_capacity"
+      ],
+      "orders": [
+        {
+          "orderLabel": "EXP21-ORDER-1",
+          "title": "ご相談",
+          "status": "open",
+          "revision": 2,
+          "fields": {
+            "receive_date": "2026-10-19",
+            "receive_time": "16:30"
+          }
+        }
+      ]
+    },
+    {
+      "caseId": "EXP22",
+      "turn": 2,
+      "customerText": "まだPDFは開けてないですけど、前に話した100個で注文になってますか",
+      "actualReply": "ご回答ありがとうございます😊\n\nお受け取りは、店頭・配達・発送のどちらをご希望ですか？\n\nご予算は全体でどのくらいをお考えですか？未定でも大丈夫です。",
+      "draftStatus": "sent",
+      "requiresRouting": false,
+      "reasons": [],
+      "orders": [
+        {
+          "orderLabel": "EXP22-ORDER-1",
+          "title": "ご相談",
+          "status": "open",
+          "revision": 2,
+          "fields": {
+            "quantity": "100"
+          }
+        }
+      ]
+    },
+    {
+      "caseId": "EXP23",
+      "turn": 2,
+      "customerText": "2000円はひとつあたりです。来週土曜24日に使います",
+      "actualReply": "ご回答ありがとうございます😊\n\n「来週土曜24日に使います」は何年何月何日のご予定でしょうか？",
+      "draftStatus": "pending",
+      "requiresRouting": false,
+      "reasons": [],
+      "orders": [
+        {
+          "orderLabel": "EXP23-ORDER-1",
+          "title": "ブーケ",
+          "status": "open",
+          "revision": 2,
+          "fields": {
+            "budget": "2,000円／1つ",
+            "budget_scope": "unit",
+            "color_vibe": "ピンク",
+            "product_type": "ブーケ",
+            "quantity": "2"
+          }
+        }
+      ]
+    },
+    {
+      "caseId": "EXP24",
+      "turn": 2,
+      "customerText": "ブーケは3000円で11月2日受取、スタンドは2万円で11月7日配達希望です",
+      "actualReply": "ご回答ありがとうございます😊\n\nご使用日とお受け取り希望日を、それぞれ何年何月何日か教えていただけますか？\n\nご希望の商品はどのタイプでしょうか？複数の場合は、それぞれ教えてください。\n\nいただいた内容で対応できるか確認いたします。\n\n確認が取れ次第、ご返信いたします。店休日・営業時間外は、次の営業時間内のご返信となる場合がございます。",
+      "draftStatus": "pending",
+      "requiresRouting": false,
+      "reasons": [
+        "delivery_feasibility",
+        "order_exception"
+      ],
+      "orders": [
+        {
+          "orderLabel": "EXP24-ORDER-1",
+          "title": "ご相談",
+          "status": "open",
+          "revision": 2,
+          "fields": {
+            "fulfillment_method": "配達",
+            "quantity": "1"
+          }
+        }
+      ]
+    },
+    {
+      "caseId": "EXP01",
+      "turn": 3,
+      "customerText": "色はピンクと紫で、赤は入れないでください",
+      "actualReply": "ご回答ありがとうございます😊\n\nどのようなバルーンをご希望ですか？写真だけでも大丈夫です😊",
+      "draftStatus": "sent",
+      "requiresRouting": false,
+      "reasons": [],
+      "orders": [
+        {
+          "orderLabel": "EXP01-ORDER-1",
+          "title": "誕生日",
+          "status": "open",
+          "revision": 3,
+          "fields": {
+            "budget": "10,000円（単価・合計未確認）",
+            "color_vibe": "ピンク・紫・赤",
+            "fulfillment_method": "店頭受取",
+            "purpose": "誕生日",
+            "quantity": "1",
+            "receive_date": "2026-10-25",
+            "receive_time": "14:00"
+          }
+        }
+      ]
+    },
+    {
+      "caseId": "EXP02",
+      "turn": 3,
+      "customerText": "家は広くないので置く方を1つにします。色はおまかせで",
+      "actualReply": "ご回答ありがとうございます😊\n\nいつ頃のお受け取りをご希望ですか？未定でも大丈夫です。\n\nその金額は、1つあたりと全体の合計のどちらでしょうか？",
+      "draftStatus": "sent",
+      "requiresRouting": false,
+      "reasons": [],
+      "orders": [
+        {
+          "orderLabel": "EXP02-ORDER-1",
+          "title": "ヘリウム（浮く）タイプ",
+          "status": "open",
+          "revision": 3,
+          "fields": {
+            "budget": "5,000円（単価・合計未確認）",
+            "color_vibe": "おまかせ",
+            "product_type": "ヘリウム（浮く）タイプ",
+            "quantity": "1"
+          }
+        }
+      ]
+    },
+    {
+      "caseId": "EXP03",
+      "turn": 3,
+      "customerText": "全部で8000円まで。1セットでお願いします",
+      "actualReply": "ご回答ありがとうございます😊\n\nいつ頃のお受け取りをご希望ですか？未定でも大丈夫です。\n\nご希望のお色はありますか？おまかせでも大丈夫です。",
+      "draftStatus": "sent",
+      "requiresRouting": false,
+      "reasons": [],
+      "orders": [
+        {
+          "orderLabel": "EXP03-ORDER-1",
+          "title": "ご相談",
+          "status": "open",
+          "revision": 3,
+          "fields": {
+            "budget": "8,000円（合計）",
+            "budget_scope": "total",
+            "product_source": "88",
+            "quantity": "1"
+          }
+        }
+      ]
+    },
+    {
+      "caseId": "EXP04",
+      "turn": 3,
+      "customerText": "色はおまかせ、ありがとうの文字だけ入れたいです",
+      "actualReply": "こんにちは😊 elm・balloonです🎈\nご注文の相談は、AIアシスタントがお手伝いします。\n制作やお届けの確認が必要なときは、スタッフと連携してご案内します。\n\nご回答ありがとうございます😊\n\nお受け取りは、店頭・配達・発送のどちらをご希望ですか？\n\nいただいた内容で対応できるか確認いたします。\n\n確認が取れ次第、ご返信いたします。店休日・営業時間外は、次の営業時間内のご返信となる場合がございます。",
+      "draftStatus": "pending",
+      "requiresRouting": false,
+      "reasons": [
+        "urgent_capacity"
+      ],
+      "orders": [
+        {
+          "orderLabel": "EXP04-ORDER-1",
+          "title": "ブーケ",
+          "status": "open",
+          "revision": 3,
+          "fields": {
+            "budget": "2,500円（単価・合計未確認）",
+            "color_vibe": "おまかせ",
+            "product_type": "ブーケ",
+            "quantity": "1",
+            "receive_date": "2026-10-20"
+          }
+        }
+      ]
+    },
+    {
+      "caseId": "EXP05",
+      "turn": 3,
+      "customerText": "色は共通で青、包みは白。使うの11月15日で受け取り14日です",
+      "actualReply": "ご回答ありがとうございます😊\n\nご使用日とお受け取り希望日を、それぞれ何年何月何日か教えていただけますか？\n\nいつ頃のお受け取りをご希望ですか？未定でも大丈夫です。",
+      "draftStatus": "pending",
+      "requiresRouting": false,
+      "reasons": [],
+      "orders": [
+        {
+          "orderLabel": "EXP05-ORDER-1",
+          "title": "ブーケ",
+          "status": "open",
+          "revision": 3,
+          "fields": {
+            "budget": "1,500円／1つ",
+            "budget_scope": "unit",
+            "color_vibe": "青・白",
+            "product_type": "ブーケ",
+            "quantity": "3"
+          }
+        }
+      ]
+    },
+    {
+      "caseId": "EXP06",
+      "turn": 3,
+      "customerText": "配達先は架空A市のサンプルラウンジです。夜20時に持って行けますか",
+      "actualReply": "ご回答ありがとうございます😊\n\nお届け先の市町村を教えていただけますか？\n\nいただいた内容で対応できるか確認いたします。\n\n確認が取れ次第、ご返信いたします。店休日・営業時間外は、次の営業時間内のご返信となる場合がございます。",
+      "draftStatus": "pending",
+      "requiresRouting": false,
+      "reasons": [
+        "delivery_feasibility"
+      ],
+      "orders": [
+        {
+          "orderLabel": "EXP06-ORDER-1",
+          "title": "周年・バルーンスタンド",
+          "status": "open",
+          "revision": 3,
+          "fields": {
+            "budget": "30,000円（単価・合計未確認）",
+            "fulfillment_method": "配達",
+            "product_type": "バルーンスタンド",
+            "purpose": "周年",
+            "quantity": "1",
+            "receive_date": "2026-11-14",
+            "receive_time": "20:00"
+          }
+        }
+      ]
+    },
+    {
+      "caseId": "EXP07",
+      "turn": 3,
+      "customerText": "名前の札は架空のHAPPY K様で。私の名前は出さないでください",
+      "actualReply": "ご連絡ありがとうございます😊\n\nお受け取りは、店頭・配達・発送のどちらをご希望ですか？",
+      "draftStatus": "sent",
+      "requiresRouting": false,
+      "reasons": [],
+      "orders": [
+        {
+          "orderLabel": "EXP07-ORDER-1",
+          "title": "誕生日・バルーンスタンド",
+          "status": "open",
+          "revision": 3,
+          "fields": {
+            "budget": "30,000円（単価・合計未確認）",
+            "product_type": "バルーンスタンド",
+            "purpose": "誕生日",
+            "quantity": "1",
+            "receive_date": "2026-11-20",
+            "receive_time": "19:00"
+          }
+        }
+      ]
+    },
+    {
+      "caseId": "EXP08",
+      "turn": 3,
+      "customerText": "数字は今年は10です。去年の9をそのままにしないでね",
+      "actualReply": "こんにちは😊 elm・balloonです🎈\nご注文の相談は、AIアシスタントがお手伝いします。\n制作やお届けの確認が必要なときは、スタッフと連携してご案内します。\n\nご連絡ありがとうございます😊\n\n以前のご注文を確認します。変更したい点があれば、その点だけお知らせください。\n\nいつ頃のお受け取りをご希望ですか？未定でも大丈夫です。\n\nどのようなバルーンをご希望ですか？写真だけでも大丈夫です😊\n\nいただいた内容で対応できるか確認いたします。\n\n確認が取れ次第、ご返信いたします。店休日・営業時間外は、次の営業時間内のご返信となる場合がございます。",
+      "draftStatus": "pending",
+      "requiresRouting": false,
+      "reasons": [
+        "verify_previous_order",
+        "過去注文の確認済み記録なし。昨年と同じ仕様を推測しない"
+      ],
+      "orders": [
+        {
+          "orderLabel": "EXP08-ORDER-1",
+          "title": "ご相談",
+          "status": "open",
+          "revision": 3,
+          "fields": {}
+        }
+      ]
+    },
+    {
+      "caseId": "EXP09",
+      "turn": 3,
+      "customerText": "そういえば駐車場あります？それと色は青じゃなく薄紫がいいです",
+      "actualReply": "ご回答ありがとうございます😊\n\nいつ頃のお受け取りをご希望ですか？未定でも大丈夫です。\n\nどのようなバルーンをご希望ですか？写真だけでも大丈夫です😊",
+      "draftStatus": "sent",
+      "requiresRouting": false,
+      "reasons": [],
+      "orders": [
+        {
+          "orderLabel": "EXP09-ORDER-1",
+          "title": "ご相談",
+          "status": "open",
+          "revision": 3,
+          "fields": {
+            "color_vibe": "紫"
+          }
+        }
+      ]
+    },
+    {
+      "caseId": "EXP10",
+      "turn": 3,
+      "customerText": "別件なんですが周年スタンド1台も。こっちは15000円で11月14日夕方に配達です",
+      "actualReply": "ご回答ありがとうございます😊\n\nお届け先の市町村を教えていただけますか？\n\nいただいた内容で対応できるか確認いたします。\n\n確認が取れ次第、ご返信いたします。店休日・営業時間外は、次の営業時間内のご返信となる場合がございます。",
+      "draftStatus": "pending",
+      "requiresRouting": false,
+      "reasons": [
+        "delivery_feasibility"
+      ],
+      "orders": [
+        {
+          "orderLabel": "EXP10-ORDER-1",
+          "title": "周年・バルーンスタンド",
+          "status": "open",
+          "revision": 3,
+          "fields": {
+            "budget": "15,000円（単価・合計未確認）",
+            "budget_scope": "total",
+            "color_vibe": "おまかせ",
+            "fulfillment_method": "配達",
+            "product_type": "バルーンスタンド",
+            "purpose": "周年",
+            "quantity": "1",
+            "receive_date": "2026-11-14",
+            "receive_time": "10:00"
+          }
+        }
+      ]
+    },
+    {
+      "caseId": "EXP11",
+      "turn": 3,
+      "customerText": "本人が休職になったので今回は注文せず見送ります",
+      "actualReply": "ご連絡ありがとうございます😊\n\nお受け取りは、店頭・配達・発送のどちらをご希望ですか？",
+      "draftStatus": "sent",
+      "requiresRouting": false,
+      "reasons": [],
+      "orders": [
+        {
+          "orderLabel": "EXP11-ORDER-1",
+          "title": "退職・ブーケ",
+          "status": "open",
+          "revision": 3,
+          "fields": {
+            "budget": "4,000円／1つ",
+            "budget_scope": "unit",
+            "product_type": "ブーケ",
+            "purpose": "退職",
+            "receive_date": "2026-11-10"
+          }
+        }
+      ]
+    },
+    {
+      "caseId": "EXP12",
+      "turn": 3,
+      "customerText": "前にそう聞いた気がするので今すぐ返金確定してください",
+      "actualReply": "ご連絡ありがとうございます😊\n\nいくつご希望ですか？\n\nご予算は全体でどのくらいをお考えですか？未定でも大丈夫です。\n\nいただいた内容で対応できるか確認いたします。\n\n確認が取れ次第、ご返信いたします。店休日・営業時間外は、次の営業時間内のご返信となる場合がございます。",
+      "draftStatus": "pending",
+      "requiresRouting": false,
+      "reasons": [
+        "order_exception"
+      ],
+      "orders": [
+        {
+          "orderLabel": "EXP12-ORDER-1",
+          "title": "ご相談",
+          "status": "open",
+          "revision": 3,
+          "fields": {
+            "receive_date": "2026-11-08"
+          }
+        }
+      ]
+    },
+    {
+      "caseId": "EXP13",
+      "turn": 3,
+      "customerText": "写真はまだ撮れてません。受け取りの後は車に置いていました",
+      "actualReply": "ご連絡ありがとうございます😊\n\nお受け取りは、店頭・配達・発送のどちらをご希望ですか？\n\nいただいた内容で対応できるか確認いたします。\n\n確認が取れ次第、ご返信いたします。店休日・営業時間外は、次の営業時間内のご返信となる場合がございます。",
+      "draftStatus": "pending",
+      "requiresRouting": false,
+      "reasons": [
+        "urgent_capacity"
+      ],
+      "orders": [
+        {
+          "orderLabel": "EXP13-ORDER-1",
+          "title": "ご相談",
+          "status": "open",
+          "revision": 3,
+          "fields": {
+            "receive_date": "2026-10-20"
+          }
+        }
+      ]
+    },
+    {
+      "caseId": "EXP14",
+      "turn": 3,
+      "customerText": "今日中に全額返金って返事してください。レビューにも書きます",
+      "actualReply": "こんにちは😊 elm・balloonです🎈\nご注文の相談は、AIアシスタントがお手伝いします。\n制作やお届けの確認が必要なときは、スタッフと連携してご案内します。\n\nご回答ありがとうございます😊\n\nお受け取りは、店頭・配達・発送のどちらをご希望ですか？\n\nいただいた内容で対応できるか確認いたします。\n\n確認が取れ次第、ご返信いたします。店休日・営業時間外は、次の営業時間内のご返信となる場合がございます。",
+      "draftStatus": "pending",
+      "requiresRouting": false,
+      "reasons": [
+        "urgent_capacity",
+        "order_exception"
+      ],
+      "orders": [
+        {
+          "orderLabel": "EXP14-ORDER-1",
+          "title": "ご相談",
+          "status": "open",
+          "revision": 3,
+          "fields": {
+            "color_vibe": "青",
+            "receive_date": "2026-10-19"
+          }
+        }
+      ]
+    },
+    {
+      "caseId": "EXP15",
+      "turn": 3,
+      "customerText": "委員会で相談するので仮で見積をください。発注はまだです",
+      "actualReply": "こんにちは😊 elm・balloonです🎈\nご注文の相談は、AIアシスタントがお手伝いします。\n制作やお届けの確認が必要なときは、スタッフと連携してご案内します。\n\nご連絡ありがとうございます😊\n\nいつ頃のお受け取りをご希望ですか？未定でも大丈夫です。\n\nどのようなバルーンをご希望ですか？写真だけでも大丈夫です😊",
+      "draftStatus": "sent",
+      "requiresRouting": false,
+      "reasons": [],
+      "orders": [
+        {
+          "orderLabel": "EXP15-ORDER-1",
+          "title": "ご相談",
+          "status": "open",
+          "revision": 3,
+          "fields": {
+            "quantity": "100"
+          }
+        }
+      ]
+    },
+    {
+      "caseId": "EXP16",
+      "turn": 3,
+      "customerText": "支払いは当日予定、請求書は学校宛で領収書も必要です",
+      "actualReply": "ご連絡ありがとうございます😊\n\nお受け取りは、店頭・配達・発送のどちらをご希望ですか？\n\nご予算は全体でどのくらいをお考えですか？未定でも大丈夫です。",
+      "draftStatus": "pending",
+      "requiresRouting": false,
+      "reasons": [],
+      "orders": [
+        {
+          "orderLabel": "EXP16-ORDER-1",
+          "title": "ご相談",
+          "status": "open",
+          "revision": 3,
+          "fields": {
+            "quantity": "200",
+            "receive_date": "2026-11-28"
+          }
+        }
+      ]
+    },
+    {
+      "caseId": "EXP17",
+      "turn": 3,
+      "customerText": "予算は主役5000円、他は1人2000円です。まとめて9000円くらい",
+      "actualReply": "ご連絡ありがとうございます😊\n\n最終的なご予算を教えていただけますか？1つあたりか、全体の合計かもお願いします。\n\nいつ頃のお受け取りをご希望ですか？未定でも大丈夫です。\n\nいただいた内容で対応できるか確認いたします。\n\n確認が取れ次第、ご返信いたします。店休日・営業時間外は、次の営業時間内のご返信となる場合がございます。",
+      "draftStatus": "pending",
+      "requiresRouting": false,
+      "reasons": [
+        "order_exception"
+      ],
+      "orders": [
+        {
+          "orderLabel": "EXP17-ORDER-1",
+          "title": "ご相談",
+          "status": "open",
+          "revision": 3,
+          "fields": {
+            "color_vibe": "赤・青・紫"
+          }
+        }
+      ]
+    },
+    {
+      "caseId": "EXP18",
+      "turn": 3,
+      "customerText": "もし出張が無理なら物だけ送ってもらえば同じ料金でいいですか",
+      "actualReply": "ご連絡ありがとうございます😊\n\nどのようなバルーンをご希望ですか？写真だけでも大丈夫です😊\n\nご予算は全体でどのくらいをお考えですか？未定でも大丈夫です。\n\n確認が取れ次第、ご返信いたします。店休日・営業時間外は、次の営業時間内のご返信となる場合がございます。",
+      "draftStatus": "pending",
+      "requiresRouting": false,
+      "reasons": [
+        "過去注文の確認済み記録なし。昨年と同じ仕様を推測しない"
+      ],
+      "orders": [
+        {
+          "orderLabel": "EXP18-ORDER-1",
+          "title": "ご相談",
+          "status": "open",
+          "revision": 3,
+          "fields": {
+            "receive_date": "2026-11-22",
+            "receive_time": "18:00"
+          }
+        }
+      ]
+    },
+    {
+      "caseId": "EXP19",
+      "turn": 3,
+      "customerText": "去年は休みの日でも開けてくれました。今日も大丈夫でしょう？",
+      "actualReply": "ご回答ありがとうございます😊\n\n以前のご注文を確認します。変更したい点があれば、その点だけお知らせください。\n\nどのようなバルーンをご希望ですか？写真だけでも大丈夫です😊\n\nいただいた内容で対応できるか確認いたします。\n\n確認が取れ次第、ご返信いたします。店休日・営業時間外は、次の営業時間内のご返信となる場合がございます。",
+      "draftStatus": "pending",
+      "requiresRouting": false,
+      "reasons": [
+        "urgent_capacity",
+        "verify_previous_order",
+        "過去注文の確認済み記録なし。昨年と同じ仕様を推測しない"
+      ],
+      "orders": [
+        {
+          "orderLabel": "EXP19-ORDER-1",
+          "title": "ご相談",
+          "status": "open",
+          "revision": 3,
+          "fields": {
+            "fulfillment_method": "店頭受取",
+            "receive_date": "2026-10-19"
+          }
+        }
+      ]
+    },
+    {
+      "caseId": "EXP20",
+      "turn": 3,
+      "customerText": "夜分すみません、受け取りだけ30日18時に変えられますか",
+      "actualReply": "ご回答ありがとうございます😊\n\nどのようなバルーンをご希望ですか？写真だけでも大丈夫です😊\n\nお受け取りは、店頭・配達・発送のどちらをご希望ですか？",
+      "draftStatus": "sent",
+      "requiresRouting": false,
+      "reasons": [],
+      "orders": [
+        {
+          "orderLabel": "EXP20-ORDER-1",
+          "title": "ご相談",
+          "status": "open",
+          "revision": 3,
+          "fields": {
+            "budget": "5,000円（単価・合計未確認）",
+            "color_vibe": "おまかせ",
+            "quantity": "1",
+            "receive_date": "2026-10-31",
+            "receive_time": "18:00"
+          }
+        }
+      ]
+    },
+    {
+      "caseId": "EXP21",
+      "turn": 3,
+      "customerText": "お金は受け取る時に払うつもりです。まだ払っていません",
+      "actualReply": "こんにちは😊 elm・balloonです🎈\nご注文の相談は、AIアシスタントがお手伝いします。\n制作やお届けの確認が必要なときは、スタッフと連携してご案内します。\n\nご連絡ありがとうございます😊\n\nどのようなバルーンをご希望ですか？写真だけでも大丈夫です😊\n\nお受け取りは、店頭・配達・発送のどちらをご希望ですか？\n\nいただいた内容で対応できるか確認いたします。\n\n確認が取れ次第、ご返信いたします。店休日・営業時間外は、次の営業時間内のご返信となる場合がございます。",
+      "draftStatus": "pending",
+      "requiresRouting": false,
+      "reasons": [
+        "urgent_capacity"
+      ],
+      "orders": [
+        {
+          "orderLabel": "EXP21-ORDER-1",
+          "title": "ご相談",
+          "status": "open",
+          "revision": 3,
+          "fields": {
+            "receive_date": "2026-10-19",
+            "receive_time": "16:30"
+          }
+        }
+      ]
+    },
+    {
+      "caseId": "EXP22",
+      "turn": 3,
+      "customerText": "完成写真も役員だけに見せるならいいです。SNSは載せないでください",
+      "actualReply": "ご連絡ありがとうございます😊\n\nいつ頃のお受け取りをご希望ですか？未定でも大丈夫です。\n\nどのようなバルーンをご希望ですか？写真だけでも大丈夫です😊",
+      "draftStatus": "sent",
+      "requiresRouting": false,
+      "reasons": [],
+      "orders": [
+        {
+          "orderLabel": "EXP22-ORDER-1",
+          "title": "ご相談",
+          "status": "open",
+          "revision": 3,
+          "fields": {
+            "quantity": "100"
+          }
+        }
+      ]
+    },
+    {
+      "caseId": "EXP23",
+      "turn": 3,
+      "customerText": "2つじゃなく3つで、ピンクではなく薄紫にしてください",
+      "actualReply": "ご回答ありがとうございます😊\n\n念のため、いつ頃のお受け取りをご希望ですか？未定でも大丈夫です。\n\n念のため、お受け取りは、店頭・配達・発送のどちらをご希望ですか？",
+      "draftStatus": "sent",
+      "requiresRouting": false,
+      "reasons": [],
+      "orders": [
+        {
+          "orderLabel": "EXP23-ORDER-1",
+          "title": "ブーケ",
+          "status": "open",
+          "revision": 3,
+          "fields": {
+            "budget": "2,000円／1つ",
+            "budget_scope": "unit",
+            "color_vibe": "紫",
+            "product_type": "ブーケ",
+            "quantity": "3"
+          }
+        }
+      ]
+    },
+    {
+      "caseId": "EXP24",
+      "turn": 3,
+      "customerText": "スタンドの方だけやめたいです。母のブーケはそのまま相談します",
+      "actualReply": "こんにちは😊 elm・balloonです🎈\nご注文の相談は、AIアシスタントがお手伝いします。\n制作やお届けの確認が必要なときは、スタッフと連携してご案内します。\n\nご連絡ありがとうございます😊\n\nご希望の商品はどのタイプでしょうか？複数の場合は、それぞれ教えてください。\n\nお届け先の市町村を教えていただけますか？\n\nいただいた内容で対応できるか確認いたします。\n\n確認が取れ次第、ご返信いたします。店休日・営業時間外は、次の営業時間内のご返信となる場合がございます。",
+      "draftStatus": "pending",
+      "requiresRouting": false,
+      "reasons": [
+        "delivery_feasibility",
+        "order_exception"
+      ],
+      "orders": [
+        {
+          "orderLabel": "EXP24-ORDER-1",
+          "title": "ご相談",
+          "status": "open",
+          "revision": 3,
+          "fields": {
+            "fulfillment_method": "配達",
+            "quantity": "1"
+          }
+        }
+      ]
+    },
+    {
+      "caseId": "EXP01",
+      "turn": 4,
+      "customerText": "それで決めたいです。税込1万円以内ってことで合ってますか？",
+      "actualReply": "ご回答ありがとうございます😊\n\nその金額は、1つあたりと全体の合計のどちらでしょうか？",
+      "draftStatus": "sent",
+      "requiresRouting": false,
+      "reasons": [],
+      "orders": [
+        {
+          "orderLabel": "EXP01-ORDER-1",
+          "title": "誕生日",
+          "status": "open",
+          "revision": 4,
+          "fields": {
+            "budget": "10,000円（単価・合計未確認）",
+            "color_vibe": "ピンク・紫・赤",
+            "fulfillment_method": "店頭受取",
+            "purpose": "誕生日",
+            "quantity": "1",
+            "receive_date": "2026-10-25",
+            "receive_time": "14:00"
+          }
+        }
+      ]
+    },
+    {
+      "caseId": "EXP02",
+      "turn": 4,
+      "customerText": "11月2日に使うので11月1日に受け取れますか。今のは希望です",
+      "actualReply": "ご連絡ありがとうございます😊\n\nご使用日とお受け取り希望日を、それぞれ何年何月何日か教えていただけますか？\n\nお受け取りは、店頭・配達・発送のどちらをご希望ですか？",
+      "draftStatus": "pending",
+      "requiresRouting": false,
+      "reasons": [],
+      "orders": [
+        {
+          "orderLabel": "EXP02-ORDER-1",
+          "title": "ヘリウム（浮く）タイプ",
+          "status": "open",
+          "revision": 4,
+          "fields": {
+            "budget": "5,000円（単価・合計未確認）",
+            "color_vibe": "おまかせ",
+            "product_type": "ヘリウム（浮く）タイプ",
+            "quantity": "1"
+          }
+        }
+      ]
+    },
+    {
+      "caseId": "EXP03",
+      "turn": 4,
+      "customerText": "11月8日に使います。受け取りは7日15時で相談できますか",
+      "actualReply": "ご回答ありがとうございます😊\n\nお受け取りは、店頭・配達・発送のどちらをご希望ですか？",
+      "draftStatus": "sent",
+      "requiresRouting": false,
+      "reasons": [],
+      "orders": [
+        {
+          "orderLabel": "EXP03-ORDER-1",
+          "title": "ご相談",
+          "status": "open",
+          "revision": 4,
+          "fields": {
+            "budget": "8,000円（合計）",
+            "budget_scope": "total",
+            "product_source": "88",
+            "quantity": "1",
+            "receive_date": "2026-11-08",
+            "receive_time": "15:00"
+          }
+        }
+      ]
+    },
+    {
+      "caseId": "EXP04",
+      "turn": 4,
+      "customerText": "今日中に可否だけ教えてください。無理なら他を探したいです",
+      "actualReply": "ご回答ありがとうございます😊\n\nお受け取りは、店頭・配達・発送のどちらをご希望ですか？\n\nいただいた内容で対応できるか確認いたします。\n\n確認が取れ次第、ご返信いたします。店休日・営業時間外は、次の営業時間内のご返信となる場合がございます。",
+      "draftStatus": "pending",
+      "requiresRouting": false,
+      "reasons": [
+        "urgent_capacity"
+      ],
+      "orders": [
+        {
+          "orderLabel": "EXP04-ORDER-1",
+          "title": "ブーケ",
+          "status": "open",
+          "revision": 4,
+          "fields": {
+            "budget": "2,500円（単価・合計未確認）",
+            "color_vibe": "おまかせ",
+            "product_type": "ブーケ",
+            "quantity": "1",
+            "receive_date": "2026-10-19"
+          }
+        }
+      ]
+    },
+    {
+      "caseId": "EXP05",
+      "turn": 4,
+      "customerText": "すみませんAOだけ背番号9に訂正です。他の子の番号は変えないでください",
+      "actualReply": "ご連絡ありがとうございます😊\n\nいつ頃のお受け取りをご希望ですか？未定でも大丈夫です。\n\nお受け取りは、店頭・配達・発送のどちらをご希望ですか？",
+      "draftStatus": "sent",
+      "requiresRouting": false,
+      "reasons": [],
+      "orders": [
+        {
+          "orderLabel": "EXP05-ORDER-1",
+          "title": "ブーケ",
+          "status": "open",
+          "revision": 4,
+          "fields": {
+            "budget": "1,500円／1つ",
+            "budget_scope": "unit",
+            "color_vibe": "青・白",
+            "product_type": "ブーケ",
+            "quantity": "3"
+          }
+        }
+      ]
+    },
+    {
+      "caseId": "EXP06",
+      "turn": 4,
+      "customerText": "店の営業時間が昼まででも夜の配達は別に相談できるんですか？",
+      "actualReply": "ご回答ありがとうございます😊\n\nお届け先の市町村を教えていただけますか？\n\nいただいた内容で対応できるか確認いたします。\n\n確認が取れ次第、ご返信いたします。店休日・営業時間外は、次の営業時間内のご返信となる場合がございます。",
+      "draftStatus": "pending",
+      "requiresRouting": false,
+      "reasons": [
+        "delivery_feasibility"
+      ],
+      "orders": [
+        {
+          "orderLabel": "EXP06-ORDER-1",
+          "title": "周年・バルーンスタンド",
+          "status": "open",
+          "revision": 4,
+          "fields": {
+            "budget": "30,000円（単価・合計未確認）",
+            "fulfillment_method": "配達",
+            "product_type": "バルーンスタンド",
+            "purpose": "周年",
+            "quantity": "1",
+            "receive_date": "2026-11-14",
+            "receive_time": "20:00"
+          }
+        }
+      ]
+    },
+    {
+      "caseId": "EXP07",
+      "turn": 4,
+      "customerText": "完成写真は私への確認だけならいいです。SNSには載せないでください",
+      "actualReply": "ご連絡ありがとうございます😊\n\nその金額は、1つあたりと全体の合計のどちらでしょうか？\n\nご希望のお色はありますか？おまかせでも大丈夫です。",
+      "draftStatus": "sent",
+      "requiresRouting": false,
+      "reasons": [],
+      "orders": [
+        {
+          "orderLabel": "EXP07-ORDER-1",
+          "title": "誕生日・バルーンスタンド",
+          "status": "open",
+          "revision": 4,
+          "fields": {
+            "budget": "30,000円（単価・合計未確認）",
+            "product_type": "バルーンスタンド",
+            "purpose": "誕生日",
+            "quantity": "1",
+            "receive_date": "2026-11-20",
+            "receive_time": "19:00"
+          }
+        }
+      ]
+    },
+    {
+      "caseId": "EXP08",
+      "turn": 4,
+      "customerText": "色は去年と同じつもりですが、分からなければ確認してからでお願いします",
+      "actualReply": "ご連絡ありがとうございます😊\n\n以前のご注文を確認します。変更したい点があれば、その点だけお知らせください。\n\nいつ頃のお受け取りをご希望ですか？未定でも大丈夫です。\n\nどのようなバルーンをご希望ですか？写真だけでも大丈夫です😊\n\nいただいた内容で対応できるか確認いたします。\n\n確認が取れ次第、ご返信いたします。店休日・営業時間外は、次の営業時間内のご返信となる場合がございます。",
+      "draftStatus": "pending",
+      "requiresRouting": false,
+      "reasons": [
+        "verify_previous_order",
+        "過去注文の確認済み記録なし。昨年と同じ仕様を推測しない"
+      ],
+      "orders": [
+        {
+          "orderLabel": "EXP08-ORDER-1",
+          "title": "ご相談",
+          "status": "open",
+          "revision": 4,
+          "fields": {}
+        }
+      ]
+    },
+    {
+      "caseId": "EXP09",
+      "turn": 4,
+      "customerText": "1つ6000円くらいで11月3日13時受け取り希望。写真待ちで置いといてください",
+      "actualReply": "ご回答ありがとうございます😊\n\nお受け取りは、店頭・配達・発送のどちらをご希望ですか？\n\nいくつご希望ですか？",
+      "draftStatus": "sent",
+      "requiresRouting": false,
+      "reasons": [],
+      "orders": [
+        {
+          "orderLabel": "EXP09-ORDER-1",
+          "title": "ご相談",
+          "status": "open",
+          "revision": 4,
+          "fields": {
+            "budget": "6,000円／1つ",
+            "budget_scope": "unit",
+            "color_vibe": "紫",
+            "receive_date": "2026-11-03",
+            "receive_time": "13:00"
+          }
+        }
+      ]
+    },
+    {
+      "caseId": "EXP10",
+      "turn": 4,
+      "customerText": "ブーケの話と混ざってませんか。スタンドは架空A市のサンプル店へ17時です",
+      "actualReply": "ご回答ありがとうございます😊\n\nご希望の商品はどのタイプでしょうか？複数の場合は、それぞれ教えてください。\n\nお届け先の市町村を教えていただけますか？\n\nいただいた内容で対応できるか確認いたします。\n\n確認が取れ次第、ご返信いたします。店休日・営業時間外は、次の営業時間内のご返信となる場合がございます。",
+      "draftStatus": "pending",
+      "requiresRouting": false,
+      "reasons": [
+        "delivery_feasibility",
+        "order_exception"
+      ],
+      "orders": [
+        {
+          "orderLabel": "EXP10-ORDER-1",
+          "title": "周年・バルーンスタンド",
+          "status": "open",
+          "revision": 4,
+          "fields": {
+            "budget": "15,000円（単価・合計未確認）",
+            "budget_scope": "total",
+            "color_vibe": "おまかせ",
+            "fulfillment_method": "配達",
+            "product_type": "バルーンスタンド",
+            "purpose": "周年",
+            "quantity": "1",
+            "receive_date": "2026-11-14",
+            "receive_time": "17:00"
+          }
+        }
+      ]
+    },
+    {
+      "caseId": "EXP11",
+      "turn": 4,
+      "customerText": "ありがとうございました。また必要な時に相談します",
+      "actualReply": "ご連絡ありがとうございます😊\n\nいくつご希望ですか？\n\nご希望のお色はありますか？おまかせでも大丈夫です。",
+      "draftStatus": "sent",
+      "requiresRouting": false,
+      "reasons": [],
+      "orders": [
+        {
+          "orderLabel": "EXP11-ORDER-1",
+          "title": "退職・ブーケ",
+          "status": "open",
+          "revision": 4,
+          "fields": {
+            "budget": "4,000円／1つ",
+            "budget_scope": "unit",
+            "product_type": "ブーケ",
+            "purpose": "退職",
+            "receive_date": "2026-11-10"
+          }
+        }
+      ]
+    },
+    {
+      "caseId": "EXP12",
+      "turn": 4,
+      "customerText": "予約内容と支払記録を確認してから、条件を説明してほしいです",
+      "actualReply": "ご連絡ありがとうございます😊\n\nいくつご希望ですか？\n\nご予算は全体でどのくらいをお考えですか？未定でも大丈夫です。",
+      "draftStatus": "pending",
+      "requiresRouting": false,
+      "reasons": [],
+      "orders": [
+        {
+          "orderLabel": "EXP12-ORDER-1",
+          "title": "ご相談",
+          "status": "open",
+          "revision": 4,
+          "fields": {
+            "receive_date": "2026-11-08"
+          }
+        }
+      ]
+    },
+    {
+      "caseId": "EXP13",
+      "turn": 4,
+      "customerText": "こちらのせいだと決めつけないで、どう対応するのか確認してください",
+      "actualReply": "ご連絡ありがとうございます😊\n\nお受け取りは、店頭・配達・発送のどちらをご希望ですか？\n\nいただいた内容で対応できるか確認いたします。\n\n確認が取れ次第、ご返信いたします。店休日・営業時間外は、次の営業時間内のご返信となる場合がございます。",
+      "draftStatus": "pending",
+      "requiresRouting": false,
+      "reasons": [
+        "urgent_capacity"
+      ],
+      "orders": [
+        {
+          "orderLabel": "EXP13-ORDER-1",
+          "title": "ご相談",
+          "status": "open",
+          "revision": 4,
+          "fields": {
+            "receive_date": "2026-10-20"
+          }
+        }
+      ]
+    },
+    {
+      "caseId": "EXP14",
+      "turn": 4,
+      "customerText": "注文時の色と現物を確認して、返品できる条件を教えてください",
+      "actualReply": "ご連絡ありがとうございます😊\n\nお受け取りは、店頭・配達・発送のどちらをご希望ですか？\n\nいただいた内容で対応できるか確認いたします。\n\n確認が取れ次第、ご返信いたします。店休日・営業時間外は、次の営業時間内のご返信となる場合がございます。",
+      "draftStatus": "pending",
+      "requiresRouting": false,
+      "reasons": [
+        "urgent_capacity"
+      ],
+      "orders": [
+        {
+          "orderLabel": "EXP14-ORDER-1",
+          "title": "ご相談",
+          "status": "open",
+          "revision": 4,
+          "fields": {
+            "color_vibe": "青",
+            "receive_date": "2026-10-19"
+          }
+        }
+      ]
+    },
+    {
+      "caseId": "EXP15",
+      "turn": 4,
+      "customerText": "ヘリウムや会場の許可も確認中です。雨で中止なら費用はどうなりますか",
+      "actualReply": "ご回答ありがとうございます😊\n\nお受け取りは、店頭・配達・発送のどちらをご希望ですか？\n\nご予算は全体でどのくらいをお考えですか？未定でも大丈夫です。",
+      "draftStatus": "sent",
+      "requiresRouting": false,
+      "reasons": [],
+      "orders": [
+        {
+          "orderLabel": "EXP15-ORDER-1",
+          "title": "ヘリウム（浮く）タイプ",
+          "status": "open",
+          "revision": 4,
+          "fields": {
+            "product_type": "ヘリウム（浮く）タイプ",
+            "quantity": "100"
+          }
+        }
+      ]
+    },
+    {
+      "caseId": "EXP16",
+      "turn": 4,
+      "customerText": "まだ払ってないです。書類もお願いしただけで、発行済みではないですよね",
+      "actualReply": "ご連絡ありがとうございます😊\n\nお受け取りは、店頭・配達・発送のどちらをご希望ですか？\n\nご予算は全体でどのくらいをお考えですか？未定でも大丈夫です。",
+      "draftStatus": "sent",
+      "requiresRouting": false,
+      "reasons": [],
+      "orders": [
+        {
+          "orderLabel": "EXP16-ORDER-1",
+          "title": "ご相談",
+          "status": "open",
+          "revision": 4,
+          "fields": {
+            "quantity": "200",
+            "receive_date": "2026-11-28"
+          }
+        }
+      ]
+    },
+    {
+      "caseId": "EXP17",
+      "turn": 4,
+      "customerText": "写真はまだ送れてないので、誰の分か分かるようにして相談したいです",
+      "actualReply": "ご連絡ありがとうございます😊\n\nいつ頃のお受け取りをご希望ですか？未定でも大丈夫です。\n\nどのようなバルーンをご希望ですか？写真だけでも大丈夫です😊",
+      "draftStatus": "sent",
+      "requiresRouting": false,
+      "reasons": [],
+      "orders": [
+        {
+          "orderLabel": "EXP17-ORDER-1",
+          "title": "ご相談",
+          "status": "open",
+          "revision": 4,
+          "fields": {
+            "color_vibe": "赤・青・紫"
+          }
+        }
+      ]
+    },
+    {
+      "caseId": "EXP18",
+      "turn": 4,
+      "customerText": "じゃあ一番早い方法で決めたいです。ホテルの入室許可はまだ取ってません",
+      "actualReply": "ご連絡ありがとうございます😊\n\nどのようなバルーンをご希望ですか？写真だけでも大丈夫です😊\n\nご予算は全体でどのくらいをお考えですか？未定でも大丈夫です。",
+      "draftStatus": "sent",
+      "requiresRouting": false,
+      "reasons": [],
+      "orders": [
+        {
+          "orderLabel": "EXP18-ORDER-1",
+          "title": "ご相談",
+          "status": "open",
+          "revision": 4,
+          "fields": {
+            "receive_date": "2026-11-22",
+            "receive_time": "18:00"
+          }
+        }
+      ]
+    },
+    {
+      "caseId": "EXP19",
+      "turn": 4,
+      "customerText": "今いるかだけ確認お願いします。無理なら今日は行きません",
+      "actualReply": "ご連絡ありがとうございます😊\n\n「無理なら今日は行きません」は何年何月何日のご予定でしょうか？\n\nどのようなバルーンをご希望ですか？写真だけでも大丈夫です😊\n\nいただいた内容で対応できるか確認いたします。\n\n確認が取れ次第、ご返信いたします。店休日・営業時間外は、次の営業時間内のご返信となる場合がございます。",
+      "draftStatus": "pending",
+      "requiresRouting": false,
+      "reasons": [
+        "urgent_capacity"
+      ],
+      "orders": [
+        {
+          "orderLabel": "EXP19-ORDER-1",
+          "title": "ご相談",
+          "status": "open",
+          "revision": 4,
+          "fields": {
+            "fulfillment_method": "店頭受取",
+            "receive_date": "2026-10-19"
+          }
+        }
+      ]
+    },
+    {
+      "caseId": "EXP20",
+      "turn": 4,
+      "customerText": "使う日は1日のままです。営業時間になってから返事でいいです",
+      "actualReply": "ご連絡ありがとうございます😊\n\n「使う日は1日のままです」は何年何月何日のご予定でしょうか？\n\nその金額は、1つあたりと全体の合計のどちらでしょうか？",
+      "draftStatus": "pending",
+      "requiresRouting": false,
+      "reasons": [],
+      "orders": [
+        {
+          "orderLabel": "EXP20-ORDER-1",
+          "title": "ご相談",
+          "status": "open",
+          "revision": 4,
+          "fields": {
+            "budget": "5,000円（単価・合計未確認）",
+            "color_vibe": "おまかせ",
+            "quantity": "1",
+            "receive_date": "2026-10-31",
+            "receive_time": "18:00"
+          }
+        }
+      ]
+    },
+    {
+      "caseId": "EXP21",
+      "turn": 4,
+      "customerText": "ありがとうございます👍 でも16時半が可能かまだ返事待ちです",
+      "actualReply": "ご回答ありがとうございます😊\n\nどのようなバルーンをご希望ですか？写真だけでも大丈夫です😊\n\nお受け取りは、店頭・配達・発送のどちらをご希望ですか？\n\nいただいた内容で対応できるか確認いたします。\n\n確認が取れ次第、ご返信いたします。店休日・営業時間外は、次の営業時間内のご返信となる場合がございます。",
+      "draftStatus": "pending",
+      "requiresRouting": false,
+      "reasons": [
+        "urgent_capacity"
+      ],
+      "orders": [
+        {
+          "orderLabel": "EXP21-ORDER-1",
+          "title": "ご相談",
+          "status": "open",
+          "revision": 4,
+          "fields": {
+            "receive_date": "2026-10-19",
+            "receive_time": "16:30"
+          }
+        }
+      ]
+    },
+    {
+      "caseId": "EXP22",
+      "turn": 4,
+      "customerText": "金額と最終個数を読んでから決めたいので、今は発注しないでください",
+      "actualReply": "ご連絡ありがとうございます😊\n\nお受け取りは、店頭・配達・発送のどちらをご希望ですか？\n\nご予算は全体でどのくらいをお考えですか？未定でも大丈夫です。",
+      "draftStatus": "sent",
+      "requiresRouting": false,
+      "reasons": [],
+      "orders": [
+        {
+          "orderLabel": "EXP22-ORDER-1",
+          "title": "ご相談",
+          "status": "open",
+          "revision": 4,
+          "fields": {
+            "quantity": "100"
+          }
+        }
+      ]
+    },
+    {
+      "caseId": "EXP23",
+      "turn": 4,
+      "customerText": "受け取るのは23日15時で。配達じゃなく取りに行きます。合計6000円が予算です",
+      "actualReply": "ご回答ありがとうございます😊\n\n念のため、いつ頃のお受け取りをご希望ですか？未定でも大丈夫です。",
+      "draftStatus": "sent",
+      "requiresRouting": false,
+      "reasons": [],
+      "orders": [
+        {
+          "orderLabel": "EXP23-ORDER-1",
+          "title": "ブーケ",
+          "status": "open",
+          "revision": 4,
+          "fields": {
+            "budget": "6,000円（合計）",
+            "budget_scope": "total",
+            "color_vibe": "紫",
+            "fulfillment_method": "店頭受取",
+            "product_type": "ブーケ",
+            "quantity": "3",
+            "receive_time": "15:00"
+          }
+        }
+      ]
+    },
+    {
+      "caseId": "EXP24",
+      "turn": 4,
+      "customerText": "どっちもまだ正式注文してないです。スタンドだけ見送りにしてください",
+      "actualReply": "ご回答ありがとうございます😊\n\nお届け先の市町村を教えていただけますか？\n\nいつ頃のお受け取りをご希望ですか？未定でも大丈夫です。\n\nいただいた内容で対応できるか確認いたします。\n\n確認が取れ次第、ご返信いたします。店休日・営業時間外は、次の営業時間内のご返信となる場合がございます。",
+      "draftStatus": "pending",
+      "requiresRouting": false,
+      "reasons": [
+        "delivery_feasibility"
+      ],
+      "orders": [
+        {
+          "orderLabel": "EXP24-ORDER-1",
+          "title": "バルーンスタンド",
+          "status": "open",
+          "revision": 4,
+          "fields": {
+            "fulfillment_method": "配達",
+            "product_type": "バルーンスタンド",
+            "quantity": "1"
+          }
+        }
+      ]
+    },
+    {
+      "caseId": "EXP01",
+      "turn": 5,
+      "customerText": "赤なしでお願いします。1つで税込1万円以内が希望です。できる内容を確認してもらえますか？",
+      "actualReply": "ご回答ありがとうございます😊\n\n最終的にご希望のお色を教えていただけますか？\n\nどのようなバルーンをご希望ですか？写真だけでも大丈夫です😊\n\nいただいた内容で対応できるか確認いたします。\n\n確認が取れ次第、ご返信いたします。店休日・営業時間外は、次の営業時間内のご返信となる場合がございます。",
+      "draftStatus": "pending",
+      "requiresRouting": false,
+      "reasons": [
+        "order_exception"
+      ],
+      "orders": [
+        {
+          "orderLabel": "EXP01-ORDER-1",
+          "title": "誕生日",
+          "status": "open",
+          "revision": 5,
+          "fields": {
+            "budget": "10,000円（単価・合計未確認）",
+            "color_vibe": "ピンク・紫・赤",
+            "fulfillment_method": "店頭受取",
+            "purpose": "誕生日",
+            "quantity": "1",
+            "receive_date": "2026-10-25",
+            "receive_time": "14:00"
+          }
+        }
+      ]
+    },
+    {
+      "caseId": "EXP02",
+      "turn": 5,
+      "customerText": "浮くのではなく、机に置くタイプでお願いします。種類が違って伝わってませんか？",
+      "actualReply": "ご回答ありがとうございます😊\n\nお受け取りは、店頭・配達・発送のどちらをご希望ですか？",
+      "draftStatus": "sent",
+      "requiresRouting": false,
+      "reasons": [],
+      "orders": [
+        {
+          "orderLabel": "EXP02-ORDER-1",
+          "title": "ヘリウム（浮く）タイプ",
+          "status": "open",
+          "revision": 5,
+          "fields": {
+            "budget": "5,000円（単価・合計未確認）",
+            "color_vibe": "おまかせ",
+            "product_type": "ヘリウム（浮く）タイプ",
+            "quantity": "1"
+          }
+        }
+      ]
+    },
+    {
+      "caseId": "EXP03",
+      "turn": 5,
+      "customerText": "88は米寿の数字です。商品番号ではありません。金色の数字88という希望で確認できますか？",
+      "actualReply": "ご連絡ありがとうございます😊\n\nご希望のお色はありますか？おまかせでも大丈夫です。",
+      "draftStatus": "sent",
+      "requiresRouting": false,
+      "reasons": [],
+      "orders": [
+        {
+          "orderLabel": "EXP03-ORDER-1",
+          "title": "ご相談",
+          "status": "open",
+          "revision": 5,
+          "fields": {
+            "budget": "8,000円（合計）",
+            "budget_scope": "total",
+            "product_source": "88",
+            "quantity": "1",
+            "receive_date": "2026-11-08",
+            "receive_time": "15:00"
+          }
+        }
+      ]
+    },
+    {
+      "caseId": "EXP04",
+      "turn": 5,
+      "customerText": "受け取りは明日20日です。今日中というのは返事がほしい期限です。そこだけお願いします。",
+      "actualReply": "こんにちは😊 elm・balloonです🎈\nご注文の相談は、AIアシスタントがお手伝いします。\n制作やお届けの確認が必要なときは、スタッフと連携してご案内します。\n\nご連絡ありがとうございます😊\n\nご使用日とお受け取り希望日を、それぞれ何年何月何日か教えていただけますか？\n\nお受け取りは、店頭・配達・発送のどちらをご希望ですか？\n\nいただいた内容で対応できるか確認いたします。\n\n確認が取れ次第、ご返信いたします。店休日・営業時間外は、次の営業時間内のご返信となる場合がございます。",
+      "draftStatus": "pending",
+      "requiresRouting": false,
+      "reasons": [
+        "urgent_capacity"
+      ],
+      "orders": [
+        {
+          "orderLabel": "EXP04-ORDER-1",
+          "title": "ブーケ",
+          "status": "open",
+          "revision": 5,
+          "fields": {
+            "budget": "2,500円（単価・合計未確認）",
+            "color_vibe": "おまかせ",
+            "product_type": "ブーケ",
+            "quantity": "1",
+            "receive_date": "2026-10-19"
+          }
+        }
+      ]
+    },
+    {
+      "caseId": "EXP05",
+      "turn": 5,
+      "customerText": "AOだけ9に変わっているか、3人分の名前と番号を一覧で確認したいです。",
+      "actualReply": "ご連絡ありがとうございます😊\n\n念のため、いつ頃のお受け取りをご希望ですか？未定でも大丈夫です。\n\n念のため、お受け取りは、店頭・配達・発送のどちらをご希望ですか？",
+      "draftStatus": "sent",
+      "requiresRouting": false,
+      "reasons": [],
+      "orders": [
+        {
+          "orderLabel": "EXP05-ORDER-1",
+          "title": "ブーケ",
+          "status": "open",
+          "revision": 5,
+          "fields": {
+            "budget": "1,500円／1つ",
+            "budget_scope": "unit",
+            "color_vibe": "青・白",
+            "product_type": "ブーケ",
+            "quantity": "3"
+          }
+        }
+      ]
+    },
+    {
+      "caseId": "EXP06",
+      "turn": 5,
+      "customerText": "予算は2万から3万円です。架空A市へ夜20時に配達できるか、まず確認お願いします。",
+      "actualReply": "ご回答ありがとうございます😊\n\nお届け先の市町村を教えていただけますか？\n\nいただいた内容で対応できるか確認いたします。\n\n確認が取れ次第、ご返信いたします。店休日・営業時間外は、次の営業時間内のご返信となる場合がございます。",
+      "draftStatus": "pending",
+      "requiresRouting": false,
+      "reasons": [
+        "delivery_feasibility"
+      ],
+      "orders": [
+        {
+          "orderLabel": "EXP06-ORDER-1",
+          "title": "周年・バルーンスタンド",
+          "status": "open",
+          "revision": 5,
+          "fields": {
+            "budget": "30,000円（単価・合計未確認）",
+            "fulfillment_method": "配達",
+            "product_type": "バルーンスタンド",
+            "purpose": "周年",
+            "quantity": "1",
+            "receive_date": "2026-11-14",
+            "receive_time": "20:00"
+          }
+        }
+      ]
+    },
+    {
+      "caseId": "EXP07",
+      "turn": 5,
+      "customerText": "確認ですが、私の名前は札にもSNSにも出さないでください。そこは伝わってますか？",
+      "actualReply": "ご連絡ありがとうございます😊\n\nお受け取りは、店頭・配達・発送のどちらをご希望ですか？",
+      "draftStatus": "sent",
+      "requiresRouting": false,
+      "reasons": [],
+      "orders": [
+        {
+          "orderLabel": "EXP07-ORDER-1",
+          "title": "誕生日・バルーンスタンド",
+          "status": "open",
+          "revision": 5,
+          "fields": {
+            "budget": "30,000円（単価・合計未確認）",
+            "product_type": "バルーンスタンド",
+            "purpose": "誕生日",
+            "quantity": "1",
+            "receive_date": "2026-11-20",
+            "receive_time": "19:00"
+          }
+        }
+      ]
+    },
+    {
+      "caseId": "EXP08",
+      "turn": 5,
+      "customerText": "今年の数字は10です。去年の履歴を探すために、何を伝えたらいいですか？",
+      "actualReply": "こんにちは😊 elm・balloonです🎈\nご注文の相談は、AIアシスタントがお手伝いします。\n制作やお届けの確認が必要なときは、スタッフと連携してご案内します。\n\nご連絡ありがとうございます😊\n\n以前のご注文を確認します。変更したい点があれば、その点だけお知らせください。\n\nいつ頃のお受け取りをご希望ですか？未定でも大丈夫です。\n\nどのようなバルーンをご希望ですか？写真だけでも大丈夫です😊\n\nいただいた内容で対応できるか確認いたします。\n\n確認が取れ次第、ご返信いたします。店休日・営業時間外は、次の営業時間内のご返信となる場合がございます。",
+      "draftStatus": "pending",
+      "requiresRouting": false,
+      "reasons": [
+        "verify_previous_order",
+        "過去注文の確認済み記録なし。昨年と同じ仕様を推測しない"
+      ],
+      "orders": [
+        {
+          "orderLabel": "EXP08-ORDER-1",
+          "title": "ご相談",
+          "status": "open",
+          "revision": 5,
+          "fields": {}
+        }
+      ]
+    },
+    {
+      "caseId": "EXP09",
+      "turn": 5,
+      "customerText": "写真は後で送ります。1つで取りに行きます。先に駐車場だけ教えてもらえますか？",
+      "actualReply": "ご回答ありがとうございます😊\n\nどのようなバルーンをご希望ですか？写真だけでも大丈夫です😊",
+      "draftStatus": "sent",
+      "requiresRouting": false,
+      "reasons": [],
+      "orders": [
+        {
+          "orderLabel": "EXP09-ORDER-1",
+          "title": "ご相談",
+          "status": "open",
+          "revision": 5,
+          "fields": {
+            "budget": "6,000円／1つ",
+            "budget_scope": "unit",
+            "color_vibe": "紫",
+            "fulfillment_method": "店頭受取",
+            "quantity": "1",
+            "receive_date": "2026-11-03",
+            "receive_time": "13:00"
+          }
+        }
+      ]
+    },
+    {
+      "caseId": "EXP10",
+      "turn": 5,
+      "customerText": "ブーケ3つとスタンド1台は別注文です。2件を分けた内容を確認させてください。",
+      "actualReply": "ご連絡ありがとうございます😊\n\nご希望の商品はどのタイプでしょうか？複数の場合は、それぞれ教えてください。\n\n最終的にご希望の数量を教えていただけますか？複数の商品は、それぞれの数量をお願いします。\n\nいただいた内容で対応できるか確認いたします。\n\n確認が取れ次第、ご返信いたします。店休日・営業時間外は、次の営業時間内のご返信となる場合がございます。",
+      "draftStatus": "pending",
+      "requiresRouting": false,
+      "reasons": [
+        "delivery_feasibility",
+        "order_exception"
+      ],
+      "orders": [
+        {
+          "orderLabel": "EXP10-ORDER-1",
+          "title": "周年・バルーンスタンド",
+          "status": "open",
+          "revision": 5,
+          "fields": {
+            "budget": "15,000円（単価・合計未確認）",
+            "budget_scope": "total",
+            "color_vibe": "おまかせ",
+            "fulfillment_method": "配達",
+            "product_type": "バルーンスタンド",
+            "purpose": "周年",
+            "quantity": "1",
+            "receive_date": "2026-11-14",
+            "receive_time": "17:00"
+          }
+        }
+      ]
+    },
+    {
+      "caseId": "EXP11",
+      "turn": 5,
+      "customerText": "今回は注文しません。質問を止めて、相談終了にしてください。",
+      "actualReply": "ご連絡ありがとうございます😊\n\nお受け取りは、店頭・配達・発送のどちらをご希望ですか？",
+      "draftStatus": "sent",
+      "requiresRouting": false,
+      "reasons": [],
+      "orders": [
+        {
+          "orderLabel": "EXP11-ORDER-1",
+          "title": "退職・ブーケ",
+          "status": "open",
+          "revision": 5,
+          "fields": {
+            "budget": "4,000円／1つ",
+            "budget_scope": "unit",
+            "product_type": "ブーケ",
+            "purpose": "退職",
+            "receive_date": "2026-11-10"
+          }
+        }
+      ]
+    },
+    {
+      "caseId": "EXP12",
+      "turn": 5,
+      "customerText": "新しい注文ではなく予約のキャンセルと返金相談です。担当の方に確認を回してください。",
+      "actualReply": "ご連絡ありがとうございます😊\n\nいくつご希望ですか？\n\nご予算は全体でどのくらいをお考えですか？未定でも大丈夫です。\n\nいただいた内容で対応できるか確認いたします。\n\n確認が取れ次第、ご返信いたします。店休日・営業時間外は、次の営業時間内のご返信となる場合がございます。",
+      "draftStatus": "pending",
+      "requiresRouting": false,
+      "reasons": [
+        "order_exception"
+      ],
+      "orders": [
+        {
+          "orderLabel": "EXP12-ORDER-1",
+          "title": "ご相談",
+          "status": "open",
+          "revision": 5,
+          "fields": {
+            "receive_date": "2026-11-08"
+          }
+        }
+      ]
+    },
+    {
+      "caseId": "EXP13",
+      "turn": 5,
+      "customerText": "新しく買う相談ではなく、昨日の商品がしぼんだ件です。スタッフさんにつないでください。",
+      "actualReply": "ご連絡ありがとうございます😊\n\nお受け取りは、店頭・配達・発送のどちらをご希望ですか？\n\nいただいた内容で対応できるか確認いたします。\n\n確認が取れ次第、ご返信いたします。店休日・営業時間外は、次の営業時間内のご返信となる場合がございます。",
+      "draftStatus": "pending",
+      "requiresRouting": false,
+      "reasons": [
+        "urgent_capacity"
+      ],
+      "orders": [
+        {
+          "orderLabel": "EXP13-ORDER-1",
+          "title": "ご相談",
+          "status": "open",
+          "revision": 5,
+          "fields": {
+            "receive_date": "2026-10-20"
+          }
+        }
+      ]
+    },
+    {
+      "caseId": "EXP14",
+      "turn": 5,
+      "customerText": "受け取りたい日ではなく、返品の返事を今日中にほしいという意味です。",
+      "actualReply": "こんにちは😊 elm・balloonです🎈\nご注文の相談は、AIアシスタントがお手伝いします。\n制作やお届けの確認が必要なときは、スタッフと連携してご案内します。\n\nご回答ありがとうございます😊\n\nお受け取りは、店頭・配達・発送のどちらをご希望ですか？\n\nいただいた内容で対応できるか確認いたします。\n\n確認が取れ次第、ご返信いたします。店休日・営業時間外は、次の営業時間内のご返信となる場合がございます。",
+      "draftStatus": "pending",
+      "requiresRouting": false,
+      "reasons": [
+        "urgent_capacity"
+      ],
+      "orders": [
+        {
+          "orderLabel": "EXP14-ORDER-1",
+          "title": "ご相談",
+          "status": "open",
+          "revision": 5,
+          "fields": {
+            "color_vibe": "青",
+            "receive_date": "2026-10-19"
+          }
+        }
+      ]
+    },
+    {
+      "caseId": "EXP15",
+      "turn": 5,
+      "customerText": "見積だけで、まだ発注しません。雨で中止になった場合の条件を先に確認できますか？",
+      "actualReply": "ご連絡ありがとうございます😊\n\nいつ頃のお受け取りをご希望ですか？未定でも大丈夫です。\n\nご希望のお色はありますか？おまかせでも大丈夫です。",
+      "draftStatus": "sent",
+      "requiresRouting": false,
+      "reasons": [],
+      "orders": [
+        {
+          "orderLabel": "EXP15-ORDER-1",
+          "title": "ヘリウム（浮く）タイプ",
+          "status": "open",
+          "revision": 5,
+          "fields": {
+            "product_type": "ヘリウム（浮く）タイプ",
+            "quantity": "100"
+          }
+        }
+      ]
+    },
+    {
+      "caseId": "EXP16",
+      "turn": 5,
+      "customerText": "開始が9時、搬入希望が7時です。支払いと書類もまだという記録でお願いします。",
+      "actualReply": "ご連絡ありがとうございます😊\n\n「お受け取りの時間が複数あります」は何年何月何日のご予定でしょうか？\n\nどのようなバルーンをご希望ですか？写真だけでも大丈夫です😊",
+      "draftStatus": "pending",
+      "requiresRouting": false,
+      "reasons": [],
+      "orders": [
+        {
+          "orderLabel": "EXP16-ORDER-1",
+          "title": "ご相談",
+          "status": "open",
+          "revision": 5,
+          "fields": {
+            "quantity": "200",
+            "receive_date": "2026-11-28"
+          }
+        }
+      ]
+    },
+    {
+      "caseId": "EXP17",
+      "turn": 5,
+      "customerText": "主役は赤で5000円、青と紫の人は各2000円です。3人分を分けて見せてもらえますか？",
+      "actualReply": "ご回答ありがとうございます😊\n\n最終的なご予算を教えていただけますか？1つあたりか、全体の合計かもお願いします。\n\nお受け取りは、店頭・配達・発送のどちらをご希望ですか？\n\nいただいた内容で対応できるか確認いたします。\n\n確認が取れ次第、ご返信いたします。店休日・営業時間外は、次の営業時間内のご返信となる場合がございます。",
+      "draftStatus": "pending",
+      "requiresRouting": false,
+      "reasons": [
+        "order_exception"
+      ],
+      "orders": [
+        {
+          "orderLabel": "EXP17-ORDER-1",
+          "title": "ご相談",
+          "status": "open",
+          "revision": 5,
+          "fields": {
+            "color_vibe": "赤・青・紫"
+          }
+        }
+      ]
+    },
+    {
+      "caseId": "EXP18",
+      "turn": 5,
+      "customerText": "部屋を使い始めるのが18時です。設営と発送は別だと思うので、担当の方と相談したいです。",
+      "actualReply": "ご回答ありがとうございます😊\n\nお届け先の市町村を教えていただけますか？\n\nいただいた内容で対応できるか確認いたします。\n\n確認が取れ次第、ご返信いたします。店休日・営業時間外は、次の営業時間内のご返信となる場合がございます。",
+      "draftStatus": "pending",
+      "requiresRouting": false,
+      "reasons": [
+        "delivery_feasibility"
+      ],
+      "orders": [
+        {
+          "orderLabel": "EXP18-ORDER-1",
+          "title": "ご相談",
+          "status": "open",
+          "revision": 5,
+          "fields": {
+            "fulfillment_method": "発送",
+            "receive_date": "2026-11-22",
+            "receive_time": "18:00"
+          }
+        }
+      ]
+    },
+    {
+      "caseId": "EXP19",
+      "turn": 5,
+      "customerText": "今日いらっしゃるかだけ知りたいです。返事があるまで向かいません。",
+      "actualReply": "ご回答ありがとうございます😊\n\nどのようなバルーンをご希望ですか？写真だけでも大丈夫です😊\n\nいただいた内容で対応できるか確認いたします。\n\n確認が取れ次第、ご返信いたします。店休日・営業時間外は、次の営業時間内のご返信となる場合がございます。",
+      "draftStatus": "pending",
+      "requiresRouting": false,
+      "reasons": [
+        "urgent_capacity"
+      ],
+      "orders": [
+        {
+          "orderLabel": "EXP19-ORDER-1",
+          "title": "ご相談",
+          "status": "open",
+          "revision": 5,
+          "fields": {
+            "fulfillment_method": "店頭受取",
+            "receive_date": "2026-10-19"
+          }
+        }
+      ]
+    },
+    {
+      "caseId": "EXP20",
+      "turn": 5,
+      "customerText": "31日の18時ではありません。変更希望は30日18時で、使う日は11月1日です。未確定のままで確認をお願いします。",
+      "actualReply": "ご連絡ありがとうございます😊\n\nご使用日とお受け取り希望日を、それぞれ何年何月何日か教えていただけますか？\n\nその金額は、1つあたりと全体の合計のどちらでしょうか？\n\nいただいた内容で対応できるか確認いたします。\n\n確認が取れ次第、ご返信いたします。店休日・営業時間外は、次の営業時間内のご返信となる場合がございます。",
+      "draftStatus": "pending",
+      "requiresRouting": false,
+      "reasons": [
+        "order_exception"
+      ],
+      "orders": [
+        {
+          "orderLabel": "EXP20-ORDER-1",
+          "title": "ご相談",
+          "status": "open",
+          "revision": 5,
+          "fields": {
+            "budget": "5,000円（単価・合計未確認）",
+            "color_vibe": "おまかせ",
+            "quantity": "1",
+            "receive_date": "2026-10-31",
+            "receive_time": "18:00"
+          }
+        }
+      ]
+    },
+    {
+      "caseId": "EXP21",
+      "turn": 5,
+      "customerText": "まだ向かっていません。16時半に受け取れるかだけ、確認して教えてください。",
+      "actualReply": "こんにちは😊 elm・balloonです🎈\nご注文の相談は、AIアシスタントがお手伝いします。\n制作やお届けの確認が必要なときは、スタッフと連携してご案内します。\n\nご回答ありがとうございます😊\n\nどのようなバルーンをご希望ですか？写真だけでも大丈夫です😊\n\nお受け取りは、店頭・配達・発送のどちらをご希望ですか？\n\nいただいた内容で対応できるか確認いたします。\n\n確認が取れ次第、ご返信いたします。店休日・営業時間外は、次の営業時間内のご返信となる場合がございます。",
+      "draftStatus": "pending",
+      "requiresRouting": false,
+      "reasons": [
+        "urgent_capacity"
+      ],
+      "orders": [
+        {
+          "orderLabel": "EXP21-ORDER-1",
+          "title": "ご相談",
+          "status": "open",
+          "revision": 5,
+          "fields": {
+            "receive_date": "2026-10-19",
+            "receive_time": "16:30"
+          }
+        }
+      ]
+    },
+    {
+      "caseId": "EXP22",
+      "turn": 5,
+      "customerText": "PDFを読んでから決めます。100個も仮なので、今は見積段階として止めてください。",
+      "actualReply": "ご回答ありがとうございます😊\n\nいつ頃のお受け取りをご希望ですか？未定でも大丈夫です。\n\nどのようなバルーンをご希望ですか？写真だけでも大丈夫です😊",
+      "draftStatus": "sent",
+      "requiresRouting": false,
+      "reasons": [],
+      "orders": [
+        {
+          "orderLabel": "EXP22-ORDER-1",
+          "title": "ご相談",
+          "status": "open",
+          "revision": 5,
+          "fields": {
+            "quantity": "100"
+          }
+        }
+      ]
+    },
+    {
+      "caseId": "EXP23",
+      "turn": 5,
+      "customerText": "使う日が10月24日、受取希望が10月23日15時です。薄紫3つでお願いします。",
+      "actualReply": "ご回答ありがとうございます😊\n\nご使用日とお受け取り希望日を、それぞれ何年何月何日か教えていただけますか？",
+      "draftStatus": "pending",
+      "requiresRouting": false,
+      "reasons": [],
+      "orders": [
+        {
+          "orderLabel": "EXP23-ORDER-1",
+          "title": "ブーケ",
+          "status": "open",
+          "revision": 5,
+          "fields": {
+            "budget": "6,000円（合計）",
+            "budget_scope": "total",
+            "color_vibe": "紫",
+            "fulfillment_method": "店頭受取",
+            "product_type": "ブーケ",
+            "quantity": "3",
+            "receive_time": "15:00"
+          }
+        }
+      ]
+    },
+    {
+      "caseId": "EXP24",
+      "turn": 5,
+      "customerText": "スタンドはやめます。母のブーケだけを別の相談として残してください。2件混ざっています。",
+      "actualReply": "こんにちは😊 elm・balloonです🎈\nご注文の相談は、AIアシスタントがお手伝いします。\n制作やお届けの確認が必要なときは、スタッフと連携してご案内します。\n\nご回答ありがとうございます😊\n\nお届け先の市町村を教えていただけますか？\n\nいつ頃のお受け取りをご希望ですか？未定でも大丈夫です。\n\nいただいた内容で対応できるか確認いたします。\n\n確認が取れ次第、ご返信いたします。店休日・営業時間外は、次の営業時間内のご返信となる場合がございます。",
+      "draftStatus": "pending",
+      "requiresRouting": false,
+      "reasons": [
+        "delivery_feasibility"
+      ],
+      "orders": [
+        {
+          "orderLabel": "EXP24-ORDER-1",
+          "title": "ブーケ",
+          "status": "open",
+          "revision": 5,
+          "fields": {
+            "fulfillment_method": "配達",
+            "product_type": "ブーケ",
+            "quantity": "1"
+          }
+        }
+      ]
+    }
+  ]
+}

@@ -1,0 +1,22 @@
+name = "elm-balloon-admin-line-secretary-test"
+main = "src/index.js"
+compatibility_date = "2026-09-21"
+workers_dev = true
+# Preserve the test Worker’s existing dashboard-managed variables and secrets.
+keep_vars = true
+
+[[d1_databases]]
+binding = "DB"
+database_name = "elm-balloon-schedule-test"
+database_id = "1ef1462b-c917-4894-8ccd-194b7b46ca9a"
+migrations_dir = "migrations"
+
+[[kv_namespaces]]
+binding = "SECRETARY_KV"
+id = "f14e95ea09e64e069cebcf8531832306"
+
+[observability]
+enabled = true
+
+[triggers]
+crons = ["*/5 * * * *"]

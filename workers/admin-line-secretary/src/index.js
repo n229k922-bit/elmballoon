@@ -4,6 +4,8 @@ import { managerApi, managerConsole } from './manager-console.js';
 import { createManagerLoginLink, managerSessionEndpoint } from './manager-auth.js';
 import { managerPwaAsset } from './manager-pwa.js';
 import { scheduleProofAsset, scheduleProofMessages } from './schedule-proof.js';
+import { siteDialogue, readableSiteDate } from './site-dialogue.js';
+import { managerReleaseStage, managerRecipientAllowed, managerProductionSafetyReady } from './manager-policy.js';
 
 const encoder = new TextEncoder();
 const CUSTOMER_SESSION_TTL = 60 * 60 * 24 * 14;
@@ -137,7 +139,7 @@ async function lineWebhook(request, env) {
   const signature = request.headers.get('x-line-signature') || '';
   if (!(await signatureIsValid(body, signature, env.LINE_CHANNEL_SECRET))) return new Response('Invalid signature', { status: 401 });
   const payload = JSON.parse(body);
-  for (const event of payload.events || []) if (event.type === 'message') await handleEvent(event, env);
+  for (const event of payload.events || []) if (event.type === 'message' || event.type === 'postback') await handleEvent(event, env);
   return new Response('OK');
 }
 
@@ -156,6 +158,22 @@ function normalizeManagerCommand(text) {
 }
 
 async function handleAdmin(event, env) {
+  if (event.type === 'postback') {
+    if (!managerV2Enabled(env)) return;
+    const target = String(event.postback?.data || '').match(/^manager-review:(D[A-F0-9]{16})$/u);
+    if (!target) return reply(event.replyToken, 'この操作は確認できません。「返信待ち」で選び直してください。', env);
+    if (!event.webhookEventId || typeof event.webhookEventId !== 'string' || event.webhookEventId.length > 200) return reply(event.replyToken, '操作を確認できませんでした。「返信待ち」で注文を選んでください。', env);
+    const response = await handleManagerCommand(`通知確認 ${target[1]}`, event.source.userId, env, new Date().toISOString(), event.webhookEventId);
+    if (env.SECRETARY_KV && response?.startsWith('【選んだ注文')) {
+      await env.SECRETARY_KV.delete('site-dialogue:' + event.source.userId);
+      await env.SECRETARY_KV.delete('pending:' + event.source.userId);
+    }
+    return reply(event.replyToken, response, env);
+  }
+  const siteResponse = await siteDialogue(event, env, applyChange, scheduleProofMessages);
+  if (siteResponse !== null) return Array.isArray(siteResponse)
+    ? replyMessages(event.replyToken, siteResponse, env)
+    : reply(event.replyToken, siteResponse, env);
   if (managerV2Enabled(env)) {
     const businessText = event.message?.text?.trim() || '';
     if (/^(?:日付変更依頼|店休日変更依頼)$/u.test(businessText)) {
@@ -163,8 +181,9 @@ async function handleAdmin(event, env) {
     }
     const businessChange = parseCommand(businessText);
     if (businessChange) {
-      await env.SECRETARY_KV.put('pending:' + event.source.userId, JSON.stringify(businessChange), {expirationTtl:600});
-      return reply(event.replyToken, `【店休日・営業時間の変更確認】\n${businessChange.summary}\nお客様の注文日時は変更しません。\n10分以内に「確定」で営業日設定へ反映、「取消」で取り消します。`, env);
+      businessChange.summary = `${readableSiteDate(businessChange.date)} ${businessChange.status === 'closed' ? 'をお休みに変更' : businessChange.status === 'open' ? 'を通常営業に変更' : `${businessChange.openTime}〜${businessChange.closeTime}の営業に変更`}`;
+      await env.SECRETARY_KV.put('site-dialogue:' + event.source.userId, JSON.stringify({step:'confirm',change:businessChange,expiresAt:Date.now()+600000}), {expirationTtl:600});
+      return reply(event.replyToken, `【営業案内の変更】\n${businessChange.summary}\nお客様の受取日時はそのままです。\n\n1：この内容で変更する\n2：選び直す\n3：やめる`, env);
     }
     if (/^(確定|承認|はい|取消|キャンセル)$/u.test(businessText)) {
       const key = 'pending:' + event.source.userId;
@@ -191,7 +210,7 @@ async function handleAdmin(event, env) {
     }
     // Keep only explicit business-hours commands on the legacy system route.
     if (!/^(?:休業 |営業時間 |休業解除 )/u.test(event.message?.text || '')) {
-      return reply(event.replyToken, '案件一覧／統括状況／カルテ M番号\n過去注文 お名前／○○さんの過去の注文を確認したい\n過去情報 M番号\n返信作成 M番号 本文／承認送信 D番号\n明細 M番号 お名前：仕様\n電話メモ M番号 内容', env);
+      return reply(event.replyToken, '何を確認しましょうか？😊\n\n「返信待ち」：お客様への返信を確認\n「案件一覧」：注文を選び、カルテ・変更確認・電話メモへ\n「統括状況」：対応状況を確認\n「○○さんの過去の注文を確認したい」：以前の記録を確認\n「店休日変更依頼」：ホームページの営業案内を変更\n\n一覧から番号で選べます。', env);
     }
   }
   if (event.message?.type === 'image') return registerManualOrderFormImage(event, env);
@@ -374,6 +393,18 @@ async function customerLineWebhook(request, env, ctx) {
   }
 
   if (managerV2Enabled(env)) {
+    // Roles belong to the signed channel route, not to the LINE user ID.
+    // One person may use both test channels. Customer input must never enter
+    // the owner command handler, even when the message is simply "1".
+    if (managerReleaseStage(env) === 'disabled') return new Response('Manager intake is not enabled', { status: 503 });
+    if (managerReleaseStage(env) !== 'test' && !managerProductionSafetyReady(env)) return new Response('Manager safety configuration is incomplete', { status: 503 });
+    // Do not acknowledge-and-discard real messages outside a pilot cohort.
+    // Pilot must use isolated official accounts or a separately agreed routing
+    // plan; replacing a busy production webhook with this mode is not a rollout.
+    if (managerReleaseStage(env) === 'pilot' && (payload.events || []).some(event =>
+      event.type === 'message' && event.source?.userId && !managerRecipientAllowed(event.source.userId, 'customer', env))) {
+      return new Response('Customer is outside pilot scope', { status: 503 });
+    }
     await receiveManagerEvents(payload.events || [], env);
     const process = async () => {
       await new Promise(resolve => setTimeout(resolve, 12500));

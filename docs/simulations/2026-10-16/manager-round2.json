@@ -1,0 +1,14 @@
+{
+  "synthetic": true,
+  "role": "store_manager",
+  "actualSystemOutput": false,
+  "fictionalPolicyNotice": "すべて架空の制作・営業条件。実店舗の価格・在庫・受付枠の証拠ではない。",
+  "turns": [
+    {"caseId":"SIM01","status":"not_requested","decision":null,"textForClerk":null,"requiresCustomerConsent":false,"reason":"予算範囲確認中。未定の日付と色の回答を尊重し、店長判断を増やさない。"},
+    {"caseId":"SIM02","status":"conditional_proposal","sameCaseUpdated":true,"decision":{"option":1,"label":"簡易構成の案内は可能・時刻確認後に最終判断","fictional":true,"orderScope":"卒部用ブーケ3束の注文のみ"},"textForClerk":"【架空条件での判断】3束・合計3,000円のご予算なら、小さめの簡易構成で提案できます。豪華な画像の完全再現や追加の名入れは含めて約束しないでください。11月7日の午前中の正確な受取時刻を確認し、この簡易構成でよいかお客様に伺ってください。まだ受注・最終価格の確定ではありません。","requiresCustomerConsent":true,"reason":"予算範囲と数量は明確。時刻と簡易構成への顧客同意が未確定なので、無条件の受注承諾には進めない。","suggestedCustomerText":"ご予算に合わせた小さめのシンプルなブーケでご提案できます😊 こちらの雰囲気でもよろしいでしょうか？11月7日は何時頃のお受け取りをご希望ですか？"},
+    {"caseId":"SIM03","status":"not_requested","decision":null,"textForClerk":null,"requiresCustomerConsent":false,"reason":"翌日不可の前回判断を維持。別日希望がまだなく、新たな判断通知や勝手な日付変更はしない。"},
+    {"caseId":"SIM04","status":"not_requested","decision":null,"textForClerk":null,"requiresCustomerConsent":false,"reason":"画像未受領のため、材料可否や価格を推測しない。"},
+    {"caseId":"SIM05","status":"not_requested","decision":null,"textForClerk":null,"requiresCustomerConsent":false,"reason":"受取方法・時刻の聞き取り段階。訂正後の3束・薄紫・単価予算2000円を保持する。"},
+    {"caseId":"SIM06","status":"conditional_proposal","sameCaseUpdated":true,"responsePhase":"架空の次回営業時間内フォローアップ","decision":{"option":1,"label":"10月31日12時の店頭受取で仮提案可能・仕様確認後に受注判断","fictional":true},"textForClerk":"【架空の次回営業時間内に確認した条件】置き型1つ・合計5,000円ほどのご相談として、10月31日12時の店頭受取は仮提案できます。使用日は11月1日のままです。色・雰囲気と具体的な内容を確認してから最終の制作可否・価格を確認します。お客様の了解前に受注確定しないでください。","requiresCustomerConsent":true,"reason":"前回の同一案件への追記として処理し、営業時間外に即答した扱いにはしない。色・仕様と顧客同意は未確定。","suggestedCustomerText":"お待たせしました😊 10月31日12時の店頭受け取りで、内容のご相談を進められます。11月1日のご使用ですね。お色や雰囲気が決まりましたら、具体的な内容と金額を確認してご案内します。"}
+  ]
+}

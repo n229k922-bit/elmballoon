@@ -32,6 +32,7 @@ ALLOWED_ORIGINS = ""
 ORDER_ENGINE = "v2"
 MANAGER_SEND_PAUSED = "false"
 MANAGER_TEST_MODE = "true"
+AI_DISCLOSURE_ENABLED = "true"
 MANAGER_SEND_NOT_BEFORE = "2026-10-01T02:56:25.000Z"
 # MANAGER_TEST_CUSTOMER_IDS and ADMIN_LINE_USER_IDS must be explicitly set
 # before enabling test sends. Empty lists fail closed.

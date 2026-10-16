@@ -1,0 +1,15 @@
+{
+  "synthetic": true,
+  "role": "store_manager",
+  "actualSystemOutput": false,
+  "source": "clerk-round1.json の公開会話のみ",
+  "fictionalPolicyNotice": "このファイルの枠・対応可否は架空シミュレーション条件であり、実店舗の営業情報ではない。",
+  "turns": [
+    {"caseId":"SIM01","status":"not_requested","decision":null,"textForClerk":null,"requiresCustomerConsent":false,"reason":"商品などの聞き取り段階で、店長への判断依頼はまだない。"},
+    {"caseId":"SIM02","status":"not_requested","decision":null,"textForClerk":null,"requiresCustomerConsent":false,"reason":"受取日時・方法の聞き取り段階。合計3000円、3束の情報を保持し、現時点で可否を断定しない。"},
+    {"caseId":"SIM03","status":"decision_available","decision":{"option":2,"label":"翌日対応は難しい・別日を相談","scope":"2026-10-17の新規制作可否のみ","fictional":true},"textForClerk":"【架空条件での判断】明日10月17日は制作枠が埋まっているため、お受けできません。別日でもよければ希望日を伺ってください。昨年の内容は本人確認済みの記録がないので、同じ内容だったとは案内しないでください。","requiresCustomerConsent":true,"reason":"架空の明日満枠条件に基づく。受注の延期・日付変更は顧客の同意前に確定しない。","suggestedCustomerText":"申し訳ありません。明日のお渡しは対応が難しい状況です。別の日でもよろしければ、ご希望日を教えていただけますか？"},
+    {"caseId":"SIM04","status":"not_requested","decision":null,"textForClerk":null,"requiresCustomerConsent":false,"reason":"参考写真が未受領。確認したふりをせず、写真受領と聞き取りを待つ。"},
+    {"caseId":"SIM05","status":"not_requested","decision":null,"textForClerk":null,"requiresCustomerConsent":false,"reason":"日付候補と予算範囲の確認中で、店長への判断依頼はない。"},
+    {"caseId":"SIM06","status":"unavailable","decision":null,"requires_followup":true,"textForClerk":"【架空条件】今は営業時間外で確認できません。受取希望10月31日のお昼頃、使用日11月1日は別々に残し、受取可否は未確認のままにしてください。商品・受取方法などの聞き取りは続けて構いません。次の営業時間内に確認するまで、日時の承諾や変更はしないでください。","requiresCustomerConsent":false,"reason":"初回は店長が不在という架空前提。返答文は注文担当向けのシミュレーション状態であり、店長が直ちに可否確認した証拠ではない。"}
+  ]
+}
