@@ -26,7 +26,8 @@ export function classifyConversationIntent(value = '') {
   if (/責任者|人間|人の担当|スタッフ|店長/u.test(text) && /話したい|代わって|かわって|つないで|繋いで|直接/u.test(text)) return result('handoff', true, true, 'human_handoff', '人の担当へ引き継ぎます。確認前に対応内容や返金などを確約せず、担当からご案内します。');
   if (/苦情|クレーム|ひどい|酷い|最悪|話が違|納得でき|返品|返金|交換して|しぼみ|萎み|色が.{0,8}違|届か|まだ来/u.test(text)) return result('complaint', true, true, 'customer_complaint', 'ご不便をおかけし申し訳ありません。人の担当へ引き継ぎ、注文内容と状況を確認して対応をご案内します。交換・返金などは確認後のご案内となります。');
   if (/見送|注文(?:は|を)?しない|今回は(?:やめ|止め|不要)|相談.{0,6}(?:終了|やめ)/u.test(text)) return result('withdrawal', true, true, 'consultation_withdrawal', '見送りのご希望として承りました。対象のご相談と正式注文の状況を確認し、ほかのご相談を変えずに扱います。');
-  if (/葬儀|葬式|お葬式|告別式|法要|追悼|亡くな|亡くし|死ん|死去|(?:子供|子ども|娘|息子).{0,5}死/u.test(text)) return result('bereavement', false, true, 'sensitive_occasion', 'ご事情をお聞かせいただきありがとうございます。ご希望に沿えるか、内容を慎重に確認いたします。');
+  if (!startsNewOrder(text) && /別件|別の(?:ご)?注文|新しい(?:ご)?注文|新規注文/u.test(text)) return result('mixed_orders', true, true, 'order_exception', '別のご注文を含むご相談として承りました。既存のご注文は変更せず、今回のご希望がどちらのご注文についてか、人の担当が確認いたします。');
+  if (/葬儀|葬式|お葬式|告別式|法要|追悼|お悔やみ|お供え|亡くな|亡くし|死ん|死去|(?:子供|子ども|娘|息子).{0,5}死/u.test(text)) return result('bereavement', false, true, 'sensitive_occasion', 'ご事情をお聞かせいただきありがとうございます。ご希望に沿えるか、内容を慎重に確認いたします。');
   if (/^(?:(?:どうも|こちらこそ|はい)[、,。\s]*)?(?:ありがとうございます|ありがとうございました|ありがとう|了解です|承知しました|わかりました|分かりました|助かりました)[😊🙏👍✨!！。\s]*(?:また(?:必要な|機会|今度|よろしく|連絡|相談)[\s\S]*)?$/u.test(text) || /^(?:また必要な(?:とき|時)に相談します|今回はここまで)[😊🙏👍。!！\s]*$/u.test(text)) return result('closing', true, false, null, 'こちらこそ、ありがとうございます。また必要なときにお声がけください。');
   const unrelated = /天気|天候|ニュース|株価|選挙|政治|占い|晩ご飯|夕飯|冗談|ジョーク/u.test(text);
   const orderClause = /注文|バルーン|ブーケ|スタンド|配達|受取|受け取|取りに|色は|予算|葬儀|飾り/u.test(text);
@@ -42,7 +43,7 @@ const METHOD_OPTIONS = [[/店頭|取りに|受け取りに|引き取り/gu, '店
 function requestedOptions(text, options, allowCombination = false, numeric = false) {
   const mentions = options.flatMap(([pattern, value]) => [...text.matchAll(pattern)].map(match => ({ value: typeof value === 'function' ? value(match) : value || match[0], index: match.index, end: match.index + match[0].length, evidence: match[0] })));
   mentions.sort((a, b) => a.index - b.index);
-  const rejected = mention => /^(?:色)?(?:は|を|が|には)?\s*(?:ではなく|じゃなく|でなく|ではない|ではありません|じゃない|不要|いらない|なし|無し|以外|やめ|使わない|使わず|入れない|入れず|入れません|避け|抜き|希望しない|希望しません|できない|出来ない|できません|出来ません|行けない|行けません)/u.test(text.slice(mention.end));
+  const rejected = mention => /^(?:色)?(?:は|を|が|には)?\s*(?:ではなく|じゃなく|でなく|ではない|ではありません|じゃない|不要|いらない|なし|無し|以外|やめ|苦手|嫌い|しない|しません|使わない|使わず|入れない|入れず|入れません|避け|抜き|希望しない|希望しません|できない|出来ない|できません|出来ません|行けない|行けません)/u.test(text.slice(mention.end));
   const accepted = mentions.filter(mention => !rejected(mention));
   const values = [...new Set(accepted.map(mention => mention.value))];
   const conditional = accepted.some(mention => /^(?:は|が|を|で|も)?\s*(?:無理|難し|できな|出来な|不可|なら|だったら|の場合)/u.test(text.slice(mention.end)) || (!numeric && /^(?:は|が|を|で|も)?\s*(?:可能(?:です)?か|でき(?:ます)?か|出来(?:ます)?か)/u.test(text.slice(mention.end))) || /(?:なら|場合)[^、,。\n；;]*$/u.test(text.slice(0, mention.index)));
@@ -51,11 +52,11 @@ function requestedOptions(text, options, allowCombination = false, numeric = fal
   return { values: ambiguous ? [] : values, ambiguous, evidence: accepted.map(mention => mention.evidence).join('／') };
 }
 
-const DATE_TOKEN = /明後日|あさって|明日|今日|(?<![\d-])(?:(?:\d{4})[年/-])?\d{1,2}[月/-]\d{1,2}日?(?![\d-])|(?<!\d)\d{1,2}日(?!\d)/gu;
+const DATE_TOKEN = /明後日|あさって|明日|今日|(?<![\d-])(?:(?:\d{4})[年/-])?\d{1,2}[月/-]\d{1,2}日?(?![\d-])|(?<!\d)\d{1,2}日/gu;
 const dateTokens = text => [...text.matchAll(DATE_TOKEN)];
 const ambiguousDateWording = text => /ではなく|じゃなく|ではない|ではありません|じゃない|以外|なら|場合|変更前|(?:日|あさって)(?:は|が)?(?:無理|不可|だめ|ダメ|難し)/u.test(text);
 const dateRole = text => {
-  const use = /使用|利用|式|誕生日|イベント/u.test(text);
+  const use = /使用|利用|使う|使って|使い|式|誕生日|イベント/u.test(text);
   const receive = /受取|受け取|配達|届|引取|引き取|取りに/u.test(text);
   return use && receive ? null : use ? 'use_date' : receive ? 'receive_date' : null;
 };
@@ -129,6 +130,9 @@ export function extractConversationFacts({ text = '', sourceTimestamp, lastQuest
         if (!choices.budget.values.length) add(key, match[1].trim(), 1, match[0].trim());
       } else if (choices[key]) {
         if (!choices[key].ambiguous) add(key, choices[key].values.join('・') || match[1].trim(), 1, match[0].trim());
+      } else if (key === 'product_source') {
+        // A label must not bypass the same rejection guard as free text.
+        if (!/ではなく|じゃなく|ではない|ではありません|じゃない|不要|いらない/u.test(match[1])) add(key, match[1].trim(), 1, match[0].trim());
       } else add(key, match[1].trim(), 1, match[0].trim());
     }
   }
@@ -136,7 +140,7 @@ export function extractConversationFacts({ text = '', sourceTimestamp, lastQuest
   const questionKeys = lastQuestions.map(q => typeof q === 'string' ? q : q.key);
   if (text.trim().length < 80 && /おまかせ|お任せ/u.test(text)
       && (questionKeys.includes('color_vibe') || /色(?:味)?(?:は|を|も|について)|お色/u.test(text))
-      && !/(?:おまかせ|お任せ)(?:ではなく|じゃなく|にしない)/u.test(text)) add('color_vibe', 'おまかせ', 1);
+      && !/(?:おまかせ|お任せ)(?:ではなく|じゃなく|ではない|ではありません|じゃない|にしない|にしません)/u.test(text)) add('color_vibe', 'おまかせ', 1);
   if (hasImage) add('product_source', '参考画像あり（内容未確認）', 1);
   if (lastQuestions.length === 1 && text.trim().length < 80) {
     if (lastKey === 'quantity' && /^\d+[。！!]?$/u.test(text.trim())) add('quantity', text.trim().replace(/[。！!]/g,''), 1);
@@ -146,7 +150,7 @@ export function extractConversationFacts({ text = '', sourceTimestamp, lastQuest
   const reference = text.match(/(?:商品番号|品番|商品No\.?|HP(?:の)?(?:商品)?番号)\s*[:：#]?\s*([A-Za-z0-9_-]+)/iu);
   if (reference && !/^(?:は|が)?\s*(?:ではなく|じゃなく|ではない|ではありません|じゃない)/u.test(text.slice(reference.index + reference[0].length))) add('product_source', reference[1], 1, reference[0]);
   if (choices.product_type.values.length) add('product_type', choices.product_type.values[0]);
-  const purpose = text.match(/卒団|卒業|卒部|誕生日|周年|開店|開業|移転|結婚|発表会|退職|還暦|喜寿|米寿|プロポーズ|葬儀|告別式|法要|追悼|受付飾り/u);
+  const purpose = text.match(/卒団|卒業|卒部|誕生日|周年|開店|開業|移転|結婚|発表会|退職|還暦|喜寿|米寿|プロポーズ|葬儀|告別式|法要|追悼|お悔やみ|お供え|受付飾り/u);
   if (purpose) add('purpose', purpose[0]);
   if (choices.quantity.values.length) add('quantity', choices.quantity.values[0], 0.95, choices.quantity.evidence);
   if (choices.budget.values.length) {
@@ -174,6 +178,9 @@ export function extractConversationFacts({ text = '', sourceTimestamp, lastQuest
     for (const clause of clauses) {
       const dates = dateTokens(clause);
       if (!dates.length) continue;
+      // Relative dates in courtesy phrases describe the conversation, not
+      // pickup. Keep bare answers such as "明日です" available to intake.
+      if (!dateRole(clause) && /(?:今日|明日|明後日|あさって)(?:も|は)?[^。\n]*(?:ありがとう|お忙し|よろしく|こんにちは|お世話)/u.test(clause)) continue;
       const resolved = dates.length === 1 && resolveConversationDate(dates[0][0], sourceTimestamp);
       const role = dateRole(clause);
       // With multiple dates, a local role is mandatory. Do not use the first
@@ -249,8 +256,13 @@ export function planConversation({ text = '', fields = {}, history = [], sourceT
   const waiting = !questions.length && !ownerReasons.length;
   if (waiting) ownerReasons.push('review_collected_details');
   const historyCheck=ownerReasons.includes('verify_previous_order') ? '以前のご注文を確認します。変更したい点があれば、その点だけお知らせください。' : '';
-  const restrained = intent.kind === 'bereavement' || /葬儀|法要|追悼|受付飾り|還暦|喜寿|米寿|プロポーズ/u.test(text + valueOf(merged.purpose));
-  const selectedQuestions = restrained ? questions.slice(0, 1).map(q => ({ ...q, text: q.text.replaceAll('😊', '') })) : questions;
+  const restrained = intent.kind === 'bereavement' || /葬儀|法要|追悼|お悔やみ|お供え|受付飾り|還暦|喜寿|米寿|プロポーズ/u.test(text + valueOf(merged.purpose));
+  const photoRefused = [text, ...history.map(item => item.text || '')].some(value => /(?:写真|画像|名前や写真)[^。\n]{0,24}(?:送ら|送りたく|出さ|共有しない|共有したく)/u.test(value));
+  const selectedQuestions = (restrained ? questions.slice(0, 1) : questions).map(q => {
+    let questionText = restrained ? q.text.replaceAll('😊', '') : q.text;
+    if (photoRefused) questionText = questionText.replace(/写真だけでも大丈夫です😊?/u, '');
+    return { ...q, text: questionText };
+  });
   const message = [intent.kind === 'bereavement' ? intent.message : updates.length ? `ご回答ありがとうございます${restrained ? '。' : '😊'}` : `ご連絡ありがとうございます${restrained ? '。' : '😊'}`, historyCheck, ...selectedQuestions.map(question => question.text), ownerReasons.length && intent.kind !== 'bereavement' ? 'いただいた内容で対応できるか確認いたします。' : ''].filter(Boolean).join('\n\n');
   return { updates, fields: merged, facts, intent, questions: selectedQuestions, message, requiresOwner: ownerReasons.length > 0, ownerReasons, evidence: updates.map(({ key, evidence, sourceTimestamp: timestamp }) => ({ key, text: evidence, sourceTimestamp: timestamp })), clarificationNeeded: facts.dateAmbiguities.length > 0 || facts.choiceAmbiguities.length > 0, approvalRequired: true };
 }

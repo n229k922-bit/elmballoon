@@ -1,4 +1,4 @@
-import { planConversation, extractConversationFacts, resolveConversationDate, startsNewOrder } from './conversation.js';
+import { planConversation, extractConversationFacts, resolveConversationDate, startsNewOrder, classifyConversationIntent } from './conversation.js';
 import { parseHistoryRequest, searchHistory, getHistoryDetail, formatCustomerHistory } from './manager-history.js';
 import { reserveOrderCapacity, getCapacitySummary, validateCapacityRequirements } from './capacity-safety.js';
 import { getOperationalMetrics, formatOperationalMetrics } from './operational-metrics.js';
@@ -86,6 +86,9 @@ function ownerMessages(env, key, text, now) {
 }
 
 export function chooseOrder(text, orders) {
+  // A message mixing an existing order with another request needs routing first.
+  // Neither an explicit old order id nor a single active order makes its facts safe.
+  if (!startsNewOrder(text) && /別件|別の(?:ご)?注文|新しい(?:ご)?注文/u.test(text)) return { ambiguous: true };
   const requestedIds = [...new Set((text.match(/\bM[A-F0-9]{16}\b/giu) || []).map(value => value.toUpperCase()))];
   if (requestedIds.length > 1) return { ambiguous: true };
   const requested = requestedIds[0];
@@ -168,7 +171,7 @@ async function processInboxGroup(events, env, now) {
   const session = testSessionStart(env);
   const active = await rows(env, `SELECT * FROM manager_orders WHERE customer_id = ? AND status = 'open' AND (?='' OR created_at>=?) ORDER BY created_at`, customerId, session, session);
     const routedOrderId = events.find(event => event.order_id)?.order_id;
-    let selection = routedOrderId
+    let selection = classifyConversationIntent(text).kind === 'mixed_orders' ? { ambiguous: true } : routedOrderId
       ? { order: active.find(order => order.id === routedOrderId), unknown: !active.some(order => order.id === routedOrderId) }
     : chooseOrder(text, active);
   const batch = [];
@@ -195,10 +198,24 @@ async function processInboxGroup(events, env, now) {
       WHERE order_id = ? AND sent_at IS NOT NULL ORDER BY sent_at DESC LIMIT 20`, order.id);
     const customerHistory = /昨年|去年|前回|以前|同じ/u.test(text) ? await loadCustomerHistory(customerId, env) : null;
     const latestQuestions = asked.filter(q => q.draft_id === asked[0]?.draft_id);
-    const plan = planConversation({ text, fields, lastQuestions: latestQuestions, sourceTimestamp: latest.occurred_at,
-      history: [{questions:asked}], hasImage: events.some(e => e.media_message_id) });
+    // Only this customer's current order supplies conversational context; another
+    // order's privacy choices or specifications must not become evidence here.
+    const priorCustomerMessages = await rows(env, `SELECT text FROM manager_events WHERE customer_id=? AND order_id=? AND direction='customer' AND processed_at IS NOT NULL ORDER BY occurred_at DESC,rowid DESC LIMIT 40`, customerId, order.id);
+    let plan = planConversation({ text, fields, lastQuestions: latestQuestions, sourceTimestamp: latest.occurred_at,
+      history: [{questions:asked}, ...priorCustomerMessages.reverse()], hasImage: events.some(e => e.media_message_id) });
+    const conversationHold = await first(env, `SELECT id,detail FROM manager_tasks WHERE order_id=? AND kind='manual_review' AND status='open' AND detail LIKE 'conversation_hold:%' LIMIT 1`, order.id);
+    const holdKinds = ['safety','complaint','withdrawal','handoff','bereavement'];
+    const newHold = holdKinds.includes(plan.intent?.kind);
+    if (newHold && !conversationHold) batch.push(statement(env, `INSERT INTO manager_tasks(id,order_id,kind,detail,due_at,created_at) VALUES (?,?,'manual_review',?,?,?)`, id('T'), order.id, `conversation_hold:${plan.intent.kind}`, now, now));
+    if (conversationHold && !newHold) {
+      plan = { ...plan, updates: [], questions: [], facts: { ...plan.facts, items: [] }, clarificationNeeded: false,
+        message: 'ご連絡ありがとうございます。担当者がご相談内容を確認しています。確認後に改めてご案内いたします。', ownerReasons: ['人の担当が対応確認するまで通常の受付を保留'] };
+    }
     const evidenceUpdates=new Map();
     for(const event of events) {
+      // Hold the complete burst too: a follow-up timestamp or amount in the
+      // same batch must not be extracted separately from a complaint/withdrawal.
+      if (conversationHold || (newHold && plan.intent.kind !== 'bereavement')) continue;
       const parsed=extractConversationFacts({text:event.text,sourceTimestamp:event.occurred_at,lastQuestions:latestQuestions,hasImage:Boolean(event.media_message_id)});
       for(const update of parsed.updates) evidenceUpdates.set(update.key,{...update,sourceEventId:event.id});
     }
@@ -242,7 +259,7 @@ async function processInboxGroup(events, env, now) {
       && !existing.some(f => f.confirmed_at || f.status === 'confirmed');
     const baseMessage = changes.length ? 'ご変更の内容を確認しています。対応できるか確認のうえ、改めてご案内いたします。'
       : String(plan.message || 'ご連絡ありがとうございます。内容を確認してご案内いたします。');
-    const message = await discloseAssistant(reasons.length ? `${baseMessage}\n\n確認が取れ次第、ご返信いたします。店休日・営業時間外は、次の営業時間内のご返信となる場合がございます。` : baseMessage, customerId, env);
+    const message = await discloseAssistant(reasons.length ? `${baseMessage}\n\n確認が取れ次第、ご返信いたします。店休日・営業時間外は、次の営業時間内のご返信となる場合がございます。` : baseMessage, customerId, env, { restrained: newHold || Boolean(conversationHold) });
     const title = [fieldValue(proposed, 'purpose'), fieldValue(proposed, 'product_type')].filter(Boolean).join('・').slice(0, 100) || order.title;
     for (let index=0; index<(plan.facts?.items || []).length; index++) {
       const item = plan.facts.items[index];
@@ -302,8 +319,11 @@ async function withInboxLock(env, now, fn) {
 
 export async function drainManagerInbox(env, now = iso()) {
   return withInboxLock(env, now, async () => {
-    const pending = await rows(env, `SELECT * FROM manager_events WHERE processed_at IS NULL AND direction='customer'
-      ORDER BY received_at,rowid LIMIT 20`);
+    // Classify before applying the normal batch limit; a safety incident must not
+    // wait behind a burst of routine requests. Keep each customer's event order.
+    const waiting = await rows(env, `SELECT * FROM manager_events WHERE processed_at IS NULL AND direction='customer' ORDER BY received_at,rowid`);
+    const urgentCustomers = new Set(waiting.filter(event => ['safety','complaint','handoff'].includes(classifyConversationIntent(event.text).kind) || /至急|緊急|急ぎ|破損/u.test(event.text)).map(event => event.customer_id));
+    const pending = [...waiting.filter(event => urgentCustomers.has(event.customer_id)), ...waiting.filter(event => !urgentCustomers.has(event.customer_id)).slice(0,20)];
     const grouped = new Map();
     const currentGroup = new Map();
     for (const event of pending) {
@@ -319,9 +339,9 @@ export async function drainManagerInbox(env, now = iso()) {
     }
     for (const events of grouped.values()) {
       const newer = await first(env, `SELECT id FROM manager_events WHERE customer_id=? AND processed_at IS NULL AND received_at>? AND received_at>? LIMIT 1`, events[0].customer_id, events.at(-1).received_at, iso(Date.parse(now)-12_000));
-      if (newer) continue;
+      if (newer && !urgentCustomers.has(events[0].customer_id)) continue;
       const lastReceived = events.at(-1).received_at;
-      if (Date.parse(now) - Date.parse(lastReceived) < 12_000 && !events.some(e => /至急|緊急|破損|怪我|けが/u.test(e.text))) continue;
+      if (Date.parse(now) - Date.parse(lastReceived) < 12_000 && !urgentCustomers.has(events[0].customer_id)) continue;
       await processInboxGroup(events, env, now);
     }
   });

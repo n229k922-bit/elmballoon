@@ -10,6 +10,8 @@ for (const [text, kind, owner] of [
   ['今回は見送ります。また連絡します', 'withdrawal', true],
   ['今回は注文しないでください', 'withdrawal', true],
   ['スタンドだけ見送りです。母のブーケはそのまま', 'withdrawal', true],
+  ['前のブーケはそのまま。別件でスタンド1台をお願いします', 'mixed_orders', true],
+  ['ブーケは7日の10時希望です。あと別件なんですが、スタンドも1台15000円で11月14日17時に配達希望です', 'mixed_orders', true],
   ['話が違います。最悪です', 'complaint', true],
   ['人の担当に代わってください', 'handoff', true],
   ['責任者と話したいです', 'handoff', true],
@@ -48,4 +50,37 @@ for (const text of ['葬儀の受付飾りを相談したいです', '子供が�
   checks++;
 }
 assert.equal(field(extract('父の米寿祝いです'), 'purpose'), '米寿'); checks++;
+// Ordinary courtesy and rejected labels must not replace an existing order.
+for (const text of ['今日もお忙しいところありがとうございます', '今日はありがとうございます', '明日もよろしくお願いします']) {
+  assert.equal(field(extract(text), 'receive_date'), undefined, text); checks++;
+}
+assert.equal(field(extract('今日はありがとうございます。11月7日に受け取りたいです'), 'receive_date'), '2026-11-07'); checks++;
+assert.equal(field(extract('今日取りに行きたいです'), 'receive_date'), '2026-10-19'); checks++;
+for (const text of ['商品番号：88ではなく年齢です', '品番：B36ではありません']) {
+  assert.equal(field(extract(text), 'product_source'), undefined, text); checks++;
+}
+for (const text of ['色はおまかせではありません', '色はお任せにしません']) {
+  assert.notEqual(field(extract(text), 'color_vibe'), 'おまかせ', text); checks++;
+}
+const continued = planConversation({ text: 'ありがとうございます。数量を2つに変更してください', sourceTimestamp, fields });
+assert.equal(continued.intent.kind, 'order');
+assert.equal(field(continued, 'quantity'), '2');
+assert.ok(continued.ownerReasons.includes('order_exception')); checks++;
+for (const purpose of ['お悔やみ', 'お供え']) {
+  const plan = planConversation({ text: `${purpose}のバルーンを相談したいです`, sourceTimestamp });
+  assert.equal(plan.intent.kind, 'bereavement');
+  assert.equal(field(plan, 'purpose'), purpose);
+  assert.doesNotMatch(plan.message, /😊|おめでとう/); checks++;
+}
+const redRefusal = planConversation({ text: '本人は赤が苦手なので、還暦だから赤にはしないでください', sourceTimestamp });
+assert.equal(field(redRefusal, 'color_vibe'), undefined);
+assert.ok(redRefusal.facts.choiceAmbiguities.some(item => item.key === 'color_vibe')); checks++;
+const mergedDates = planConversation({ text: '11月29日に使って28日15時受け取り希望です', sourceTimestamp });
+assert.equal(mergedDates.updates.some(item => ['receive_date', 'receive_time', 'use_date'].includes(item.key)), false);
+assert.ok(mergedDates.questions.some(item => item.key === 'date_clarification')); checks++;
+for (const history of [[], [{ text: '写真とか事情は送りたくないです' }]]) {
+  const plan = planConversation({ text: history.length ? '使用日は11月8日です' : '写真とか事情は送りたくないです', sourceTimestamp, history, fields: { receive_date: '2026-11-07' } });
+  assert.ok(plan.questions.some(item => item.key === 'product_type'));
+  assert.doesNotMatch(plan.message, /写真だけでも|写真を.*ください/); checks++;
+}
 console.log(`Sensitive conversation: ${checks} checks passed.`);

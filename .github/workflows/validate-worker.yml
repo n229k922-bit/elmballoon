@@ -26,6 +26,12 @@ jobs:
           node tools/test-order-record-workflow.mjs
           node tools/test-conversation-planner.mjs
           node tools/test-conversation-adversarial.mjs
+          node tools/test-sensitive-conversation.mjs
+          node --test tools/test-sensitive-runtime.mjs tools/test-everyday-simulation.mjs
+          node --test tools/test-independent-simulation.mjs
+          node tools/replay-sensitive-dialogues.mjs
+          node tools/audit-expanded-conversation.mjs
+          node tools/audit-expanded-manager-queue.mjs
           node tools/test-calendar-security.mjs
           node tools/test-manager-mobile.mjs
           node tools/test-manager-intake.mjs

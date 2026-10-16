@@ -1,8 +1,7 @@
 name: Deploy website to GitHub Pages
 
 on:
-  push:
-    branches: [main]
+  # Merging code is separate from authorizing publication.
   workflow_dispatch:
 
 permissions:

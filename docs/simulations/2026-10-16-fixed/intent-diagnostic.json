@@ -1,0 +1,103 @@
+{
+  "synthetic": true,
+  "activation_allowed": false,
+  "scope": "planner_diagnostic_not_full_webhook",
+  "notLiveLine": true,
+  "checks": 6,
+  "passed": 6,
+  "failed": 0,
+  "records": [
+    {
+      "id": "EXP-G01",
+      "intent": "mixed_orders",
+      "text": "ブーケは7日の10時希望です。あと別件なんですが、スタンドも1台15000円で11月14日17時に配達希望です",
+      "expected": "元注文の数量・予算・方法を上書きしない",
+      "passed": true,
+      "actual": {
+        "updates": [],
+        "message": "別のご注文を含むご相談として承りました。既存のご注文は変更せず、今回のご希望がどちらのご注文についてか、人の担当が確認いたします。",
+        "ownerReasons": [
+          "order_exception"
+        ],
+        "questions": [],
+        "startsNewOrder": false
+      }
+    },
+    {
+      "id": "EXP-G02",
+      "intent": "off_topic",
+      "text": "ところで今日の天気は？",
+      "expected": "雑談で注文フィールドを更新しない",
+      "passed": true,
+      "actual": {
+        "updates": [],
+        "message": "こちらではバルーンのご注文・ご相談をお手伝いしています。ご注文の内容は変更せずにおきます。",
+        "ownerReasons": [],
+        "questions": [],
+        "startsNewOrder": false
+      }
+    },
+    {
+      "id": "EXP-G03",
+      "intent": "withdrawal",
+      "text": "今回は見送ります。また連絡します",
+      "expected": "通常の対応可否確認を続けない",
+      "passed": true,
+      "actual": {
+        "updates": [],
+        "message": "見送りのご希望として承りました。対象のご相談と正式注文の状況を確認し、ほかのご相談を変えずに扱います。",
+        "ownerReasons": [
+          "consultation_withdrawal"
+        ],
+        "questions": [],
+        "startsNewOrder": false
+      }
+    },
+    {
+      "id": "EXP-G04",
+      "intent": "human_handoff",
+      "text": "話が違います。最悪です。責任者と話したい",
+      "expected": "通常の注文可否確認ではなく人への交代を明示",
+      "passed": true,
+      "actual": {
+        "updates": [],
+        "message": "人の担当へ引き継ぎます。確認前に対応内容や返金などを確約せず、担当からご案内します。",
+        "ownerReasons": [
+          "human_handoff"
+        ],
+        "questions": [],
+        "startsNewOrder": false
+      }
+    },
+    {
+      "id": "EXP-G05",
+      "intent": "safety",
+      "text": "割れた風船を子供が飲み込んだかもしれません",
+      "expected": "安全専用の分岐と人への緊急引継ぎ。医療文面そのものは別審査",
+      "passed": true,
+      "actual": {
+        "updates": [],
+        "message": "安全に関わるご相談として、人の担当へ優先して引き継ぎます。差し迫った危険がある場合は、店舗の返信を待たず地域の緊急窓口や医療機関へご相談ください。",
+        "ownerReasons": [
+          "safety_incident"
+        ],
+        "questions": [],
+        "startsNewOrder": false
+      }
+    },
+    {
+      "id": "EXP-G06",
+      "intent": "closing",
+      "text": "ありがとうございます。また必要なときに相談します",
+      "expected": "終話で新たな通常判断依頼を生成しない",
+      "passed": true,
+      "actual": {
+        "updates": [],
+        "message": "こちらこそ、ありがとうございます。また必要なときにお声がけください。",
+        "ownerReasons": [],
+        "questions": [],
+        "startsNewOrder": false
+      }
+    }
+  ]
+}
