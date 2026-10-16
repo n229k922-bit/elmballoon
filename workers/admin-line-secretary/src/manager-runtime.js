@@ -4,6 +4,7 @@ import { reserveOrderCapacity, getCapacitySummary, validateCapacityRequirements 
 import { getOperationalMetrics, formatOperationalMetrics } from './operational-metrics.js';
 import { discloseAssistant } from './ai-disclosure.js';
 import { isJapanesePublicHoliday } from './japan-calendar.js';
+import { managerRecipientAllowed, managerCanTransmit, managerFeatureEnabled, managerReleaseStage, managerProductionSafetyReady } from './manager-policy.js';
 
 const iso = (value = Date.now()) => new Date(value).toISOString();
 const statement = (env, sql, ...args) => env.DB.prepare(sql).bind(...args);
@@ -43,9 +44,7 @@ const capacityMessage = reason => ({capacity_unknown_limits:'その日の受付�
 
 export function managerV2Enabled(env) { return env.ORDER_ENGINE === 'v2'; }
 export function managerTestRecipientAllowed(customerId,channel,env) {
-  if(env.MANAGER_TEST_MODE!=='true')return true;
-  const list=(channel==='owner'?env.ADMIN_LINE_USER_IDS:env.MANAGER_TEST_CUSTOMER_IDS)||'';
-  return list.split(',').map(x=>x.trim()).filter(Boolean).includes(customerId);
+  return managerRecipientAllowed(customerId,channel,env);
 }
 
 export function eventTime(event, receivedAt = iso()) {
@@ -73,7 +72,7 @@ export async function receiveManagerEvents(events, env, now = iso()) {
 
 function outboxStatement(env, key, recipient, channel, text, now, draftId = null) {
   const message = { type: 'text', text: text.slice(0, 4900) };
-  const notification = channel === 'owner' && env.MANAGER_TEST_MODE === 'true' && key.match(/^draft:(D[A-F0-9]{16}):/u);
+  const notification = channel === 'owner' && managerFeatureEnabled(env, 'context_buttons') && key.match(/^draft:(D[A-F0-9]{16}):/u);
   if (notification) message.quickReply = { items: [{ type: 'action', action: {
     type: 'postback', label: 'この注文を確認', data: `manager-review:${notification[1]}`, displayText: 'この注文の返信案を確認'
   } }] };
@@ -234,7 +233,7 @@ async function processInboxGroup(events, env, now) {
       ? '本人に紐付く過去記録あり。今回の仕様は再確認が必要' : '過去注文の確認済み記録なし。昨年と同じ仕様を推測しない');
     const unresolvedChanges = await first(env, `SELECT id FROM manager_changes WHERE order_id=? AND status='pending' LIMIT 1`, order.id);
     const manualReview = await first(env, `SELECT id FROM manager_tasks WHERE order_id=? AND kind='manual_review' AND status='open' LIMIT 1`, order.id);
-    const autoIntake = env.MANAGER_TEST_MODE === 'true' && env.MANAGER_AUTO_INTAKE_ENABLED === 'true'
+    const autoIntake = managerFeatureEnabled(env, 'auto_intake')
       && managerTestRecipientAllowed(customerId, 'customer', env) && !customerId.startsWith('manual:')
       && !reasons.length && plan.questions.length > 0 && !plan.clarificationNeeded
       && !/至急|急ぎ|破損|怪我|けが|キャンセル|取消|苦情|返品|返金|注文確定|支払|入金|在庫/u.test(text)
@@ -329,18 +328,18 @@ export async function drainManagerInbox(env, now = iso()) {
 }
 
 export async function flushManagerOutbox(env, now = iso(), fetcher = fetch) {
-  if (env.MANAGER_SEND_PAUSED === 'true') return;
+  if (!managerV2Enabled(env) || !managerCanTransmit(env)) return;
   const pending = await rows(env, `SELECT * FROM manager_outbox WHERE
     (status='pending' AND next_attempt_at<=?) OR (status='sending' AND lease_until<?)
     ORDER BY created_at LIMIT 20`, now, now);
   for (const item of pending) {
     await withInboxLock(env, now, async () => {
     if(!managerTestRecipientAllowed(item.recipient,item.channel,env)) {
-      await statement(env,`UPDATE manager_outbox SET status='cancelled',last_error='outside_test_allowlist' WHERE id=?`,item.id).run();
+      await statement(env,`UPDATE manager_outbox SET status=?,last_error='outside_recipient_policy' WHERE id=?`,item.first_attempt_at?'uncertain':'cancelled',item.id).run();
       return;
     }
     if(env.MANAGER_SEND_NOT_BEFORE&&(!Number.isFinite(Date.parse(env.MANAGER_SEND_NOT_BEFORE))||Date.parse(item.created_at)<Date.parse(env.MANAGER_SEND_NOT_BEFORE))) {
-      await statement(env,`UPDATE manager_outbox SET status='cancelled',last_error='before_test_cutover' WHERE id=?`,item.id).run();
+      await statement(env,`UPDATE manager_outbox SET status=?,last_error='before_test_cutover' WHERE id=?`,item.first_attempt_at?'uncertain':'cancelled',item.id).run();
       return;
     }
     if(item.channel==='customer'&&item.recipient.startsWith('manual:')) {
@@ -356,7 +355,7 @@ export async function flushManagerOutbox(env, now = iso(), fetcher = fetch) {
       const draft = await first(env, `SELECT d.*,o.revision,o.created_at AS order_created_at FROM manager_drafts d LEFT JOIN manager_orders o ON o.id=d.order_id WHERE d.id=?`, item.draft_id);
       const incoming = draft ? await first(env, `SELECT id FROM manager_events WHERE customer_id=? AND direction='customer' AND processed_at IS NULL LIMIT 1`, draft.customer_id) : null;
       if (incoming) return;
-      if (draft?.approved_by === 'system:intake' && (env.MANAGER_TEST_MODE !== 'true' || env.MANAGER_AUTO_INTAKE_ENABLED !== 'true')) {
+      if (draft?.approved_by === 'system:intake' && !managerFeatureEnabled(env, 'auto_intake')) {
         await env.DB.batch([
           statement(env, `UPDATE manager_outbox SET status='cancelled',last_error='auto_intake_disabled' WHERE id=? AND first_attempt_at IS NULL`, item.id),
           statement(env, `UPDATE manager_drafts SET status='stale' WHERE id=? AND status='approved'`, item.draft_id),
@@ -434,6 +433,8 @@ export async function monitorManagerTasks(env, now = iso()) {
 }
 
 export async function runManagerMaintenance(env, now = iso()) {
+  if (!managerV2Enabled(env) || managerReleaseStage(env) === 'disabled') return;
+  if (managerReleaseStage(env)!=='test'&&!managerProductionSafetyReady(env)) return;
   await drainManagerInbox(env, now);
   await monitorManagerTasks(env, now);
   await flushManagerOutbox(env, now);
@@ -682,6 +683,7 @@ async function executeManagerCommand(text, actor, env, now, notificationEventId 
   if (match) {
     const draft = await first(env, `SELECT d.*,o.revision,o.created_at AS order_created_at FROM manager_drafts d LEFT JOIN manager_orders o ON o.id=d.order_id WHERE d.id=?`, match[2].toUpperCase());
     if (!draft || !['pending','held'].includes(draft.status)) return 'この返信案は処理済み、または古い版です。カルテを確認してください。';
+    if (!draft.customer_id.startsWith('manual:') && !managerTestRecipientAllowed(draft.customer_id, 'customer', env)) return 'このお客様への送信は公開設定で許可されていません。まだ送信していません。';
     if (testSessionStart(env) && (draft.order_created_at || draft.created_at) < testSessionStart(env)) return '以前のテストの返信案です。今回は送信しません。「返信待ち」で今回の注文を選んでください。';
     if(match[1]==='返信取消') {
       await env.DB.batch([

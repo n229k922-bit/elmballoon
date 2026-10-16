@@ -1,0 +1,34 @@
+# Preparation blueprint, NOT authorization to deploy to production.
+# Keeps legacy active. No migration/engine switch without reviewed acceptance.
+name = "elm-balloon-admin-line-secretary"
+main = "src/index.js"
+compatibility_date = "2026-09-21"
+keep_vars = true
+
+[[d1_databases]]
+binding = "DB"
+database_name = "elm-balloon-schedule"
+database_id = "ff8873ca-2336-48f0-8a89-887e6a394b20"
+migrations_dir = "migrations"
+
+[[kv_namespaces]]
+binding = "SECRETARY_KV"
+id = "99cd9bb041214e5a90a7ddf908d4d516"
+
+[vars]
+ORDER_ENGINE = "legacy"
+MANAGER_TEST_MODE = "false"
+MANAGER_RELEASE_STAGE = "disabled"
+MANAGER_SEND_PAUSED = "true"
+MANAGER_AUTO_INTAKE_ENABLED = "false"
+AI_DISCLOSURE_ENABLED = "true"
+MANAGER_CONTEXT_BUTTONS_ENABLED = "true"
+MANAGER_APP_ORIGIN = "https://elm-balloon-admin-line-secretary.n229k922.workers.dev"
+# Deliberately missing until verified: expected bot IDs, pilot customer IDs,
+# build commit and fresh queue cutover. Never copy test secrets or sessions.
+
+[observability]
+enabled = true
+
+[triggers]
+crons = ["*/5 * * * *"]

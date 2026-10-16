@@ -3,13 +3,17 @@ import { handleManagerCommand, flushManagerOutbox, managerV2Enabled } from './ma
 import { createManualOrder } from './manager-intake.js';
 import { searchHistory, getHistoryDetail, formatCustomerHistory } from './manager-history.js';
 import { getOperationalMetrics, formatOperationalMetrics } from './operational-metrics.js';
+import { getManagerReadiness } from './manager-readiness.js';
 
 const json=(body,status=200)=>new Response(JSON.stringify(body),{status,headers:{'Content-Type':'application/json; charset=utf-8','Cache-Control':'no-store'}});
 const query=async(env,sql,...args)=>(await env.DB.prepare(sql).bind(...args).all()).results||[];
 export async function managerApi(request,env) {
   const auth=await authorizeManagerRequest(request,env);if(auth.denied)return auth.denied;
-  if(!managerV2Enabled(env))return json({error:'new_manager_not_enabled'},409);
   const url=new URL(request.url);
+  if(request.method==='GET'&&url.pathname==='/api/manager/readiness') {
+    return json(await getManagerReadiness(env,{origin:url.origin,verifyLine:url.searchParams.get('verify')==='line'}));
+  }
+  if(!managerV2Enabled(env))return json({error:'new_manager_not_enabled'},409);
   if(request.method==='GET'&&url.pathname==='/api/manager/metrics') {
     const until=new Date().toISOString();
     const since=url.searchParams.get('since')||new Date(Date.parse(until)-7*86400000).toISOString();

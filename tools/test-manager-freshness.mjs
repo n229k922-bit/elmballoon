@@ -15,7 +15,7 @@ function fixture() {
     async first(){return db.prepare(this.sql).get(...this.args)||null;}
     async run(){return {meta:{changes:db.prepare(this.sql).run(...this.args).changes}};}
   }
-  const env={ORDER_ENGINE:'v2',ADMIN_LINE_USER_IDS:'OWNER',LINE_CHANNEL_ACCESS_TOKEN:'owner',CUSTOMER_LINE_CHANNEL_ACCESS_TOKEN:'customer',DB:{prepare:sql=>new Statement(sql),async batch(ss){db.exec('BEGIN');try{const result=[];for(const s of ss)result.push(await s.run());db.exec('COMMIT');return result;}catch(e){db.exec('ROLLBACK');throw e;}}}};
+  const env={ORDER_ENGINE:'v2',MANAGER_TEST_MODE:'false',MANAGER_RELEASE_STAGE:'live',MANAGER_SEND_PAUSED:'false',MANAGER_SEND_NOT_BEFORE:'2026-09-01T00:00:00.000Z',LINE_CHANNEL_SECRET:'owner-secret',CUSTOMER_LINE_CHANNEL_SECRET:'customer-secret',ADMIN_LINE_USER_IDS:'OWNER',LINE_CHANNEL_ACCESS_TOKEN:'owner',CUSTOMER_LINE_CHANNEL_ACCESS_TOKEN:'customer',DB:{prepare:sql=>new Statement(sql),async batch(ss){db.exec('BEGIN');try{const result=[];for(const s of ss)result.push(await s.run());db.exec('COMMIT');return result;}catch(e){db.exec('ROLLBACK');throw e;}}}};
   const now='2026-10-02T01:00:00.000Z';
   const get=(sql,...args)=>db.prepare(sql).get(...args);
   const event=(id,text)=>({type:'message',webhookEventId:id,timestamp:Date.parse(now)-60000,source:{userId:'CUSTOMER'},message:{type:'text',id,text}});

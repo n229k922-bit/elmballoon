@@ -2,7 +2,7 @@ name: Validate integrated systems
 
 on:
   push:
-    branches: [main]
+    branches: [main, 'codex/production-readiness-*']
   pull_request:
     branches: [main]
 
@@ -25,6 +25,7 @@ jobs:
         run: |
           node tools/test-order-record-workflow.mjs
           node tools/test-conversation-planner.mjs
+          node tools/test-conversation-adversarial.mjs
           node tools/test-calendar-security.mjs
           node tools/test-manager-mobile.mjs
           node tools/test-manager-intake.mjs
@@ -37,6 +38,7 @@ jobs:
           node tools/test-site-dialogue.mjs
           node tools/test-ai-disclosure.mjs
           node tools/test-line-e2e.mjs
+          node --test tools/test-manager-policy.mjs tools/test-manager-readiness.mjs tools/test-manager-migration-rehearsal.mjs
           node tools/test-four-role-scenarios.mjs
           node tools/test-schedule-proof.mjs
           node --test tools/test-manager-runtime.mjs tools/test-order-knowledge-import.mjs

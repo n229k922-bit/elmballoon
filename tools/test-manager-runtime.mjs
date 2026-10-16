@@ -22,7 +22,7 @@ function fixture() {
     async first() { return db.prepare(this.sql).get(...this.args) || null; }
     async run() { const result = db.prepare(this.sql).run(...this.args); return { meta: { changes: result.changes } }; }
   }
-  const env = { ORDER_ENGINE: 'v2', ADMIN_LINE_USER_IDS: 'OWNER', LINE_CHANNEL_ACCESS_TOKEN: 'owner-test', CUSTOMER_LINE_CHANNEL_ACCESS_TOKEN: 'customer-test',
+  const env = { ORDER_ENGINE: 'v2', MANAGER_TEST_MODE:'false', MANAGER_RELEASE_STAGE:'live', MANAGER_SEND_PAUSED:'false', MANAGER_SEND_NOT_BEFORE:'2026-09-01T00:00:00.000Z', LINE_CHANNEL_SECRET:'owner-secret', CUSTOMER_LINE_CHANNEL_SECRET:'customer-secret', ADMIN_LINE_USER_IDS: 'OWNER', LINE_CHANNEL_ACCESS_TOKEN: 'owner-test', CUSTOMER_LINE_CHANNEL_ACCESS_TOKEN: 'customer-test',
     DB: { prepare: sql => new Statement(sql), async batch(statements) {
       db.exec('BEGIN'); try { const result = []; for (const s of statements) result.push(await s.run()); db.exec('COMMIT'); return result; }
       catch (error) { db.exec('ROLLBACK'); throw error; }
@@ -524,7 +524,7 @@ test('test sends require explicit recipients and never release old queued messag
   f.db.prepare("INSERT INTO manager_outbox(id,recipient,channel,text,retry_key,next_attempt_at,created_at) VALUES ('OTHER','OTHER','customer','other','retry-other',?,?)").run(f.now,f.now);
   const recipients=[];await flushManagerOutbox(f.env,f.later,async(_url,options)=>{recipients.push(JSON.parse(options.body).to);return new Response('{}')});
   assert.equal(f.get("SELECT last_error FROM manager_outbox WHERE id='OLD'").last_error,'before_test_cutover');
-  assert.equal(f.get("SELECT last_error FROM manager_outbox WHERE id='OTHER'").last_error,'outside_test_allowlist');
+  assert.equal(f.get("SELECT last_error FROM manager_outbox WHERE id='OTHER'").last_error,'outside_recipient_policy');
   assert.deepEqual(recipients.sort(),['CUSTOMER','OWNER']);
   const g=fixture();g.env.MANAGER_TEST_MODE='true';await g.receive('ブーケ');assert.equal(g.get('SELECT COUNT(*) n FROM manager_events').n,0);
 });

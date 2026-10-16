@@ -1,9 +1,15 @@
-import test from 'node:test';
+import test, { beforeEach } from 'node:test';
 import assert from 'node:assert/strict';
 import {DatabaseSync} from 'node:sqlite';
 import {createHmac} from 'node:crypto';
 import fs from 'node:fs';
 import worker from '../workers/admin-line-secretary/src/index.js';
+
+// Freeze both Date.now() and new Date() in this test process only. Fixture
+// messages and the Worker must share one clock; production has no clock override.
+beforeEach(context => context.mock.timers.enable({
+ apis: ['Date'], now: new Date('2026-10-01T01:00:00.000Z'),
+}));
 
 function fixture(){
  const db=new DatabaseSync(':memory:');db.exec('PRAGMA foreign_keys=ON');const root=new URL('../workers/admin-line-secretary/migrations/',import.meta.url);
@@ -144,7 +150,7 @@ test('signed test intake runs via maintenance without approval, then completed o
  const customer=async(text,id)=>{
   assert.equal((await worker.fetch(f.req('/webhook/customer-line','CUSTOMER',text,id,f.env.CUSTOMER_LINE_CHANNEL_SECRET),f.env)).status,200);
   // Simulate the elapsed burst delay in the in-memory fixture only.
-  f.db.exec("UPDATE manager_events SET received_at=strftime('%Y-%m-%dT%H:%M:%fZ','now','-1 minute') WHERE processed_at IS NULL");
+  f.db.prepare('UPDATE manager_events SET received_at=? WHERE processed_at IS NULL').run(new Date(Date.now()-60_000).toISOString());
   const tasks=[];await worker.scheduled({},f.env,{waitUntil:task=>tasks.push(task)});await Promise.all(tasks);
  };
  try{
@@ -161,5 +167,37 @@ test('signed test intake runs via maintenance without approval, then completed o
   await worker.fetch(f.req('/webhook/line','OWNER','1','INTAKE-APPROVE',f.env.LINE_CHANNEL_SECRET),f.env);
   assert.equal(sent.filter(s=>s.body.to==='CUSTOMER').length,2);
   assert.equal(f.db.prepare("SELECT COUNT(*) n FROM manager_drafts WHERE status='sent'").get().n,2);
+ }finally{globalThis.fetch=original}
+});
+
+test('signed intake uses the controlled shop date across past fixtures, JST midnight and year rollover',async context=>{
+ const original=globalThis.fetch;
+ globalThis.fetch=async()=>new Response('{}',{status:200});
+ try{
+  for(const [instant,message,expectedDate] of [
+   ['2026-10-01T01:00:00.000Z','10月10日','2026-10-10'],
+   ['2026-10-15T01:00:00.000Z','10月10日',null],
+   ['2026-12-31T14:59:59.000Z','明日','2027-01-01'],
+   ['2026-12-31T15:00:00.000Z','今日','2027-01-01'],
+   ['2027-01-01T01:00:00.000Z','1月10日','2027-01-10'],
+  ]){
+   context.mock.timers.setTime(Date.parse(instant));
+   assert.equal(new Date().toISOString(),instant);
+   assert.equal(Date.now(),Date.parse(instant));
+   const f=fixture();
+   try{
+    const response=await worker.fetch(f.req('/webhook/customer-line','CUSTOMER',`至急、${message}にブーケ3個、合計3000円で店頭受取をお願いします`,'CLOCK-CUSTOMER',f.env.CUSTOMER_LINE_CHANNEL_SECRET),f.env);
+    assert.equal(response.status,200,instant);
+    const field=f.db.prepare("SELECT value_text FROM manager_fields WHERE field_key='receive_date'").get();
+    assert.equal(field?.value_text??null,expectedDate,instant);
+    const draft=f.db.prepare('SELECT * FROM manager_drafts').get();
+    assert.ok(draft,instant);
+    if(expectedDate===null)assert.match(draft.message,/何年何月何日/);
+    for(const id of ['CLOCK-LIST','CLOCK-SELECT','CLOCK-APPROVE'])await worker.fetch(f.req('/webhook/line','OWNER','1',id,f.env.LINE_CHANNEL_SECRET),f.env);
+    assert.equal(f.db.prepare("SELECT COUNT(*) n FROM manager_outbox WHERE channel='customer' AND status='sent'").get().n,1,instant);
+    await worker.fetch(f.req('/webhook/line','OWNER','1','CLOCK-APPROVE',f.env.LINE_CHANNEL_SECRET),f.env);
+    assert.equal(f.db.prepare("SELECT COUNT(*) n FROM manager_outbox WHERE channel='customer'").get().n,1,instant);
+   }finally{f.db.close()}
+  }
  }finally{globalThis.fetch=original}
 });

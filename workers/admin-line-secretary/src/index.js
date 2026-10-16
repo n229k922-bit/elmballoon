@@ -5,6 +5,7 @@ import { createManagerLoginLink, managerSessionEndpoint } from './manager-auth.j
 import { managerPwaAsset } from './manager-pwa.js';
 import { scheduleProofAsset, scheduleProofMessages } from './schedule-proof.js';
 import { siteDialogue, readableSiteDate } from './site-dialogue.js';
+import { managerReleaseStage, managerRecipientAllowed, managerProductionSafetyReady } from './manager-policy.js';
 
 const encoder = new TextEncoder();
 const CUSTOMER_SESSION_TTL = 60 * 60 * 24 * 14;
@@ -395,6 +396,15 @@ async function customerLineWebhook(request, env, ctx) {
     // Roles belong to the signed channel route, not to the LINE user ID.
     // One person may use both test channels. Customer input must never enter
     // the owner command handler, even when the message is simply "1".
+    if (managerReleaseStage(env) === 'disabled') return new Response('Manager intake is not enabled', { status: 503 });
+    if (managerReleaseStage(env) !== 'test' && !managerProductionSafetyReady(env)) return new Response('Manager safety configuration is incomplete', { status: 503 });
+    // Do not acknowledge-and-discard real messages outside a pilot cohort.
+    // Pilot must use isolated official accounts or a separately agreed routing
+    // plan; replacing a busy production webhook with this mode is not a rollout.
+    if (managerReleaseStage(env) === 'pilot' && (payload.events || []).some(event =>
+      event.type === 'message' && event.source?.userId && !managerRecipientAllowed(event.source.userId, 'customer', env))) {
+      return new Response('Customer is outside pilot scope', { status: 503 });
+    }
     await receiveManagerEvents(payload.events || [], env);
     const process = async () => {
       await new Promise(resolve => setTimeout(resolve, 12500));
