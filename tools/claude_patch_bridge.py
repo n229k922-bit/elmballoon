@@ -87,7 +87,9 @@ def main():
          "--tools", "", "--permission-mode", "dontAsk", "--no-session-persistence",
          "-p", "--output-format", "json"],
         input=prompt, capture_output=True, text=True, encoding="utf-8", timeout=180,
-        cwd=root, check=True)
+        cwd=root, check=False)
+    if result.returncode:
+        raise RuntimeError("Claude execution failed; check authentication with a minimal CLI probe. No proposal applied.")
     response = json.loads(result.stdout)
     if response.get("is_error"):
         raise ValueError("Claude returned an error")
