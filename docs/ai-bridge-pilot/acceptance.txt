@@ -1,0 +1,3 @@
+AI bridge pilot acceptance:
+Human approval is required before production deployment.
+Maximum automated correction rounds: 3.
