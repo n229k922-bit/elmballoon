@@ -12,6 +12,42 @@ const requiredTriggers = ['manager_capacity_reservation_guard','manager_capacity
 const list = value => String(value || '').split(',').map(x => x.trim()).filter(Boolean);
 const all = async (env,sql) => (await env.DB.prepare(sql).all()).results || [];
 
+// These gates deliberately remain separate from channel/configuration readiness.
+// A configured credential is never evidence of an actual screenshot or recovery.
+export async function getOperationalReadiness(env, {now = new Date()} = {}) {
+  const gates=[];
+  const add=(id,status,message,details={})=>gates.push({id,status,message,...details});
+  const today=new Intl.DateTimeFormat('en-CA',{timeZone:'Asia/Tokyo',year:'numeric',month:'2-digit',day:'2-digit'}).format(now);
+  const days=Array.from({length:14},(_,i)=>new Date(Date.parse(today+'T00:00:00Z')+i*86400000).toISOString().slice(0,10));
+  const horizon=days.at(-1);
+  try {
+    const capacity=await all(env,`SELECT date FROM manager_capacity_limits WHERE date >= '${today}' AND date <= '${horizon}'`);
+    const missing=days.filter(day=>!capacity.some(row=>row.date===day));
+    add('capacity_coverage',missing.length?'missing':'ready',missing.length?'向こう14日間の受付上限に未登録の日がある。休業日は0件で登録する':'向こう14日間の受付上限が登録されている',{through:horizon,missingDates:missing});
+    const history=await all(env,'SELECT review_status,COUNT(*) AS count FROM manager_imports GROUP BY review_status');
+    const verified=history.filter(row=>row.review_status==='verified').reduce((n,row)=>n+Number(row.count),0);
+    const unverified=history.filter(row=>row.review_status!=='verified').reduce((n,row)=>n+Number(row.count),0);
+    add('verified_history',unverified?'missing':verified?'ready':'unknown',unverified?'本人との紐付け・本文確認が終わっていない過去資料がある':verified?'照合済みの過去資料を参照できる':'参照対象の過去資料が未登録',{verified,unverified});
+  }catch { add('operational_database','unknown','受付上限・履歴の実データを確認できない'); }
+  let reviewEvidence=null;
+  try {
+    const record=(await all(env,"SELECT detail,created_at FROM manager_audit WHERE action='schedule.review' ORDER BY id DESC LIMIT 1"))[0];
+    if(record) {
+      const detail=JSON.parse(record.detail);
+      if(detail.kind==='human_review_record'&&/^\d{4}-\d{2}-\d{2}$/u.test(detail.reviewedOn||'')&&/^\d{4}-\d{2}-\d{2}$/u.test(detail.through||'')&&typeof detail.note==='string'&&detail.note.trim().length>=5)reviewEvidence=detail;
+    }
+  }catch {/* no review record is unknown rather than a default approval */}
+  const reviewed=Date.parse(reviewEvidence?reviewEvidence.reviewedOn+'T00:00:00+09:00':env.MANAGER_SCHEDULE_REVIEWED_AT||'');
+  const through=reviewEvidence?.through||env.MANAGER_SCHEDULE_REVIEWED_THROUGH||'';
+  add('schedule_review',Number.isFinite(reviewed)&&reviewed<=now.getTime()&&reviewed>=now.getTime()-31*86400000&&through>=horizon?'ready':'unknown','実店舗の定休日・臨時営業時間との照合記録を確認する',{reviewedAt:Number.isFinite(reviewed)?new Date(reviewed).toISOString():null,through:through||null});
+  const proofConfigured=Boolean(env.SCHEDULE_PROOF_PAGE_URL&&env.BROWSER_RENDERING_TOKEN&&env.CLOUDFLARE_ACCOUNT_ID);
+  add('schedule_image_config',proofConfigured?'configured':'missing','ホームページ変更箇所の画像撮影設定。設定済みでも実画像確認は別途必要');
+  add('schedule_image_acceptance','unknown','変更した日付・表示内容・画像の見やすさを実画像で確認する');
+  add('backup_recovery_acceptance','unknown','暗号化バックアップの読戻し・隔離復元と別端末保管の証跡を確認する');
+  add('mobile_acceptance','unknown','スマホでカルテ・画像・番号承認・例外処理の一連の操作を確認する');
+  return {checkedAt:now.toISOString(),from:today,through:horizon,ready:gates.every(gate=>gate.status==='ready'),gates};
+}
+
 // Authenticated, read-only diagnostics. No push/reply, queue changes or secret values.
 export async function getManagerReadiness(env, {origin, verifyLine = false, fetcher = fetch} = {}) {
   const checks = [], stage = managerReleaseStage(env), production = stage !== 'test';
@@ -75,7 +111,9 @@ export async function getManagerReadiness(env, {origin, verifyLine = false, fetc
   }
   if(verifyLine)check('line_distinct_bots',Boolean(identities[0]&&identities[1]&&identities[0]!==identities[1]),'顧客・店長の公式アカウントが別々である');
   return {checkedAt:new Date().toISOString(),stage,configurationReady:checks.every(c=>!c.blocking||c.ok),
+    buildCommit:/^[a-f0-9]{40}$/u.test(env.MANAGER_BUILD_COMMIT||'')?env.MANAGER_BUILD_COMMIT:null,
     queueTransmissionEnabled:managerCanTransmit(env),checks,queues,history,lineAccounts,
+    operationalReadiness:await getOperationalReadiness(env),
     acceptance:{productionApproved:false,status:'実LINEの送受信・店長操作・例外フローは別途実機確認が必要'},
     pauseScope:'停止対象はAI注文の返信・通知キュー。店長への操作案内の直接返信と旧システムは対象外。'};
 }

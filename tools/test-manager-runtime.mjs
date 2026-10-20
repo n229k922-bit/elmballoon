@@ -78,6 +78,18 @@ test('all migrations apply and ordinary natural messages create persistent cards
   assert.equal(f.get("SELECT COUNT(*) n FROM manager_events WHERE direction='assistant'").n,1);
 });
 
+test('owner reply review includes the current customer request and extracted details without system ids', async () => {
+  const f=fixture();
+  await f.receive('10月10日に卒業のブーケを3つ。合計3000円で店頭受取をお願いします。名前はYUNAでお願いします','OWNER_CONTEXT');
+  const notice=f.get("SELECT text FROM manager_outbox WHERE channel='owner' ORDER BY created_at DESC LIMIT 1").text;
+  assert.match(notice,/【今回のお客様のご連絡】/);
+  assert.match(notice,/10月10日に卒業のブーケを3つ/);
+  assert.match(notice,/数量：3/);
+  assert.match(notice,/予算：3,000円（合計）/);
+  assert.match(notice,/YUNA/);
+  assert.doesNotMatch(notice,/[MD][A-F0-9]{16}/);
+});
+
 test('manager numbers revise, hold and approve only one valid draft', async () => {
   const f=fixture(); await f.receive('10月10日にブーケ3個、3000円で店頭受取');
   assert.match(await handleManagerCommand('1','OWNER',f.env,f.later),/どの注文/);
@@ -190,6 +202,20 @@ test('new customer evidence invalidates an old approved but not yet sent reply',
   assert.equal(f.get('SELECT status FROM manager_outbox WHERE draft_id=?',draft.id).status,'cancelled');
 });
 
+test('approved assistant question is retained for the next customer turn', async () => {
+  const f = fixture();
+  await f.receive('娘の誕生日にブーケをお願いします', 'CTX-1');
+  const first = f.get("SELECT * FROM manager_drafts WHERE source_event_id='CTX-1'");
+  assert.ok(first);
+  await handleManagerCommand(`承認送信 ${first.id}`, 'OWNER', f.env, f.later);
+  await flushManagerOutbox(f.env, f.later, async () => new Response('{}', { status: 200 }));
+  assert.equal(f.get("SELECT COUNT(*) n FROM manager_events WHERE direction='assistant' AND order_id=?", first.order_id).n, 1);
+  assert.ok(f.get("SELECT COUNT(*) n FROM manager_questions WHERE draft_id=? AND sent_at IS NOT NULL", first.id).n > 0);
+  await f.receive('10月10日です', 'CTX-2');
+  assert.equal(f.get("SELECT value_text FROM manager_fields WHERE order_id=? AND field_key='use_date'", first.order_id).value_text, '2026-10-10');
+  assert.doesNotMatch(f.get("SELECT message FROM manager_drafts WHERE source_event_id='CTX-2'").message, /何年何月何日/);
+});
+
 test('confirmed changes require explicit review, and production is blocked while pending', async () => {
   const f=fixture(); await f.receive('予算3000円でブーケ希望');
   const order=f.get('SELECT * FROM manager_orders');
@@ -235,6 +261,31 @@ test('natural separate order markers split a burst without inheriting previous f
   }
 });
 
+test('unlinked payment-visit time reply asks payment scope and never changes an order date',async()=>{
+  const f=fixture();await f.receive('ブーケ希望');await f.receive('別の注文：スタンド希望','E2');
+  const before=f.all("SELECT order_id,field_key,value_text FROM manager_fields ORDER BY order_id,field_key");
+  const insert=f.db.prepare(`INSERT INTO manager_events(id,customer_id,order_id,direction,text,occurred_at,received_at,processed_at) VALUES (?,?,NULL,?,?,?, ?,?)`);
+  insert.run('PAYMENT-CONTEXT','CUSTOMER','customer','明日支払いに伺います',f.now,f.now,f.now);
+  insert.run('PAYMENT-QUESTION','CUSTOMER','assistant','明日、かしこまりました。ご来店のお時間を教えてください',f.now,f.now,f.now);
+  await f.receive('20時半でお願いします','PAYMENT-TIME');
+  assert.equal(f.get("SELECT order_id FROM manager_events WHERE id='PAYMENT-TIME'").order_id,null);
+  assert.deepEqual(f.all("SELECT order_id,field_key,value_text FROM manager_fields ORDER BY order_id,field_key"),before);
+  const reply=f.get("SELECT message FROM manager_drafts WHERE source_event_id='PAYMENT-TIME'").message;
+  assert.match(reply,/お支払い/);assert.match(reply,/どのご注文/);assert.doesNotMatch(reply,/市町村|お受け取り希望日|使用日/);
+});
+
+test('time reply to a payment question stays on the immediately linked order only',async()=>{
+  const f=fixture();await f.receive('ブーケ希望');await f.receive('別の注文：スタンド希望','E2');
+  const order=f.get("SELECT id FROM manager_orders WHERE rowid=(SELECT MIN(rowid) FROM manager_orders)").id;
+  const insert=f.db.prepare(`INSERT INTO manager_events(id,customer_id,order_id,direction,text,occurred_at,received_at,processed_at) VALUES (?,?,?,?,?,?,?,?)`);
+  insert.run('PAYMENT-CONTEXT','CUSTOMER',order,'customer','明日支払いに伺います',f.now,f.now,f.now);
+  insert.run('PAYMENT-QUESTION','CUSTOMER',order,'assistant','明日、かしこまりました。ご来店のお時間を教えてください',f.now,f.now,f.now);
+  await f.receive('20時半でお願いします','PAYMENT-TIME');
+  assert.equal(f.get("SELECT order_id FROM manager_events WHERE id='PAYMENT-TIME'").order_id,order);
+  assert.equal(f.get("SELECT COUNT(*) n FROM manager_fields WHERE order_id=? AND field_key IN ('receive_date','use_date','receive_time')",order).n,0);
+  assert.match(f.get("SELECT message FROM manager_drafts WHERE source_event_id='PAYMENT-TIME'").message,/お支払い/);
+});
+
 test('429 retries keep identical payload and retry key, and do not duplicate delivery',async()=>{
  const f=fixture();await f.receive('ブーケ希望');
  const draft=f.get('SELECT * FROM manager_drafts');await handleManagerCommand(`承認送信 ${draft.id}`,'OWNER',f.env,f.later);
@@ -262,11 +313,23 @@ test('test-only auto intake asks missing facts without owner noise and escalates
  assert.equal(f.get("SELECT COUNT(*) n FROM manager_audit WHERE action='intake.auto_queued'").n,1);
  await f.receive('10月10日、ブーケ3個、店頭受取、合計10000円、色はおまかせ','AUTO-DETAILS');
  const draft=f.get("SELECT * FROM manager_drafts WHERE source_event_id='AUTO-DETAILS'");
- assert.equal(draft.status,'pending');
- assert.ok(JSON.parse(draft.reasons_json).includes('review_collected_details'));
- assert.equal(f.get("SELECT COUNT(*) n FROM manager_outbox WHERE channel='owner'").n,2);
+ assert.equal(draft.status,'approved');
+ assert.match(draft.message,/使用日|イベント日|何年何月何日/);
+ assert.equal(f.get("SELECT COUNT(*) n FROM manager_outbox WHERE channel='owner'").n,0);
  await flushManagerOutbox(f.env,f.later,fetcher);
- assert.equal(sent.filter(s=>s.to==='CUSTOMER').length,1,'acceptance still needs manager review');
+ assert.equal(sent.filter(s=>s.to==='CUSTOMER').length,2,'clarification was sent; acceptance still needs manager review');
+});
+
+test('basic greeting and intake is auto-replied without owner noise', async () => {
+ const f=fixture();
+ Object.assign(f.env,{MANAGER_TEST_MODE:'true',MANAGER_AUTO_INTAKE_ENABLED:'true',MANAGER_TEST_CUSTOMER_IDS:'CUSTOMER'});
+ await f.receive('こんにちは。注文大丈夫ですか？','AUTO-GREETING');
+ const draft=f.get("SELECT * FROM manager_drafts WHERE source_event_id='AUTO-GREETING'");
+ assert.equal(draft.approved_by,'system:intake');
+ assert.equal(f.get("SELECT COUNT(*) n FROM manager_outbox WHERE channel='owner'").n,0);
+ assert.equal(f.get("SELECT COUNT(*) n FROM manager_outbox WHERE channel='customer'").n,1);
+ assert.match(draft.message,/どのようなバルーン|お受け取り/);
+ assert.doesNotMatch(draft.message,/価格を確約|注文確定/);
 });
 
 test('auto intake fails closed for production, flags, exceptions, manual review and pending changes',async()=>{

@@ -13,7 +13,11 @@ assert.equal(login.status,200);const cookie=login.headers.get('set-cookie').spli
 const get=path=>fetch(url.origin+'/api/manager/'+path,{headers:{Cookie:cookie}});
 const response=await get('orders');assert.equal(response.status,200);const data=await response.json();
 assert.equal(data.sendPaused,true);assert.ok(data.today?.date);assert.ok(data.orders.length>=1);
-const search=await (await get('orders?q='+encodeURIComponent('架空サンプル'))).json();assert.ok(search.orders.some(o=>o.id==='M0000000000000010'));
+// Search against an order that actually exists in the isolated QA database;
+// never depend on a synthetic ID or title that may not be present after a
+// safe reset of test data.
+const sample=data.orders[0];assert.ok(sample?.id);
+const search=await (await get('orders?q='+encodeURIComponent(sample.title))).json();assert.ok(search.orders.some(o=>o.id===sample.id));
 assert.equal((await (await get('orders?q=NO-MATCH-6af703')).json()).orders.length,0);
 const logout=await fetch(url.origin+'/api/manager/logout',{method:'POST',headers:{Cookie:cookie,Origin:url.origin,'X-Manager-Request':'1'},body:'{}'});assert.equal(logout.status,200);
 assert.equal((await get('orders')).status,401);

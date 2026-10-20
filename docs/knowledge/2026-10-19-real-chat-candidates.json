@@ -1,0 +1,196 @@
+{
+  "schema_version": 1,
+  "synthetic": false,
+  "source_type": "real_line_ui_review",
+  "collected_on": "2026-10-19",
+  "review_status": "source_review_pending",
+  "activation_allowed": false,
+  "reviewed_threads": 5,
+  "new_unique_orders": null,
+  "full_history_complete": false,
+  "private_evidence_location": "Separate local private archive; not included in Git",
+  "candidates": [
+    {
+      "id": "REAL-K1019-01",
+      "title": "代替商品は提案・一部同意・最終同意を分ける",
+      "source_cases": [
+        "REAL-1019-01"
+      ],
+      "proposal": "在庫切れの説明と代案を記録し、条件付き希望や一部了承だけで全構成を確定しない。当時の入荷情報を現在の在庫にしない。",
+      "review_status": "source_review_pending",
+      "activation_allowed": false,
+      "not_a_current_price_or_availability_rule": true
+    },
+    {
+      "id": "REAL-K1019-02",
+      "title": "返事を待つ希望を保持する",
+      "source_cases": [
+        "REAL-1019-01"
+      ],
+      "proposal": "他の人への確認後に返答したいという希望を残し、同じ質問や催促を繰り返さない。相談相手の健康・家庭事情は業務に必要な範囲を超えて知識化しない。",
+      "review_status": "source_review_pending",
+      "activation_allowed": false,
+      "not_a_current_price_or_availability_rule": true
+    },
+    {
+      "id": "REAL-K1019-03",
+      "title": "来店相談予約は商品受取と別に扱う",
+      "source_cases": [
+        "REAL-1019-02"
+      ],
+      "proposal": "相談予約の日時と、商品の使用・受取・配達を別イベントにする。遅刻の可能性と店側了承後の変更を区別する。",
+      "review_status": "source_review_pending",
+      "activation_allowed": false,
+      "not_a_current_price_or_availability_rule": true
+    },
+    {
+      "id": "REAL-K1019-04",
+      "title": "画像見積の条件と承諾を区別する",
+      "source_cases": [
+        "REAL-1019-03"
+      ],
+      "proposal": "提示した具体見積に含まれる名入れ等を記録するが、顧客からの了承が見えなければ注文確定にしない。全商品共通価格へ昇格しない。",
+      "review_status": "source_review_pending",
+      "activation_allowed": false,
+      "not_a_current_price_or_availability_rule": true
+    },
+    {
+      "id": "REAL-K1019-05",
+      "title": "スタンド本体の回収と装飾の残置を分ける",
+      "source_cases": [
+        "REAL-1019-03"
+      ],
+      "proposal": "貸出物と贈答物を分け、回収予定を項目化する。今回確認した個別説明をすべての商品のレンタル条件へしない。",
+      "review_status": "source_review_pending",
+      "activation_allowed": false,
+      "not_a_current_price_or_availability_rule": true
+    },
+    {
+      "id": "REAL-K1019-06",
+      "title": "配色は好みと用途をもとに候補提示する",
+      "source_cases": [
+        "REAL-1019-04"
+      ],
+      "proposal": "本人の好み・衣装との調和・希望の印象で複数案を示し、候補を選択済みにしない。年齢や性別だけで配色を固定しない。",
+      "review_status": "source_review_pending",
+      "activation_allowed": false,
+      "not_a_current_price_or_availability_rule": true
+    },
+    {
+      "id": "REAL-K1019-07",
+      "title": "生成イメージは完成写真と区別する",
+      "source_cases": [
+        "REAL-1019-04"
+      ],
+      "proposal": "イメージ作成画像は提案資料であり、現物の制作完了・在庫・再現保証の根拠にしない。",
+      "review_status": "source_review_pending",
+      "activation_allowed": false,
+      "not_a_current_price_or_availability_rule": true
+    },
+    {
+      "id": "REAL-K1019-08",
+      "title": "リピーターにも改定価格の説明と了承が必要",
+      "source_cases": [
+        "REAL-1019-04"
+      ],
+      "proposal": "前年の価格を自動転記しない。今回の価格説明と顧客了承を別記録し、税・付帯料金が不明なら推測しない。",
+      "review_status": "source_review_pending",
+      "activation_allowed": false,
+      "not_a_current_price_or_availability_rule": true
+    },
+    {
+      "id": "REAL-K1019-09",
+      "title": "祝日や夜間の個別了承を通常営業へ変換しない",
+      "source_cases": [
+        "REAL-1019-04",
+        "REAL-1019-05"
+      ],
+      "proposal": "店舗の通常営業時間、当日の不在時間、受取や支払の例外枠を分ける。過去の例外から今の対応可否を推測しない。",
+      "review_status": "source_review_pending",
+      "activation_allowed": false,
+      "not_a_current_price_or_availability_rule": true
+    },
+    {
+      "id": "REAL-K1019-10",
+      "title": "受取候補の変更履歴と最終了承を残す",
+      "source_cases": [
+        "REAL-1019-04"
+      ],
+      "proposal": "同じ注文で候補が繰り返し変わっても、使用日を維持し、新希望と代案と店舗了承を時系列で分ける。",
+      "review_status": "source_review_pending",
+      "activation_allowed": false,
+      "not_a_current_price_or_availability_rule": true
+    },
+    {
+      "id": "REAL-K1019-11",
+      "title": "商品別メッセージと別注文を混ぜない",
+      "source_cases": [
+        "REAL-1019-05"
+      ],
+      "proposal": "複数商品の番号・メッセージ・差出人を明細ごとに保持し、後から出た別件のスタンド見積や注文を切り分ける。",
+      "review_status": "source_review_pending",
+      "activation_allowed": false,
+      "not_a_current_price_or_availability_rule": true
+    },
+    {
+      "id": "REAL-K1019-12",
+      "title": "配送・支払予定・領収書依頼は独立状態",
+      "source_cases": [
+        "REAL-1019-05"
+      ],
+      "proposal": "配送完了後でも支払未確認はあり得る。支払手段の希望や来店予定を入金済みにせず、領収書の依頼を発行済みにしない。",
+      "review_status": "source_review_pending",
+      "activation_allowed": false,
+      "not_a_current_price_or_availability_rule": true
+    },
+    {
+      "id": "REAL-K1019-13",
+      "title": "請求合計と領収書依頼の不一致を要確認にする",
+      "source_cases": [
+        "REAL-1019-05"
+      ],
+      "proposal": "額が一致しない場合は対象注文・按分・実際の決済を確認する。値引き・差額残高・発行済みを勝手に補わない。",
+      "review_status": "source_review_pending",
+      "activation_allowed": false,
+      "not_a_current_price_or_availability_rule": true
+    },
+    {
+      "id": "REAL-K1019-14",
+      "title": "画像から確認できない仕様を推測しない",
+      "source_cases": [
+        "REAL-1019-01",
+        "REAL-1019-03",
+        "REAL-1019-04",
+        "REAL-1019-05"
+      ],
+      "proposal": "プレビュー確認と原寸確認を分ける。未読の画像文字や取消メッセージ、表示されない過去注文は未確認のまま残す。",
+      "review_status": "source_review_pending",
+      "activation_allowed": false,
+      "not_a_current_price_or_availability_rule": true
+    },
+    {
+      "id": "REAL-K1019-15",
+      "title": "表示範囲と更新記録を件数から分離する",
+      "source_cases": [
+        "REAL-1019-03",
+        "REAL-1019-04",
+        "REAL-1019-05"
+      ],
+      "proposal": "履歴の非表示制限・途中で止めた位置を残す。5トーク再確認を5新規注文と数えず、旧記録との同一注文照合後に統合する。",
+      "review_status": "source_review_pending",
+      "activation_allowed": false,
+      "not_a_current_price_or_availability_rule": true
+    },
+    {
+      "id": "REAL-K1019-16",
+      "title": "担当呼出し文と実際の引継ぎを区別する",
+      "source_cases": [
+        "REAL-1019-03"
+      ],
+      "proposal": "顧客側に表示された準備中の呼出し文だけで担当者が手配されたとは判断しない。実際の引継ぎ状態と応答を別に確認する。",
+      "review_status": "source_review_pending",
+      "activation_allowed": false,
+      "not_a_current_price_or_availability_rule": true
+    }
+  ]
+}

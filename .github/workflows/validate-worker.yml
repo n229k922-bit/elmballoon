@@ -12,6 +12,8 @@ permissions:
 jobs:
   worker-syntax:
     runs-on: ubuntu-latest
+    env:
+      MINIFLARE_PACKAGE_JSON: ${{ runner.temp }}/elm-worker-runtime/node_modules/miniflare/package.json
     steps:
       - name: Check out source
         uses: actions/checkout@v4
@@ -21,11 +23,18 @@ jobs:
           node-version: 24
       - name: Check Worker syntax
         run: node --check workers/admin-line-secretary/src/index.js
+      - name: Install pinned local Worker runtime for image validation
+        run: |
+          npm install --prefix "$RUNNER_TEMP/elm-worker-runtime" --no-save --no-package-lock wrangler@4.147.0
+          test -f "$MINIFLARE_PACKAGE_JSON"
       - name: Validate manager and legacy behavior
         run: |
           node tools/test-order-record-workflow.mjs
           node tools/test-conversation-planner.mjs
           node tools/test-conversation-adversarial.mjs
+          node --test tools/test-conversation-order-routing.mjs tools/test-conversation-specifications.mjs tools/test-quantity-integrity.mjs
+          node tools/test-conversation-personas.mjs
+          node tools/test-order-isolation.mjs
           node tools/test-sensitive-conversation.mjs
           node --test tools/test-sensitive-runtime.mjs tools/test-everyday-simulation.mjs
           node --test tools/test-independent-simulation.mjs
@@ -47,6 +56,10 @@ jobs:
           node --test tools/test-manager-policy.mjs tools/test-manager-readiness.mjs tools/test-manager-migration-rehearsal.mjs
           node tools/test-four-role-scenarios.mjs
           node tools/test-schedule-proof.mjs
+          node --test tools/test-schedule-atomicity.mjs tools/test-schedule-proof-preflight.mjs
+          node --test tools/test-schedule-proof-workerd.mjs tools/test-stage-site-image-change.mjs
+          node --test tools/test-manager-media.mjs tools/test-manager-image-archive.mjs tools/test-manager-health.mjs
+          node --test tools/test-manager-setup.mjs tools/test-manager-operational-readiness.mjs tools/test-backup-manager.mjs
           node --test tools/test-manager-runtime.mjs tools/test-order-knowledge-import.mjs
       - name: Check required integration routes
         shell: bash
