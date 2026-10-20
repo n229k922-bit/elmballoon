@@ -1,0 +1,209 @@
+{
+  "checkedAt": "2026-10-20T08:12:37.072Z",
+  "scope": "local_mocked_no_real_LINE",
+  "files": 40,
+  "passed": 40,
+  "failed": 0,
+  "results": [
+    {
+      "name": "test-order-record-workflow",
+      "passed": true,
+      "durationMs": 130
+    },
+    {
+      "name": "test-conversation-planner",
+      "passed": true,
+      "durationMs": 104
+    },
+    {
+      "name": "test-conversation-adversarial",
+      "passed": true,
+      "durationMs": 106
+    },
+    {
+      "name": "test-conversation-order-routing",
+      "passed": true,
+      "durationMs": 82
+    },
+    {
+      "name": "test-conversation-specifications",
+      "passed": true,
+      "durationMs": 80
+    },
+    {
+      "name": "test-quantity-integrity",
+      "passed": true,
+      "durationMs": 526
+    },
+    {
+      "name": "test-conversation-personas",
+      "passed": true,
+      "durationMs": 965
+    },
+    {
+      "name": "test-order-isolation",
+      "passed": true,
+      "durationMs": 123
+    },
+    {
+      "name": "test-sensitive-conversation",
+      "passed": true,
+      "durationMs": 78
+    },
+    {
+      "name": "test-sensitive-runtime",
+      "passed": true,
+      "durationMs": 386
+    },
+    {
+      "name": "test-everyday-simulation",
+      "passed": true,
+      "durationMs": 374
+    },
+    {
+      "name": "test-independent-simulation",
+      "passed": true,
+      "durationMs": 248
+    },
+    {
+      "name": "test-calendar-security",
+      "passed": true,
+      "durationMs": 96
+    },
+    {
+      "name": "test-manager-mobile",
+      "passed": true,
+      "durationMs": 104
+    },
+    {
+      "name": "test-manager-intake",
+      "passed": true,
+      "durationMs": 227
+    },
+    {
+      "name": "test-manager-history",
+      "passed": true,
+      "durationMs": 149
+    },
+    {
+      "name": "test-capacity-safety",
+      "passed": true,
+      "durationMs": 191
+    },
+    {
+      "name": "test-operational-metrics",
+      "passed": true,
+      "durationMs": 199
+    },
+    {
+      "name": "test-manager-freshness",
+      "passed": true,
+      "durationMs": 334
+    },
+    {
+      "name": "test-manager-safety-ui",
+      "passed": true,
+      "durationMs": 133
+    },
+    {
+      "name": "test-manager-friendly-console",
+      "passed": true,
+      "durationMs": 127
+    },
+    {
+      "name": "test-site-dialogue",
+      "passed": true,
+      "durationMs": 212
+    },
+    {
+      "name": "test-ai-disclosure",
+      "passed": true,
+      "durationMs": 92
+    },
+    {
+      "name": "test-line-e2e",
+      "passed": true,
+      "durationMs": 482
+    },
+    {
+      "name": "test-manager-policy",
+      "passed": true,
+      "durationMs": 985
+    },
+    {
+      "name": "test-manager-readiness",
+      "passed": true,
+      "durationMs": 409
+    },
+    {
+      "name": "test-manager-migration-rehearsal",
+      "passed": true,
+      "durationMs": 242
+    },
+    {
+      "name": "test-four-role-scenarios",
+      "passed": true,
+      "durationMs": 220
+    },
+    {
+      "name": "test-schedule-proof",
+      "passed": true,
+      "durationMs": 341
+    },
+    {
+      "name": "test-schedule-atomicity",
+      "passed": true,
+      "durationMs": 272
+    },
+    {
+      "name": "test-schedule-proof-preflight",
+      "passed": true,
+      "durationMs": 106
+    },
+    {
+      "name": "test-stage-site-image-change",
+      "passed": true,
+      "durationMs": 406
+    },
+    {
+      "name": "test-manager-media",
+      "passed": true,
+      "durationMs": 282
+    },
+    {
+      "name": "test-manager-image-archive",
+      "passed": true,
+      "durationMs": 225
+    },
+    {
+      "name": "test-manager-health",
+      "passed": true,
+      "durationMs": 169
+    },
+    {
+      "name": "test-manager-setup",
+      "passed": true,
+      "durationMs": 225
+    },
+    {
+      "name": "test-manager-operational-readiness",
+      "passed": true,
+      "durationMs": 113
+    },
+    {
+      "name": "test-backup-manager",
+      "passed": true,
+      "durationMs": 120
+    },
+    {
+      "name": "test-manager-runtime",
+      "passed": true,
+      "durationMs": 1681
+    },
+    {
+      "name": "test-order-knowledge-import",
+      "passed": true,
+      "durationMs": 83
+    }
+  ]
+}

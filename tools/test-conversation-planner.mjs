@@ -1,5 +1,6 @@
 import assert from 'node:assert/strict';
-import { extractConversationFacts, planConversation } from '../workers/admin-line-secretary/src/conversation.js';
+import { extractConversationFacts, planConversation, startsNewOrder } from '../workers/admin-line-secretary/src/conversation.js';
+import { classifyConversationIntent } from '../workers/admin-line-secretary/src/conversation.js';
 
 const sourceTimestamp = '2026-09-30T15:30:00Z'; // October 1 in the shop's timezone.
 const extract = text => extractConversationFacts({ text, sourceTimestamp });
@@ -15,6 +16,7 @@ assert.equal(result.facts.budget.scope, 'total');
 assert.equal(field(result, 'quantity'), '3');
 assert.equal(extract('1つ800円で3つ').facts.budget.scope, 'unit');
 assert.equal(field(extract('去年と同じ数字12でお願いします'), 'product_source'), undefined);
+assert.equal(startsNewOrder('別の注文でブーケをお願いします'), true);
 assert.equal(field(extract('商品番号: B36'), 'product_source'), 'B36');
 assert.equal(field(extract('明日取りに行きます'), 'receive_date'), '2026-10-02');
 assert.equal(field(extract('10月10日に受け取りたい'), 'receive_date'), '2026-10-10');
@@ -49,6 +51,53 @@ assert.equal(field(extract('数量：１台'), 'quantity'), '1');
 assert.equal(field(extract('数量：未定'), 'quantity'), undefined);
 assert.equal(field(extract('ヘリウムを5本お願いします'), 'quantity'), '5');
 assert.equal(field(extract('1台あたり15000円です'), 'quantity'), undefined);
+result = planConversation({ text: '霧島市国分中央3丁目37-8です♪', sourceTimestamp });
+assert.equal(result.intent.kind, 'address_update');
+assert.ok(!result.message.includes('何年何月何日'));
+result = planConversation({ text: '12000円と4000円の領収書をお願いします', sourceTimestamp });
+assert.equal(result.intent.kind, 'payment_followup');
+assert.ok(!result.message.includes('最終的なご予算'));
+result = classifyConversationIntent('20時半でお願いします', [
+  { direction: 'customer', text: '明日支払いに伺います' },
+  { direction: 'assistant', text: '明日、かしこまりました。ご来店のお時間を教えてください' },
+]);
+assert.equal(result.kind, 'payment_followup');
+result = classifyConversationIntent('明日、20時半くらいに行きますね', [
+  { direction: 'customer', text: '明日、両方の注文分をPayPayで支払います。今日なら19時半、明日なら20時半に行けます' },
+  { direction: 'assistant', text: 'PayPayでのお支払い、承知しました。ご連絡ありがとうございます' },
+]);
+assert.equal(result.kind, 'payment_followup');
+result = classifyConversationIntent('20時半でお願いします', [
+  { direction: 'customer', text: '明日支払いに伺います' },
+  { direction: 'assistant', text: 'ご希望の色を教えてください' },
+]);
+assert.notEqual(result.kind, 'payment_followup');
+result = planConversation({ text: 'これはいくらでしょうか', sourceTimestamp });
+assert.equal(result.intent.kind, 'price_inquiry');
+assert.ok(!result.message.includes('お受け取りをご希望'));
+result = planConversation({ text: '配達ありがとうございました', sourceTimestamp });
+assert.equal(result.intent.kind, 'delivery_acknowledgement');
+assert.equal(result.questions.length, 0);
+result = planConversation({ text: '配達時間は20時でお願いします', fields: { fulfillment_method: '配達', receive_date: '2026-10-10' }, sourceTimestamp });
+assert.equal(result.intent.kind, 'schedule_followup');
+assert.equal(result.questions.length, 0);
+assert.ok(result.requiresOwner);
+result = planConversation({ text: '娘の誕生日にブーケをお願いしたいです', sourceTimestamp });
+assert.equal(result.questions[0].key, 'use_date');
+assert.ok(!result.questions.some(item => item.key === 'receive_date'));
+result = planConversation({ text: '10月10日が誕生日です', fields: { purpose: '誕生日', product_type: 'ブーケ' }, sourceTimestamp });
+assert.ok(!result.questions.some(item => item.key === 'use_date'));
+assert.equal(result.updates.find(update => update.key === 'use_date')?.value, '2026-10-10');
+result = planConversation({ text: '30日の周年バルーンはアレンジ8でお願いします', fields: { use_date: '2026-06-30', purpose: '周年', product_type: '置き型アレンジメント' }, sourceTimestamp: '2026-06-24T01:39:00Z' });
+assert.equal(result.updates.find(update => update.key === 'use_date')?.value, '2026-06-30');
+assert.equal(result.facts.dateAmbiguities.length, 0);
+result = planConversation({ text: '明日でも大丈夫ですか？', fields: { purpose: '誕生日', product_type: 'ブーケ' }, lastQuestions: [{ key: 'receive_date' }], sourceTimestamp });
+assert.equal(result.updates.find(update => update.key === 'receive_date'), undefined);
+assert.equal(result.updates.find(update => update.key === 'use_date'), undefined);
+assert.equal(result.questions[0].key, 'date_clarification');
+result = planConversation({ text: '電話番号は090-0000-0000です', sourceTimestamp });
+assert.equal(result.intent.kind, 'contact_update');
+assert.ok(!result.message.includes('何年何月何日'));
 result = extractConversationFacts({ text: 'おまかせで大丈夫です', lastQuestions: [{key:'budget_scope'}, {key:'color_vibe'}], sourceTimestamp });
 assert.equal(field(result, 'color_vibe'), 'おまかせ');
 assert.equal(field(extract('色はおまかせでお願いします'), 'color_vibe'), 'おまかせ');

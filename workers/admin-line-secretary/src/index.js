@@ -6,11 +6,14 @@ import { managerPwaAsset } from './manager-pwa.js';
 import { scheduleProofAsset, scheduleProofMessages } from './schedule-proof.js';
 import { siteDialogue, readableSiteDate } from './site-dialogue.js';
 import { managerReleaseStage, managerRecipientAllowed, managerProductionSafetyReady } from './manager-policy.js';
+import { managerHealthApi } from './manager-health.js';
+import { managerSetupPage, managerSetupApi } from './manager-setup.js';
+import { STORE_PROFILE } from './store-profile.js';
 
 const encoder = new TextEncoder();
 const CUSTOMER_SESSION_TTL = 60 * 60 * 24 * 14;
 const CUSTOMER_MESSAGE_BUNDLE_WAIT_MS = 12_000;
-const STORE_SERVICE_HOURS_NOTICE = '店舗対応時間は10:00〜16:00です。夜間の配達は、地域・内容・当日の予定を確認して個別にご案内します。';
+const STORE_SERVICE_HOURS_NOTICE = STORE_PROFILE.notice+'夜間の配達は、地域・内容・当日の予定を確認して個別にご案内します。';
 const DATE_INPUT_PATTERN = '(?:令和\\s*\\d{1,2}年?\\s*\\d{1,2}[月/-]\\s*\\d{1,2}日?|R\\s*\\d{1,2}[年/月/-]\\s*\\d{1,2}[月/-]\\s*\\d{1,2}日?|\\d{4}年?\\s*\\d{1,2}[月/-]\\s*\\d{1,2}日?|\\d{1,2}月\\s*\\d{1,2}日?|\\d{4}[/-]\\d{1,2}[/-]\\d{1,2})';
 const CUSTOMER_REPLY_TIMINGS = {
   initial_intake: { minDelayMs: 3000, maxDelayMs: 5000, loadingSeconds: 5 },
@@ -50,7 +53,10 @@ export default {
     const appAsset = request.method === 'GET' ? managerPwaAsset(url.pathname) : null;
     if(appAsset)return appAsset;
     if (request.method === 'GET' && url.pathname === '/manager') return managerConsole();
+    if (request.method === 'GET' && url.pathname === '/manager/setup') return managerSetupPage(request,env);
     if (url.pathname === '/api/manager/session' || url.pathname === '/api/manager/logout') return managerSessionEndpoint(request, env);
+    if (url.pathname === '/api/manager/health') return managerHealthApi(request,env);
+    if (url.pathname === '/api/manager/setup') return managerSetupApi(request,env);
     if (url.pathname.startsWith('/api/manager/')) return managerApi(request, env);
     if (request.method === 'GET' && url.pathname === '/oauth/google/start') return googleOAuthStart(request, env);
     if (request.method === 'GET' && url.pathname === '/oauth/google/callback') return googleOAuthCallback(request, env);
@@ -2265,15 +2271,15 @@ function resolveJapanDate(expression) {
 
 async function applyChange(change, userId, env) {
   const before = await env.DB.prepare('SELECT * FROM business_schedule WHERE date = ?').bind(change.date).first();
-  await env.DB.prepare(`INSERT INTO business_schedule (date, status, open_time, close_time, updated_at, updated_by)
+  await env.DB.batch([env.DB.prepare(`INSERT INTO business_schedule (date, status, open_time, close_time, updated_at, updated_by)
     VALUES (?, ?, ?, ?, datetime('now'), ?)
     ON CONFLICT(date) DO UPDATE SET status = excluded.status, open_time = excluded.open_time,
       close_time = excluded.close_time, updated_at = excluded.updated_at, updated_by = excluded.updated_by`)
-    .bind(change.date, change.status, change.openTime, change.closeTime, userId).run();
-  await env.DB.prepare(`INSERT INTO audit_log
+    .bind(change.date, change.status, change.openTime, change.closeTime, userId),
+  env.DB.prepare(`INSERT INTO audit_log
       (timestamp, actor_line_user_id, action, before_json, after_json, result, error_code)
     VALUES (datetime('now'), ?, 'schedule.update', ?, ?, 'success', NULL)`)
-    .bind(userId, JSON.stringify(before || null), JSON.stringify({ ...change, date: change.date })).run();
+    .bind(userId, JSON.stringify(before || null), JSON.stringify({ ...change, date: change.date }))]);
 }
 
 async function getCustomerKind(customerId, text, env) {

@@ -69,7 +69,6 @@ for (const [text, key] of [
 
 for (const text of [
   '10月10日が誕生日で10月9日に受け取り希望です',
-  '10月10日が誕生日、9日に受け取りたいです',
   '10月10日か10月11日に受け取りたいです',
   '10月10日ではなく10月11日に受け取りたいです',
   '受取希望日：10月10日か10月11日',
@@ -92,6 +91,12 @@ const prior = planConversation({ text: '配達が無理なら店頭で', fields:
 assert.equal(prior.clarificationNeeded, true);
 assert.equal(prior.requiresOwner, true);
 assert.ok(prior.questions.some(item => item.key === 'fulfillment_method'));
+checks++;
+// Explicit use/pickup roles with a shared month are unambiguous. This was
+// approved as contextual date recording; retain both instead of discarding it.
+const sharedMonth=planConversation({text:'10月10日が誕生日、9日に受け取りたいです',sourceTimestamp});
+assert.equal(field(sharedMonth,'use_date'),'2026-10-10');
+assert.equal(field(sharedMonth,'receive_date'),'2026-10-09');
 checks++;
 const times = planConversation({ text: '受取は10時か11時で迷っています', sourceTimestamp });
 assert.equal(field(times, 'receive_time'), undefined);

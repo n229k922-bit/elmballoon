@@ -5,6 +5,12 @@ workers_dev = true
 # Preserve the test Worker’s existing dashboard-managed variables and secrets.
 keep_vars = true
 
+[vars]
+# The test Worker must remain non-sending by default. Explicitly pin this
+# safety boundary so dashboard-managed variables cannot accidentally reopen
+# customer or owner delivery during QA.
+MANAGER_SEND_PAUSED = "true"
+
 [[d1_databases]]
 binding = "DB"
 database_name = "elm-balloon-schedule-test"

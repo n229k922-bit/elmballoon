@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import vm from 'node:vm';
+import { STORE_PROFILE } from '../workers/admin-line-secretary/src/store-profile.js';
 
 const sourcePath = new URL('../workers/admin-line-secretary/src/index.js', import.meta.url);
 const source = fs.readFileSync(sourcePath, 'utf8')
@@ -21,6 +22,7 @@ const source = fs.readFileSync(sourcePath, 'utf8')
   };`;
 
 const context = vm.createContext({
+  STORE_PROFILE,
   console,
   TextEncoder,
   URL,
@@ -88,7 +90,8 @@ const routed = orderReply('①', start.session);
 assert.equal(routed.session.stage, 'collecting');
 assert.equal(missingIntakeFields(routed.session.fields).length, 8);
 assert.match(routed.message, /プレゼント・使用予定日/);
-assert.match(routed.message, /店舗対応時間は10:00〜16:00/);
+assert.ok(routed.message.includes(STORE_PROFILE.notice));
+assert.match(routed.message, /日曜日・祝日|土曜日は予約来店のみ/);
 assert.doesNotMatch(routed.message, /・お名前：/);
 assert.doesNotMatch(routed.message, /メッセージカードの有無/);
 assert.equal(splitCustomerReply(routed.message).length, 3);

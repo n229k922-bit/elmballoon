@@ -155,18 +155,14 @@ test('signed test intake runs via maintenance without approval, then completed o
  };
  try{
   await customer('娘の誕生日にバルーンをお願いしたいです','INTAKE-INITIAL');
-  assert.equal(sent.filter(s=>s.body.to==='CUSTOMER').length,1);
+   assert.equal(sent.filter(s=>s.body.to==='CUSTOMER').length,1);
   assert.equal(sent.filter(s=>s.body.to==='OWNER').length,0);
   assert.match(sent[0].body.messages[0].text,/いつ頃/);
   await customer('2027年10月10日にブーケ3個、合計10000円、店頭受取、色はおまかせでお願いします','INTAKE-COMPLETE');
-  assert.equal(sent.filter(s=>s.body.to==='CUSTOMER').length,1);
-  const notice=sent.find(s=>s.body.to==='OWNER').body.messages[0];
-  const data=notice.quickReply.items[0].action.data;
-  await worker.fetch(f.req('/webhook/line','OWNER',{data},'INTAKE-PICK',f.env.LINE_CHANNEL_SECRET),f.env);
-  assert.equal(sent.filter(s=>s.body.to==='CUSTOMER').length,1);
-  await worker.fetch(f.req('/webhook/line','OWNER','1','INTAKE-APPROVE',f.env.LINE_CHANNEL_SECRET),f.env);
   assert.equal(sent.filter(s=>s.body.to==='CUSTOMER').length,2);
-  assert.equal(f.db.prepare("SELECT COUNT(*) n FROM manager_drafts WHERE status='sent'").get().n,2);
+  assert.equal(sent.filter(s=>s.body.to==='OWNER').length,0);
+  assert.match(sent.at(-1).body.messages[0].text,/使用日|イベント日|何年何月何日/);
+  assert.equal(sent.filter(s=>s.body.to==='CUSTOMER').length,2);
  }finally{globalThis.fetch=original}
 });
 

@@ -5,6 +5,10 @@ import { getOperationalMetrics, formatOperationalMetrics } from './operational-m
 import { discloseAssistant } from './ai-disclosure.js';
 import { isJapanesePublicHoliday } from './japan-calendar.js';
 import { managerRecipientAllowed, managerCanTransmit, managerFeatureEnabled, managerReleaseStage, managerProductionSafetyReady } from './manager-policy.js';
+import { inferOrderBoundary } from './conversation-order-routing.js';
+import { archivePendingManagerImages } from './manager-image-archive.js';
+import { recordMaintenanceHealth } from './manager-health.js';
+import { STORE_PROFILE } from './store-profile.js';
 
 const iso = (value = Date.now()) => new Date(value).toISOString();
 const statement = (env, sql, ...args) => env.DB.prepare(sql).bind(...args);
@@ -122,7 +126,7 @@ export function businessDeadline(now, urgent, schedule = [], hours = 8) {
     if (row?.status === 'closed') continue;
     const weekday = new Date(`${day}T00:00:00Z`).getUTCDay();
     if (weekday === 0 || weekday === 6 || isJapanesePublicHoliday(day)) continue;
-    const start = row?.open_time || '10:00', end = row?.close_time || '16:00';
+    const start = row?.open_time || STORE_PROFILE.opens, end = row?.close_time || STORE_PROFILE.closes;
     if (time >= start && time < end && --remaining <= 0) return iso(cursor + 60_000);
   }
   return iso(cursor);
@@ -141,14 +145,23 @@ function reminderWindow(now, schedule) {
   if (local.weekday === 'Sat' || local.weekday === 'Sun' || isJapanesePublicHoliday(local.date)) return false;
   const override = schedule.find(row => row.date === local.date);
   if (override?.status === 'closed') return false;
-  const opens = override?.open_time || '10:00';
-  const closes = override?.close_time || '16:00';
+  const opens = override?.open_time || STORE_PROFILE.opens;
+  const closes = override?.close_time || STORE_PROFILE.closes;
   return local.time >= opens && local.time < closes;
 }
 
 function readableJapanDateTime(value) {
   const local = japanDateTime(value);
   return `${Number(local.month)}月${Number(local.day)}日 ${Number(local.hour)}:${local.minute}`;
+}
+
+function ownerReadableText(value, limit = 700) {
+  return String(value || '')
+    // Internal card/draft identifiers are for the system, not the shop owner's decision.
+    .replace(/\b[MD][A-F0-9]{16}\b/giu, '')
+    .replace(/[ \t]{2,}/gu, ' ')
+    .trim()
+    .slice(0, limit);
 }
 
 function reminderOrderText(task) {
@@ -168,12 +181,49 @@ function reminderOrderText(task) {
 async function processInboxGroup(events, env, now) {
   const latest = events.at(-1), customerId = latest.customer_id;
   const text = events.map(event => event.text).join('\n');
+  const openingIntent=classifyConversationIntent(text);
+  if(['test','non_order'].includes(openingIntent.kind)) {
+    await env.DB.batch([
+      statement(env,`INSERT OR IGNORE INTO manager_drafts(id,customer_id,source_event_id,message,created_at) VALUES (?,?,?,?,?)`,id('D'),customerId,latest.id,openingIntent.message,now),
+      ...events.map(event=>statement(env,`UPDATE manager_events SET processed_at=?,processing_error=NULL WHERE id=?`,now,event.id)),
+    ]);
+    return;
+  }
   const session = testSessionStart(env);
   const active = await rows(env, `SELECT * FROM manager_orders WHERE customer_id = ? AND status = 'open' AND (?='' OR created_at>=?) ORDER BY created_at`, customerId, session, session);
+  const precedingEvents = await rows(env, `SELECT id,order_id,direction,text,occurred_at FROM manager_events WHERE customer_id=? AND processed_at IS NOT NULL AND occurred_at<=? AND (?='' OR received_at>=?) ORDER BY occurred_at,rowid`,customerId,events[0].occurred_at,session,session);
+  const activeFields = await rows(env,`SELECT f.* FROM manager_fields f JOIN manager_orders o ON o.id=f.order_id WHERE o.customer_id=? AND o.status='open'`,customerId);
+  const fieldsByOrder = Object.fromEntries(active.map(order=>[order.id,Object.fromEntries(activeFields.filter(field=>field.order_id===order.id).map(field=>[field.field_key,field]))]));
+  const routingIntent = classifyConversationIntent(text, precedingEvents);
+  const boundary = inferOrderBoundary(text,active,precedingEvents,fieldsByOrder);
+  const latestNonemptyIndex=[...precedingEvents].map((event,index)=>event.text?.trim()?index:-1).filter(index=>index>=0).at(-1);
+  const immediatelyPreviousStore=latestNonemptyIndex!=null&&latestNonemptyIndex>=0&&precedingEvents[latestNonemptyIndex].direction==='assistant'
+    ? precedingEvents[latestNonemptyIndex] : null;
+  const paymentCustomerBeforeStore=immediatelyPreviousStore
+    ? [...precedingEvents.slice(0,latestNonemptyIndex)].reverse().find(event=>event.direction==='customer'&&event.text?.trim()) : null;
+  const paymentOrderScopeIsClear=Boolean(immediatelyPreviousStore?.order_id&&paymentCustomerBeforeStore?.order_id===immediatelyPreviousStore.order_id
+    &&active.some(order=>order.id===immediatelyPreviousStore.order_id)
+    &&/(?:支払|入金|領収書|振込|PayPay|お会計)/u.test(paymentCustomerBeforeStore.text));
+  const paymentNeedsOrderScope=routingIntent.kind==='payment_followup'&&active.length>1&&!paymentOrderScopeIsClear;
     const routedOrderId = events.find(event => event.order_id)?.order_id;
     let selection = classifyConversationIntent(text).kind === 'mixed_orders' ? { ambiguous: true } : routedOrderId
       ? { order: active.find(order => order.id === routedOrderId), unknown: !active.some(order => order.id === routedOrderId) }
     : chooseOrder(text, active);
+  if (!routedOrderId && !/\bM[A-F0-9]{16}\b/iu.test(text) && classifyConversationIntent(text).kind!=='mixed_orders') {
+    if (boundary.kind==='new') selection={create:true};
+    else if (boundary.kind==='ambiguous') selection={ambiguous:true};
+    else if(boundary.orderId && active.some(order=>order.id===boundary.orderId))selection={order:active.find(order=>order.id===boundary.orderId)};
+    else if (selection.ambiguous && text.length<500) {
+      const lastAssistant=precedingEvents.filter(event=>event.direction==='assistant'&&event.text?.trim()).at(-1);
+      const candidates=lastAssistant ? active.filter(order=>order.id===lastAssistant.order_id) : [];
+      if(candidates.length===1)selection={order:candidates[0]};
+    }
+  }
+  // A short time can answer the immediately preceding payment-visit question,
+  // but an unlinked historic question cannot identify which of several open
+  // orders owns that payment. Keep it a payment-scope clarification and do
+  // not let the latest unrelated order absorb the reply.
+  if(paymentNeedsOrderScope&&!routedOrderId&&!/\bM[A-F0-9]{16}\b/iu.test(text))selection={ambiguous:true};
   const batch = [];
   if (selection.create) {
     const orderId = id('M');
@@ -183,9 +233,16 @@ async function processInboxGroup(events, env, now) {
   const order = selection.order;
   const draftId = id('D');
   if (!order) {
+    const scopeQuestion = routingIntent.kind === 'payment_followup'
+      ? 'お支払いのご連絡ありがとうございます。複数のご注文を承っているため、どのご注文についてか教えていただけますか？'
+      : routingIntent.kind === 'schedule_followup'
+        ? '日時のご希望ですね。複数のご注文を確認中のため、どのご注文についてか教えていただけますか？'
+        : routingIntent.kind === 'specification_change'
+          ? '変更のご希望を承りました。複数のご注文を確認中のため、どのご注文についてか教えていただけますか？'
+          : null;
     const message = selection.unknown
       ? 'ご指定の注文を確認しています。担当者から改めてご案内いたします。'
-      : `ご相談中の注文が複数あるため、どちらについてのお話か教えてください。\n${active.map(o => `・${o.title}`).join('\n')}\n担当者と確認いたします。新しいご注文でしたら「別の注文」とお送りください。`;
+      : `${scopeQuestion || (active.length>1?'ご相談中の注文が複数あるため、どちらについてのお話か教えてください。':'今回のご希望は、これまでの注文の変更でしょうか。それとも別のご注文でしょうか。')}\n${active.map(o => `・${o.title}`).join('\n')}\n担当者と確認いたします。新しいご注文でしたら「別の注文」とお送りください。`;
     batch.push(statement(env, `INSERT OR IGNORE INTO manager_drafts
       (id,customer_id,source_event_id,message,created_at) VALUES (?,?,?,?,?)`, draftId, customerId, latest.id, message, now));
     batch.push(statement(env, `INSERT OR IGNORE INTO manager_tasks(id,kind,detail,due_at,created_at)
@@ -200,9 +257,9 @@ async function processInboxGroup(events, env, now) {
     const latestQuestions = asked.filter(q => q.draft_id === asked[0]?.draft_id);
     // Only this customer's current order supplies conversational context; another
     // order's privacy choices or specifications must not become evidence here.
-    const priorCustomerMessages = await rows(env, `SELECT text FROM manager_events WHERE customer_id=? AND order_id=? AND direction='customer' AND processed_at IS NOT NULL ORDER BY occurred_at DESC,rowid DESC LIMIT 40`, customerId, order.id);
+    const conversationHistory = await rows(env, `SELECT id,text,direction,media_message_id,occurred_at FROM manager_events WHERE customer_id=? AND order_id=? AND direction IN ('customer','assistant') AND processed_at IS NOT NULL AND occurred_at<=? ORDER BY occurred_at,rowid`, customerId, order.id, latest.occurred_at);
     let plan = planConversation({ text, fields, lastQuestions: latestQuestions, sourceTimestamp: latest.occurred_at,
-      history: [{questions:asked}, ...priorCustomerMessages.reverse()], hasImage: events.some(e => e.media_message_id) });
+      history: [{questions:asked}, ...conversationHistory], hasImage: events.some(e => e.media_message_id) });
     const conversationHold = await first(env, `SELECT id,detail FROM manager_tasks WHERE order_id=? AND kind='manual_review' AND status='open' AND detail LIKE 'conversation_hold:%' LIMIT 1`, order.id);
     const holdKinds = ['safety','complaint','withdrawal','handoff','bereavement'];
     const newHold = holdKinds.includes(plan.intent?.kind);
@@ -216,7 +273,7 @@ async function processInboxGroup(events, env, now) {
       // Hold the complete burst too: a follow-up timestamp or amount in the
       // same batch must not be extracted separately from a complaint/withdrawal.
       if (conversationHold || (newHold && plan.intent.kind !== 'bereavement')) continue;
-      const parsed=extractConversationFacts({text:event.text,sourceTimestamp:event.occurred_at,lastQuestions:latestQuestions,hasImage:Boolean(event.media_message_id)});
+      const parsed=extractConversationFacts({text:event.text,sourceTimestamp:event.occurred_at,lastQuestions:latestQuestions,hasImage:Boolean(event.media_message_id),history:conversationHistory});
       for(const update of parsed.updates) evidenceUpdates.set(update.key,{...update,sourceEventId:event.id});
     }
     const changes = [], proposed = { ...fields };
@@ -244,8 +301,15 @@ async function processInboxGroup(events, env, now) {
       }
     }
     const reasons = [...(plan.ownerReasons || [])];
+    if(['proposal_confirmation','specification_change','inventory_question','schedule_followup','payment_followup'].includes(plan.intent?.kind)) {
+      const precedingStore=conversationHistory.filter(event=>event.direction==='assistant'&&event.text?.trim()).at(-1);
+      plan.facts.items.push({specification:`【${plan.intent.kind==='proposal_confirmation'?'ご提案へのお返事':'今回のご希望・未確定'}】\n${text}${precedingStore ? `\n【参照した店舗のご案内】\n${precedingStore.text}`:''}`,evidence:text});
+    }
     if (changes.length) reasons.push('承認済み内容または時系列の異なる内容に変更候補あり');
     if (events.some(e => e.media_message_id)) reasons.push('参考画像の内容は未判読。原トークで確認が必要');
+    if (['price_inquiry','proposal_confirmation','inventory_question'].includes(plan.intent?.kind)
+        && (fieldValue(fields,'product_source').includes('内容未確認') || conversationHistory.some(event => event.media_message_id)))
+      reasons.push('参考画像の内容は未判読。原トークで確認が必要');
     if (customerHistory) reasons.push(customerHistory.imported.length || customerHistory.previous.length
       ? '本人に紐付く過去記録あり。今回の仕様は再確認が必要' : '過去注文の確認済み記録なし。昨年と同じ仕様を推測しない');
     const unresolvedChanges = await first(env, `SELECT id FROM manager_changes WHERE order_id=? AND status='pending' LIMIT 1`, order.id);
@@ -288,7 +352,13 @@ async function processInboxGroup(events, env, now) {
       return `${LABELS[key]}：${display}`;
     }).join('\n');
     const historyNote = await formatCustomerHistory(customerId,env,order.id);
+  const currentRequest = ownerReadableText(text, 900);
+  const requestDetails = [...new Set((plan.facts?.items || [])
+    .map(item => ownerReadableText(item.specification, 700))
+    .filter(item => item && item !== currentRequest))].slice(0, 4);
   const ownerText = `${env.MANAGER_TEST_MODE==='true' ? '【テスト：店長確認】\n' : ''}【返信の確認】${title}\n${urgent ? '急ぎの対応が必要です\n' : ''}${summary.slice(0, 1200)}\n`
+      + (currentRequest ? `\n【今回のお客様のご連絡】\n${currentRequest}\n` : '')
+      + (requestDetails.length ? `\n【ご希望・確認が必要な内容】\n${requestDetails.map(item => `・${item}`).join('\n')}\n` : '')
       + (reasons.length ? `確認点：${reasons.map(reason => REASON_LABELS[reason] || (/^[a-z_]+$/u.test(reason) ? '注文内容の確認が必要です' : reason)).join('／')}\n` : '')
       + changes.map(c => `【${LABELS[c.key] || '注文内容'}の変更希望】\n変更前：${c.old}\n変更後：${c.value}\n「案件一覧」から注文を選び「変更確認」で判断できます。`).join('\n')
       + (historyNote ? `\n【本人の過去記録・今回未確定】\n${historyNote}\n` : '')
@@ -455,9 +525,16 @@ export async function monitorManagerTasks(env, now = iso()) {
 export async function runManagerMaintenance(env, now = iso()) {
   if (!managerV2Enabled(env) || managerReleaseStage(env) === 'disabled') return;
   if (managerReleaseStage(env)!=='test'&&!managerProductionSafetyReady(env)) return;
-  await drainManagerInbox(env, now);
-  await monitorManagerTasks(env, now);
-  await flushManagerOutbox(env, now);
+  try {
+    await drainManagerInbox(env, now);
+    await monitorManagerTasks(env, now);
+    await flushManagerOutbox(env, now);
+    const imageArchive=await archivePendingManagerImages(env,{limit:5});
+    await recordMaintenanceHealth(env,{now,ok:true,imageArchive});
+  } catch(error) {
+    try{await recordMaintenanceHealth(env,{now,ok:false});}catch{}
+    throw error;
+  }
 }
 
 export async function handleManagerCommand(text, actor, env, now = iso(), notificationEventId = null) {
