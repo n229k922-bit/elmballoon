@@ -48,4 +48,14 @@
 - `docs/schedule-proof.md`：HP反映と画像証跡。
 - `docs/site-image-change-staging.md`：HP画像変更案。
 
-テスト公開後の候補コミット・公開版・QA結果は別途追記し、今回の候補版を本番LINEへ自動で切り替えない。
+## テスト環境への反映と最終検査
+
+- 反映した実装：`f6f188811d932d61d04222c40c5fa2661c97de60`。
+- テストWorker版：`bed8c71e-effc-48da-9a6c-094ebb988ae2`。
+- テストURL：`https://elm-balloon-admin-line-secretary-test.n229k922.workers.dev/manager`。
+- CI/QAの補正コミット `619013b1b092c3f7adfe7d8fc26c4d7d7deb9a78` でもWorkerのsrcツリーは同一（`e44a386d45ae130d8c8debf78810dd68d4f08018`）。[GitHub Actions](https://github.com/n229k922-bit/elmballoon/actions/runs/39392130339) の成功を確認した。
+- 専用の一回限りQAログインで、候補コミットの一致、送信停止、準備画面14日分、カルテ2件のHTML出力/履歴API、運用ゲート/healthの応答を確認した。セッションで非表示の古いカルテがあるので、0件の検査で合格にせず既存記録2件を明示して検査した。新しい注文は作らず、QAで作ったログイン記録とセッションだけを後始末した。
+- 検査後もテストoutboxは既存のcustomer sent5/owner sent5のみ、未処理受信0。今回の顧客・店長向け送信0。
+- 利用者の追加指示に従い、**実公開は行わず、テスト用LINE2アカウントと接続先を保持して最終テストを継続する**。テスト送信も現在は停止中。再開する場合はテスト環境の許可された宛先だけを対象に明示的に再開し、本番の設定やWebhookへは反映しない。
+
+現在のアカウント設定は注文担当 `@022dypur`、統括 `@965hjggd`。アカウントを削除/作成し直す操作はしていない。本番公開には進めていない。
