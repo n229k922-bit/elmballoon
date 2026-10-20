@@ -22,7 +22,13 @@ try{
  step='manager_application';const orderResponse=await get('/api/manager/orders');assert.equal(orderResponse.status,200);const data=await orderResponse.json();assert.equal(data.sendPaused,true);
  const setupPage=await get('/manager/setup');assert.equal(setupPage.status,200);assert.match(await setupPage.text(),/受付上限|営業予定/);
  const setupResponse=await get('/api/manager/setup');assert.equal(setupResponse.status,200);const setup=await setupResponse.json();assert.equal(setup.days.length,14);assert.equal(setup.storeProfile.opens,'10:00');assert.equal(setup.storeProfile.closes,'16:00');
- step='card_and_history';let cards=0;for(const order of data.orders.slice(0,3)){const card=await get('/api/manager/order-card?id='+encodeURIComponent(order.id));assert.equal(card.status,200);assert.match(card.headers.get('cache-control'),/no-store/);assert.match(await card.text(),/注文数量|数量/);const events=await get('/api/manager/order-events?id='+encodeURIComponent(order.id));assert.equal(events.status,200);assert.ok(Array.isArray((await events.json()).events));cards++;}
+ step='card_and_history';
+ // A fresh test session can hide retained older cards in the active list.
+ // Inspect those exact existing records instead of silently testing zero cards
+ // or seeding another customer/order into the shared final-test environment.
+ const examples=data.orders.length?data.orders.slice(0,3):JSON.parse(sql('SELECT id FROM manager_orders ORDER BY created_at DESC LIMIT 2'))[0].results;
+ assert.ok(examples.length>0,'A card must actually be inspected');
+ let cards=0;for(const order of examples){const card=await get('/api/manager/order-card?id='+encodeURIComponent(order.id));assert.equal(card.status,200);assert.match(card.headers.get('cache-control'),/no-store/);assert.match(await card.text(),/注文数量|数量/);const events=await get('/api/manager/order-events?id='+encodeURIComponent(order.id));assert.equal(events.status,200);assert.ok(Array.isArray((await events.json()).events));cards++;}
  step='unconfigured_image_status';assert.ok(setup.readiness.gates.some(gate=>gate.id==='schedule_image_config'));
  step='monitoring';const health=await get('/api/manager/health');assert.ok([200,503].includes(health.status));assert.ok(Array.isArray((await health.json()).checks));
  console.log(JSON.stringify({scope:'isolated_test_no_messages_sent',candidate:expected,authenticatedSetup:true,cardsChecked:cards,sendPaused:true,operationalGates:setup.readiness.gates.map(({id,status})=>({id,status})),realImageAcceptance:false,mobileAcceptance:false},null,2));

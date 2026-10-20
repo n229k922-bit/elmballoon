@@ -7,3 +7,4 @@ CUSTOMER_ORDER_CARDS_PRIVATE.md
 *.private.jsonl
 *.elmbak
 *.key
+.ci-worker-runtime/
