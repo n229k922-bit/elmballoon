@@ -551,7 +551,11 @@ async function recordCustomerMessage(event, env) {
       VALUES (?, ?, 'customer_inbound', ?, ?)`)
     .bind(event.webhookEventId || event.message.id, threadId, text, now).run();
 
-  const currentSession = await env.SECRETARY_KV.get('customer-session:' + customerId, 'json');
+  const startsOrder = !isImage && isOrderStartTrigger(text);
+  // Explicit order starts already allow creation regardless of the session.
+  // Keep the later reply-time read fresh (including delayed/concurrent events).
+  const currentSession = startsOrder ? null : await env.SECRETARY_KV.get('customer-session:' + customerId, 'json');
+  let customerNames;
   const orderSessionActive = ['collecting', 'review', 'awaiting_contact', 'confirmed']
     .includes(currentSession?.stage);
   const orderRecordResult = await syncCustomerOrderRecord({
@@ -561,10 +565,10 @@ async function recordCustomerMessage(event, env) {
     text,
     now,
     env,
-    allowCreate: (!isImage && isOrderStartTrigger(text)) || orderSessionActive,
+    allowCreate: startsOrder || orderSessionActive,
   });
   if (orderRecordResult?.pendingChanges.length) {
-    const customerNames = await getCustomerNames(threadId, env);
+    customerNames = await getCustomerNames(threadId, env);
     await notifyOwners(formatPendingOrderChanges(
       formatCustomerLabel(customerNames.confirmedName || customerNames.displayName),
       orderRecordResult.pendingChanges,
@@ -577,7 +581,7 @@ async function recordCustomerMessage(event, env) {
   const catalogProduct = details.productReference ? await findProductCatalogMatch(details.productReference, env) : null;
   await upsertOrderCard(threadId, text, candidate, now, env, details);
 
-  const customerNames = await getCustomerNames(threadId, env);
+  customerNames ??= await getCustomerNames(threadId, env);
   const customerName = customerNames.confirmedName || customerNames.displayName;
   const customerLabel = formatCustomerLabel(customerName);
   if (confirmedName) {

@@ -448,3 +448,9 @@ MANAGER_AUTO_INTAKE_ENABLED のテスト専用ゲートを追加。許可顧客�
 2026-09-29、統括通知が届かない原因をGitHub main・旧PC未コミット差分・本番設定で突き合わせ、Cloudflareに欠けていた `ADMIN_LINE_USER_IDS` をD1の管理操作実績から復旧した。mainの即時通知を維持しつつ、商品画像を制作可否確認へまとめ、注文カルテ単位の重複判定、成功済み通知の抑止、失敗通知の5分間隔・最大5回再試行、監査ログを追加した。「店頭」「午後2時半」「来週木曜日」を含む86項目の注文テスト、123ページの静的サイト検証、Workerのdry-runビルドに合格した。
 
 通知復旧は `fix/owner-notification-reliability` へコミット・プッシュし、テスト用LINE Worker version `65e27454-ee69-4625-9a7b-e173e092f410` として反映した。最新バージョンに `ADMIN_LINE_USER_IDS`、管理用・顧客用LINEトークン、D1、KV、5分間隔のscheduled handlerが存在することを確認した。9月23日の古い確認待ち2件は再送対象から除外し、新コードで実際に送信失敗が記録された依頼だけを最大5回再試行する。統括リッチメニューは本番へ実装せず、テスト用2アカウントだけで検証する仕様書を先に作成した。
+
+## Storage usage reduction (2026-10-26)
+- [x] Inspect current main and create experiment/reduce-storage-usage.
+- [x] Skip irrelevant order-start KV read and reuse customer names; preserve fresh reply reads and TTL writes.
+- [x] Verify audit query index with query plans and regression checks (all 26 command groups pass).
+- [x] Document changes and validation; no deployment.
