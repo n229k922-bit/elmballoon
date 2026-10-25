@@ -9,7 +9,8 @@ import { readdirSync, readFileSync } from 'node:fs';
 const root = new URL('../workers/admin-line-secretary/migrations/', import.meta.url);
 const files = readdirSync(root).filter(name => name.endsWith('.sql')).sort();
 const pending = ['0013_manager_v2.sql', '0014_manager_mobile_sessions.sql',
-  '0015_manager_reply_selection.sql', '0017_capacity_safety.sql', '0018_manager_message_payload.sql'];
+  '0015_manager_reply_selection.sql', '0017_capacity_safety.sql', '0018_manager_message_payload.sql',
+  '0019_notification_audit_lookup.sql'];
 const quote = name => `"${name.replaceAll('"', '""')}"`;
 const sql = name => readFileSync(new URL(name, root), 'utf8');
 function tables(db) {
